@@ -1,0 +1,183 @@
+/* Tailwind CSS v4 Configuration */
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+@plugin "@tailwindcss/typography";
+@import "tailwindcss";
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+}
+
+@theme {
+  --color-dark: #2b2b2b;
+  --color-contrast: #7b7365;
+  --color-faint: #f4f2f0;
+  --color-light: #f0ece6;
+  --color-lighter: #e6dcca;
+  --color-orange: #ba7d12;
+
+  /* Custom Fonts */
+  --font-opensans: "Open Sans", sans-serif;
+  --font-body: var(--font-opensans);
+  --color-reserve-ink: #2f193b; /* dark purple  */
+  --color-reserve-primary: #572e72; /* medium purple */
+  --color-reserve-soft: #8260a2; /* light purple  */
+  --color-reserve-teal: #92c9d6; /* teal */
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.91 0.008 85);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.16 0.01 75); /* warm near-black */
+  --foreground: oklch(0.93 0.015 85); /* warm off-white */
+  --card: oklch(0.2 0.012 75);
+  --card-foreground: oklch(0.93 0.015 85);
+  --popover: oklch(0.2 0.012 75);
+  --popover-foreground: oklch(0.93 0.015 85);
+  --primary: oklch(
+    0.85 0.06 85
+  ); /* cream-gold: buttons/selected pop against dark */
+  --primary-foreground: oklch(
+    0.2 0.03 75
+  ); /* dark ink text on the light primary */
+  --secondary: oklch(0.26 0.012 75);
+  --secondary-foreground: oklch(0.9 0.015 85);
+  --muted: oklch(0.26 0.012 75);
+  --muted-foreground: oklch(
+    0.68 0.015 80
+  ); /* <-- your complaint: readable warm gray */
+  --accent: oklch(0.26 0.012 75);
+  --accent-foreground: oklch(0.9 0.015 85);
+  --destructive: oklch(0.65 0.19 25);
+  --destructive-foreground: oklch(0.97 0.01 85);
+  --border: oklch(0.3 0.012 75);
+  --input: oklch(0.3 0.012 75);
+  --ring: oklch(0.75 0.06 85);
+
+  /* Sidebar — currently has no .dark overrides at all, so it's
+     showing light-mode cream in dark mode */
+  --sidebar: oklch(0.19 0.012 75);
+  --sidebar-foreground: oklch(0.9 0.015 85);
+  --sidebar-primary: oklch(0.85 0.06 85);
+  --sidebar-primary-foreground: oklch(0.2 0.03 75);
+  --sidebar-accent: oklch(0.26 0.012 75);
+  --sidebar-accent-foreground: oklch(0.92 0.015 85);
+  --sidebar-border: oklch(0.28 0.012 75);
+  --sidebar-ring: oklch(0.75 0.06 85);
+}
+
+/* Hide content until Vue hydrates */
+[v-cloak] {
+  display: none !important;
+}
+
+/* Global base styles */
+@layer base {
+  body {
+    color: var(--foreground);
+    background-color: var(--background);
+  }
+  h1 {
+    @apply text-[2rem] font-semibold leading-9 my-2;
+  }
+  h2 {
+    @apply text-2xl font-semibold;
+  }
+  h3 {
+    @apply text-2xl font-semibold;
+  }
+  h4 {
+    @apply text-xl font-semibold;
+  }
+  h5 {
+    @apply text-lg font-medium;
+  }
+  h6 {
+    @apply text-base font-medium;
+  }
+  p {
+    @apply text-base my-2;
+  }
+  label {
+    @apply text-sm;
+  }
+}
+
+/* Scan app components */
+@source '../**/*.vue';

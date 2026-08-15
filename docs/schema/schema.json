@@ -1,0 +1,4596 @@
+{
+  "name": "postgres",
+  "tables": [
+    {
+      "name": "public.organizations",
+      "type": "BASE TABLE",
+      "comment": "Tenant root. Single row today; every domain table hangs off organization_id for future multi-tenancy.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "nullable": false,
+          "default": "'America/Los_Angeles'::text"
+        },
+        {
+          "name": "branding",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "'{}'::jsonb"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "organizations_pkey",
+          "def": "CREATE UNIQUE INDEX organizations_pkey ON public.organizations USING btree (id)",
+          "table": "public.organizations",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "organizations_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.organizations",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.locations",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "business_hours",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "locations_pkey",
+          "def": "CREATE UNIQUE INDEX locations_pkey ON public.locations USING btree (id)",
+          "table": "public.locations",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "locations_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.locations",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "locations_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.locations",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.staff",
+      "type": "BASE TABLE",
+      "comment": "Employees. Linked 1:1 to auth.users via user_id. Deactivated (active=false), never deleted. Self-editable personal fields are guarded by trg_guard_staff_self_update.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "bookable",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "comment": "Whether this person appears as a provider in scheduling (columns, qualification pickers, slot search)."
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "hired_at",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "avatar_url",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "pronouns",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "address_line1",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "address_line2",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "postal_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "emergency_contact_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "emergency_contact_phone",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "staff_pkey",
+          "def": "CREATE UNIQUE INDEX staff_pkey ON public.staff USING btree (id)",
+          "table": "public.staff",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_user_id_key",
+          "def": "CREATE UNIQUE INDEX staff_user_id_key ON public.staff USING btree (user_id)",
+          "table": "public.staff",
+          "columns": [
+            "user_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "staff_user_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL",
+          "table": "public.staff",
+          "referenced_table": "auth.users",
+          "columns": [
+            "user_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.staff",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.staff",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_user_id_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (user_id)",
+          "table": "public.staff",
+          "referenced_table": "",
+          "columns": [
+            "user_id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_guard_staff_self_update",
+          "def": "CREATE TRIGGER trg_guard_staff_self_update BEFORE UPDATE ON public.staff FOR EACH ROW EXECUTE FUNCTION guard_staff_self_update()"
+        },
+        {
+          "name": "trg_last_super_admin_deactivation",
+          "def": "CREATE TRIGGER trg_last_super_admin_deactivation BEFORE UPDATE ON public.staff FOR EACH ROW EXECUTE FUNCTION prevent_last_super_admin_deactivation()"
+        }
+      ]
+    },
+    {
+      "name": "public.staff_locations",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "location_id",
+          "type": "uuid",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "staff_locations_pkey",
+          "def": "CREATE UNIQUE INDEX staff_locations_pkey ON public.staff_locations USING btree (staff_id, location_id)",
+          "table": "public.staff_locations",
+          "columns": [
+            "staff_id",
+            "location_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "staff_locations_location_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE",
+          "table": "public.staff_locations",
+          "referenced_table": "public.locations",
+          "columns": [
+            "location_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_locations_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE",
+          "table": "public.staff_locations",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_locations_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (staff_id, location_id)",
+          "table": "public.staff_locations",
+          "referenced_table": "",
+          "columns": [
+            "staff_id",
+            "location_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.roles",
+      "type": "BASE TABLE",
+      "comment": "Role definitions. system=true rows (super_admin, admin, front_desk, provider) cannot be deleted.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "is_system",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "roles_pkey",
+          "def": "CREATE UNIQUE INDEX roles_pkey ON public.roles USING btree (id)",
+          "table": "public.roles",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "roles_organization_id_name_key",
+          "def": "CREATE UNIQUE INDEX roles_organization_id_name_key ON public.roles USING btree (organization_id, name)",
+          "table": "public.roles",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "roles_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.roles",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "roles_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.roles",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "roles_organization_id_name_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (organization_id, name)",
+          "table": "public.roles",
+          "referenced_table": "",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_protect_system_roles",
+          "def": "CREATE TRIGGER trg_protect_system_roles BEFORE DELETE ON public.roles FOR EACH ROW EXECUTE FUNCTION prevent_system_role_deletion()"
+        }
+      ]
+    },
+    {
+      "name": "public.permissions",
+      "type": "BASE TABLE",
+      "comment": "Permission catalog: domain.action(.own|.any) keys. Seeded in migration 1; code references keys as strings.",
+      "columns": [
+        {
+          "name": "key",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "permissions_pkey",
+          "def": "CREATE UNIQUE INDEX permissions_pkey ON public.permissions USING btree (key)",
+          "table": "public.permissions",
+          "columns": [
+            "key"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "permissions_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (key)",
+          "table": "public.permissions",
+          "referenced_table": "",
+          "columns": [
+            "key"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.role_permissions",
+      "type": "BASE TABLE",
+      "comment": "The permission matrix as data. Changing a row changes app behavior everywhere with zero deploys.",
+      "columns": [
+        {
+          "name": "role_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "permission_key",
+          "type": "text",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "role_permissions_pkey",
+          "def": "CREATE UNIQUE INDEX role_permissions_pkey ON public.role_permissions USING btree (role_id, permission_key)",
+          "table": "public.role_permissions",
+          "columns": [
+            "role_id",
+            "permission_key"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "role_permissions_role_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE",
+          "table": "public.role_permissions",
+          "referenced_table": "public.roles",
+          "columns": [
+            "role_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "role_permissions_permission_key_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE",
+          "table": "public.role_permissions",
+          "referenced_table": "public.permissions",
+          "columns": [
+            "permission_key"
+          ],
+          "referenced_columns": [
+            "key"
+          ]
+        },
+        {
+          "name": "role_permissions_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (role_id, permission_key)",
+          "table": "public.role_permissions",
+          "referenced_table": "",
+          "columns": [
+            "role_id",
+            "permission_key"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.staff_roles",
+      "type": "BASE TABLE",
+      "comment": "Role assignments. Audit-logged by trigger; last-super-admin removal blocked by trigger.",
+      "columns": [
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "role_id",
+          "type": "uuid",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "staff_roles_pkey",
+          "def": "CREATE UNIQUE INDEX staff_roles_pkey ON public.staff_roles USING btree (staff_id, role_id)",
+          "table": "public.staff_roles",
+          "columns": [
+            "staff_id",
+            "role_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "staff_roles_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE",
+          "table": "public.staff_roles",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_roles_role_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE",
+          "table": "public.staff_roles",
+          "referenced_table": "public.roles",
+          "columns": [
+            "role_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_roles_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (staff_id, role_id)",
+          "table": "public.staff_roles",
+          "referenced_table": "",
+          "columns": [
+            "staff_id",
+            "role_id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_audit_staff_roles",
+          "def": "CREATE TRIGGER trg_audit_staff_roles AFTER INSERT OR DELETE ON public.staff_roles FOR EACH ROW EXECUTE FUNCTION audit_staff_role_change()"
+        },
+        {
+          "name": "trg_last_super_admin",
+          "def": "CREATE TRIGGER trg_last_super_admin BEFORE DELETE ON public.staff_roles FOR EACH ROW EXECUTE FUNCTION prevent_last_super_admin_removal()"
+        }
+      ]
+    },
+    {
+      "name": "public.audit_log",
+      "type": "BASE TABLE",
+      "comment": "Append-only. Inserts via service role / security-definer functions only. Includes health_note.viewed (app-layer, since SELECTs cannot fire triggers), appointment.booked, staff lifecycle events.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "actor_staff_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "entity_type",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "entity_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "detail",
+          "type": "jsonb",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "audit_log_pkey",
+          "def": "CREATE UNIQUE INDEX audit_log_pkey ON public.audit_log USING btree (id)",
+          "table": "public.audit_log",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "audit_log_actor_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (actor_staff_id) REFERENCES staff(id)",
+          "table": "public.audit_log",
+          "referenced_table": "public.staff",
+          "columns": [
+            "actor_staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "audit_log_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.audit_log",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.staff_invites",
+      "type": "BASE TABLE",
+      "comment": "Tokenized invites (7-day expiry). Accepted atomically by accept_staff_invite() — service-role only. Partial unique index prevents duplicate pending invites per email.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "role_ids",
+          "type": "uuid[]",
+          "nullable": false
+        },
+        {
+          "name": "location_ids",
+          "type": "uuid[]",
+          "nullable": false,
+          "default": "'{}'::uuid[]"
+        },
+        {
+          "name": "token",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "invited_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "(now() + '7 days'::interval)"
+        },
+        {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "staff_invites_pkey",
+          "def": "CREATE UNIQUE INDEX staff_invites_pkey ON public.staff_invites USING btree (id)",
+          "table": "public.staff_invites",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_invites_token_key",
+          "def": "CREATE UNIQUE INDEX staff_invites_token_key ON public.staff_invites USING btree (token)",
+          "table": "public.staff_invites",
+          "columns": [
+            "token"
+          ]
+        },
+        {
+          "name": "staff_invites_one_pending",
+          "def": "CREATE UNIQUE INDEX staff_invites_one_pending ON public.staff_invites USING btree (organization_id, lower(email)) WHERE ((accepted_at IS NULL) AND (revoked_at IS NULL))",
+          "table": "public.staff_invites",
+          "columns": [
+            "organization_id",
+            "lower"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "staff_invites_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.staff_invites",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_invites_invited_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (invited_by) REFERENCES staff(id)",
+          "table": "public.staff_invites",
+          "referenced_table": "public.staff",
+          "columns": [
+            "invited_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_invites_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.staff_invites",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "staff_invites_token_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (token)",
+          "table": "public.staff_invites",
+          "referenced_table": "",
+          "columns": [
+            "token"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.service_categories",
+      "type": "BASE TABLE",
+      "comment": "Menu grouping (Massage, Facials, ...).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "sort_order",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "service_categories_pkey",
+          "def": "CREATE UNIQUE INDEX service_categories_pkey ON public.service_categories USING btree (id)",
+          "table": "public.service_categories",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_categories_organization_id_name_key",
+          "def": "CREATE UNIQUE INDEX service_categories_organization_id_name_key ON public.service_categories USING btree (organization_id, name)",
+          "table": "public.service_categories",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "service_categories_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.service_categories",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_categories_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.service_categories",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_categories_organization_id_name_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (organization_id, name)",
+          "table": "public.service_categories",
+          "referenced_table": "",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.services",
+      "type": "BASE TABLE",
+      "comment": "The treatment catalog. duration_minutes is client-facing; buffers extend the blocked window. Prices in cents. requires_intake gates booking once intake forms exist. Deactivated, never deleted.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "category_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "duration_minutes",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "buffer_before_min",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "buffer_after_min",
+          "type": "integer",
+          "nullable": false,
+          "default": "10",
+          "comment": "Cleanup/reset time appended to the blocked window; invisible to the client-facing times."
+        },
+        {
+          "name": "price_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "requires_intake",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "services_pkey",
+          "def": "CREATE UNIQUE INDEX services_pkey ON public.services USING btree (id)",
+          "table": "public.services",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "services_org_active",
+          "def": "CREATE INDEX services_org_active ON public.services USING btree (organization_id, active)",
+          "table": "public.services",
+          "columns": [
+            "organization_id",
+            "active"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "services_buffer_after_min_check",
+          "type": "CHECK",
+          "def": "CHECK ((buffer_after_min \u003e= 0))",
+          "table": "public.services",
+          "referenced_table": "",
+          "columns": [
+            "buffer_after_min"
+          ]
+        },
+        {
+          "name": "services_buffer_before_min_check",
+          "type": "CHECK",
+          "def": "CHECK ((buffer_before_min \u003e= 0))",
+          "table": "public.services",
+          "referenced_table": "",
+          "columns": [
+            "buffer_before_min"
+          ]
+        },
+        {
+          "name": "services_duration_minutes_check",
+          "type": "CHECK",
+          "def": "CHECK ((duration_minutes \u003e 0))",
+          "table": "public.services",
+          "referenced_table": "",
+          "columns": [
+            "duration_minutes"
+          ]
+        },
+        {
+          "name": "services_price_cents_check",
+          "type": "CHECK",
+          "def": "CHECK ((price_cents \u003e= 0))",
+          "table": "public.services",
+          "referenced_table": "",
+          "columns": [
+            "price_cents"
+          ]
+        },
+        {
+          "name": "services_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.services",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "services_category_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (category_id) REFERENCES service_categories(id)",
+          "table": "public.services",
+          "referenced_table": "public.service_categories",
+          "columns": [
+            "category_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "services_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.services",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_services_touch",
+          "def": "CREATE TRIGGER trg_services_touch BEFORE UPDATE ON public.services FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        }
+      ]
+    },
+    {
+      "name": "public.resource_types",
+      "type": "BASE TABLE",
+      "comment": "Room categories services require (Massage Room, Facial Room, ...).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "resource_types_pkey",
+          "def": "CREATE UNIQUE INDEX resource_types_pkey ON public.resource_types USING btree (id)",
+          "table": "public.resource_types",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "resource_types_organization_id_name_key",
+          "def": "CREATE UNIQUE INDEX resource_types_organization_id_name_key ON public.resource_types USING btree (organization_id, name)",
+          "table": "public.resource_types",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "resource_types_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.resource_types",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "resource_types_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.resource_types",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "resource_types_organization_id_name_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (organization_id, name)",
+          "table": "public.resource_types",
+          "referenced_table": "",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.resources",
+      "type": "BASE TABLE",
+      "comment": "Concrete rooms per location. Inactive rooms leave bookable inventory immediately.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "location_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "resource_type_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "resources_pkey",
+          "def": "CREATE UNIQUE INDEX resources_pkey ON public.resources USING btree (id)",
+          "table": "public.resources",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "resources_location_id_name_key",
+          "def": "CREATE UNIQUE INDEX resources_location_id_name_key ON public.resources USING btree (location_id, name)",
+          "table": "public.resources",
+          "columns": [
+            "location_id",
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "resources_location_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (location_id) REFERENCES locations(id)",
+          "table": "public.resources",
+          "referenced_table": "public.locations",
+          "columns": [
+            "location_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "resources_resource_type_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (resource_type_id) REFERENCES resource_types(id)",
+          "table": "public.resources",
+          "referenced_table": "public.resource_types",
+          "columns": [
+            "resource_type_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "resources_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.resources",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "resources_location_id_name_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (location_id, name)",
+          "table": "public.resources",
+          "referenced_table": "",
+          "columns": [
+            "location_id",
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.service_resource_requirements",
+      "type": "BASE TABLE",
+      "comment": "Service -\u003e room TYPE requirement; a concrete free room of the type is assigned at booking.",
+      "columns": [
+        {
+          "name": "service_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "resource_type_id",
+          "type": "uuid",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "service_resource_requirements_pkey",
+          "def": "CREATE UNIQUE INDEX service_resource_requirements_pkey ON public.service_resource_requirements USING btree (service_id, resource_type_id)",
+          "table": "public.service_resource_requirements",
+          "columns": [
+            "service_id",
+            "resource_type_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "service_resource_requirements_service_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE",
+          "table": "public.service_resource_requirements",
+          "referenced_table": "public.services",
+          "columns": [
+            "service_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_resource_requirements_resource_type_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (resource_type_id) REFERENCES resource_types(id) ON DELETE CASCADE",
+          "table": "public.service_resource_requirements",
+          "referenced_table": "public.resource_types",
+          "columns": [
+            "resource_type_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_resource_requirements_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (service_id, resource_type_id)",
+          "table": "public.service_resource_requirements",
+          "referenced_table": "",
+          "columns": [
+            "service_id",
+            "resource_type_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.service_staff",
+      "type": "BASE TABLE",
+      "comment": "Qualification: who may perform what, with optional per-staff duration/price overrides that the slot and booking routes apply.",
+      "columns": [
+        {
+          "name": "service_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "duration_override_min",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "price_override_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "service_staff_pkey",
+          "def": "CREATE UNIQUE INDEX service_staff_pkey ON public.service_staff USING btree (service_id, staff_id)",
+          "table": "public.service_staff",
+          "columns": [
+            "service_id",
+            "staff_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "service_staff_duration_override_min_check",
+          "type": "CHECK",
+          "def": "CHECK ((duration_override_min \u003e 0))",
+          "table": "public.service_staff",
+          "referenced_table": "",
+          "columns": [
+            "duration_override_min"
+          ]
+        },
+        {
+          "name": "service_staff_price_override_cents_check",
+          "type": "CHECK",
+          "def": "CHECK ((price_override_cents \u003e= 0))",
+          "table": "public.service_staff",
+          "referenced_table": "",
+          "columns": [
+            "price_override_cents"
+          ]
+        },
+        {
+          "name": "service_staff_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE",
+          "table": "public.service_staff",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_staff_service_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE",
+          "table": "public.service_staff",
+          "referenced_table": "public.services",
+          "columns": [
+            "service_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_staff_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (service_id, staff_id)",
+          "table": "public.service_staff",
+          "referenced_table": "",
+          "columns": [
+            "service_id",
+            "staff_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.clients",
+      "type": "BASE TABLE",
+      "comment": "Spa clients (no auth accounts). no_show_count is maintained by trigger from appointment status changes. flags is an extensible jsonb for operational booleans (requires_card_on_file).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "first_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "last_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "date_of_birth",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "referral_source",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "no_show_count",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "flags",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "'{}'::jsonb",
+          "comment": "Operational booleans, extendable without migrations. Known keys: requires_card_on_file"
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "pronouns",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "address_line1",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "address_line2",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "postal_code",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "emergency_contact_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "emergency_contact_phone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "preferred_contact_method",
+          "type": "text",
+          "nullable": false,
+          "default": "'email'::text"
+        },
+        {
+          "name": "marketing_opt_in",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        {
+          "name": "marketing_opt_in_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "preferred_staff_id",
+          "type": "uuid",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "clients_pkey",
+          "def": "CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (id)",
+          "table": "public.clients",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "clients_org_name",
+          "def": "CREATE INDEX clients_org_name ON public.clients USING btree (organization_id, last_name, first_name)",
+          "table": "public.clients",
+          "columns": [
+            "organization_id",
+            "last_name",
+            "first_name"
+          ]
+        },
+        {
+          "name": "clients_org_email",
+          "def": "CREATE INDEX clients_org_email ON public.clients USING btree (organization_id, lower(email))",
+          "table": "public.clients",
+          "columns": [
+            "organization_id",
+            "lower"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "clients_preferred_contact_method_check",
+          "type": "CHECK",
+          "def": "CHECK ((preferred_contact_method = ANY (ARRAY['email'::text, 'phone'::text, 'sms'::text])))",
+          "table": "public.clients",
+          "referenced_table": "",
+          "columns": [
+            "preferred_contact_method"
+          ]
+        },
+        {
+          "name": "clients_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.clients",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "clients_preferred_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (preferred_staff_id) REFERENCES staff(id)",
+          "table": "public.clients",
+          "referenced_table": "public.staff",
+          "columns": [
+            "preferred_staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "clients_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.clients",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_clients_touch",
+          "def": "CREATE TRIGGER trg_clients_touch BEFORE UPDATE ON public.clients FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        }
+      ]
+    },
+    {
+      "name": "public.client_notes",
+      "type": "BASE TABLE",
+      "comment": "Tiered notes: preference | internal | health. HEALTH notes are RLS-gated to clients.notes.health.view and must be read through the audited server route (reads cannot fire triggers, so auditing lives at the app layer). Append-only.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "author_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "client_notes_pkey",
+          "def": "CREATE UNIQUE INDEX client_notes_pkey ON public.client_notes USING btree (id)",
+          "table": "public.client_notes",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_notes_client",
+          "def": "CREATE INDEX client_notes_client ON public.client_notes USING btree (client_id, created_at DESC)",
+          "table": "public.client_notes",
+          "columns": [
+            "client_id",
+            "created_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "client_notes_kind_check",
+          "type": "CHECK",
+          "def": "CHECK ((kind = ANY (ARRAY['preference'::text, 'health'::text, 'internal'::text])))",
+          "table": "public.client_notes",
+          "referenced_table": "",
+          "columns": [
+            "kind"
+          ]
+        },
+        {
+          "name": "client_notes_author_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (author_id) REFERENCES staff(id)",
+          "table": "public.client_notes",
+          "referenced_table": "public.staff",
+          "columns": [
+            "author_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_notes_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE",
+          "table": "public.client_notes",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_notes_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.client_notes",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.availability_rules",
+      "type": "BASE TABLE",
+      "comment": "Recurring weekly hours in LOCATION-LOCAL time (survives DST). Overlaps per staff/day are impossible: no_overlapping_hours exclusion constraint (timerange custom type).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "location_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "day_of_week",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "start_time",
+          "type": "time without time zone",
+          "nullable": false
+        },
+        {
+          "name": "end_time",
+          "type": "time without time zone",
+          "nullable": false
+        },
+        {
+          "name": "valid_from",
+          "type": "date",
+          "nullable": false,
+          "default": "CURRENT_DATE"
+        },
+        {
+          "name": "valid_until",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "availability_rules_pkey",
+          "def": "CREATE UNIQUE INDEX availability_rules_pkey ON public.availability_rules USING btree (id)",
+          "table": "public.availability_rules",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "availability_rules_staff",
+          "def": "CREATE INDEX availability_rules_staff ON public.availability_rules USING btree (staff_id, day_of_week)",
+          "table": "public.availability_rules",
+          "columns": [
+            "staff_id",
+            "day_of_week"
+          ]
+        },
+        {
+          "name": "no_overlapping_hours",
+          "def": "CREATE INDEX no_overlapping_hours ON public.availability_rules USING gist (staff_id, day_of_week, timerange(start_time, end_time))",
+          "table": "public.availability_rules",
+          "columns": [
+            "staff_id",
+            "day_of_week",
+            "timerange"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "availability_rules_check",
+          "type": "CHECK",
+          "def": "CHECK ((start_time \u003c end_time))",
+          "table": "public.availability_rules",
+          "referenced_table": "",
+          "columns": [
+            "start_time",
+            "end_time"
+          ]
+        },
+        {
+          "name": "availability_rules_day_of_week_check",
+          "type": "CHECK",
+          "def": "CHECK (((day_of_week \u003e= 0) AND (day_of_week \u003c= 6)))",
+          "table": "public.availability_rules",
+          "referenced_table": "",
+          "columns": [
+            "day_of_week"
+          ]
+        },
+        {
+          "name": "availability_rules_location_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (location_id) REFERENCES locations(id)",
+          "table": "public.availability_rules",
+          "referenced_table": "public.locations",
+          "columns": [
+            "location_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "availability_rules_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE",
+          "table": "public.availability_rules",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "availability_rules_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.availability_rules",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "no_overlapping_hours",
+          "type": "x",
+          "def": "EXCLUDE USING gist (staff_id WITH =, day_of_week WITH =, timerange(start_time, end_time) WITH \u0026\u0026)",
+          "table": "public.availability_rules",
+          "referenced_table": "",
+          "columns": [
+            "staff_id",
+            "day_of_week"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.availability_exceptions",
+      "type": "BASE TABLE",
+      "comment": "Time off / sick / breaks (remove availability) and extra shifts (add it). requested -\u003e approved/denied workflow; decisions notify the subject and new requests notify approvers via triggers.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "nullable": false
+        },
+        {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'approved'::text"
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "availability_exceptions_pkey",
+          "def": "CREATE UNIQUE INDEX availability_exceptions_pkey ON public.availability_exceptions USING btree (id)",
+          "table": "public.availability_exceptions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "availability_exceptions_staff",
+          "def": "CREATE INDEX availability_exceptions_staff ON public.availability_exceptions USING btree (staff_id, starts_at)",
+          "table": "public.availability_exceptions",
+          "columns": [
+            "staff_id",
+            "starts_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "availability_exceptions_check",
+          "type": "CHECK",
+          "def": "CHECK ((starts_at \u003c ends_at))",
+          "table": "public.availability_exceptions",
+          "referenced_table": "",
+          "columns": [
+            "starts_at",
+            "ends_at"
+          ]
+        },
+        {
+          "name": "availability_exceptions_kind_check",
+          "type": "CHECK",
+          "def": "CHECK ((kind = ANY (ARRAY['time_off'::text, 'sick'::text, 'break'::text, 'extra_shift'::text])))",
+          "table": "public.availability_exceptions",
+          "referenced_table": "",
+          "columns": [
+            "kind"
+          ]
+        },
+        {
+          "name": "availability_exceptions_status_check",
+          "type": "CHECK",
+          "def": "CHECK ((status = ANY (ARRAY['requested'::text, 'approved'::text, 'denied'::text])))",
+          "table": "public.availability_exceptions",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "availability_exceptions_created_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (created_by) REFERENCES staff(id)",
+          "table": "public.availability_exceptions",
+          "referenced_table": "public.staff",
+          "columns": [
+            "created_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "availability_exceptions_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE",
+          "table": "public.availability_exceptions",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "availability_exceptions_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.availability_exceptions",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_notify_timeoff_decision",
+          "def": "CREATE TRIGGER trg_notify_timeoff_decision AFTER UPDATE ON public.availability_exceptions FOR EACH ROW EXECUTE FUNCTION notify_timeoff_decision()"
+        },
+        {
+          "name": "trg_notify_timeoff_requested",
+          "def": "CREATE TRIGGER trg_notify_timeoff_requested AFTER INSERT ON public.availability_exceptions FOR EACH ROW EXECUTE FUNCTION notify_timeoff_requested()"
+        }
+      ]
+    },
+    {
+      "name": "public.appointments",
+      "type": "BASE TABLE",
+      "comment": "Never deleted — status lifecycle only (booked→confirmed→checked_in→in_progress→completed | cancelled | no_show). Double-booking of staff or rooms is impossible: gist exclusion constraints on the blocked window, which ignore cancelled/no_show rows so slots free themselves.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "location_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "resource_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "blocked_from",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "comment": "Start of the FULL blocked window including buffer_before — what all conflict checks use."
+        },
+        {
+          "name": "blocked_until",
+          "type": "timestamp with time zone",
+          "nullable": false
+        },
+        {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "comment": "Client-facing start (inside the blocked window)."
+        },
+        {
+          "name": "ends_at",
+          "type": "timestamp with time zone",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'booked'::text"
+        },
+        {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "cancel_reason",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "cancelled_by",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "booked_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "appointments_pkey",
+          "def": "CREATE UNIQUE INDEX appointments_pkey ON public.appointments USING btree (id)",
+          "table": "public.appointments",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_calendar",
+          "def": "CREATE INDEX appointments_calendar ON public.appointments USING btree (location_id, blocked_from)",
+          "table": "public.appointments",
+          "columns": [
+            "location_id",
+            "blocked_from"
+          ]
+        },
+        {
+          "name": "appointments_staff_day",
+          "def": "CREATE INDEX appointments_staff_day ON public.appointments USING btree (staff_id, blocked_from)",
+          "table": "public.appointments",
+          "columns": [
+            "staff_id",
+            "blocked_from"
+          ]
+        },
+        {
+          "name": "appointments_client",
+          "def": "CREATE INDEX appointments_client ON public.appointments USING btree (client_id, starts_at DESC)",
+          "table": "public.appointments",
+          "columns": [
+            "client_id",
+            "starts_at"
+          ]
+        },
+        {
+          "name": "no_staff_double_booking",
+          "def": "CREATE INDEX no_staff_double_booking ON public.appointments USING gist (staff_id, tstzrange(blocked_from, blocked_until)) WHERE (status \u003c\u003e ALL (ARRAY['cancelled'::text, 'no_show'::text]))",
+          "table": "public.appointments",
+          "columns": [
+            "staff_id",
+            "tstzrange"
+          ]
+        },
+        {
+          "name": "no_room_double_booking",
+          "def": "CREATE INDEX no_room_double_booking ON public.appointments USING gist (resource_id, tstzrange(blocked_from, blocked_until)) WHERE ((status \u003c\u003e ALL (ARRAY['cancelled'::text, 'no_show'::text])) AND (resource_id IS NOT NULL))",
+          "table": "public.appointments",
+          "columns": [
+            "resource_id",
+            "tstzrange"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "appointments_check",
+          "type": "CHECK",
+          "def": "CHECK ((starts_at \u003c ends_at))",
+          "table": "public.appointments",
+          "referenced_table": "",
+          "columns": [
+            "starts_at",
+            "ends_at"
+          ]
+        },
+        {
+          "name": "appointments_check1",
+          "type": "CHECK",
+          "def": "CHECK (((blocked_from \u003c= starts_at) AND (ends_at \u003c= blocked_until)))",
+          "table": "public.appointments",
+          "referenced_table": "",
+          "columns": [
+            "blocked_from",
+            "starts_at",
+            "ends_at",
+            "blocked_until"
+          ]
+        },
+        {
+          "name": "appointments_status_check",
+          "type": "CHECK",
+          "def": "CHECK ((status = ANY (ARRAY['booked'::text, 'confirmed'::text, 'checked_in'::text, 'in_progress'::text, 'completed'::text, 'cancelled'::text, 'no_show'::text])))",
+          "table": "public.appointments",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "appointments_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.appointments",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_location_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (location_id) REFERENCES locations(id)",
+          "table": "public.appointments",
+          "referenced_table": "public.locations",
+          "columns": [
+            "location_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_booked_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (booked_by) REFERENCES staff(id)",
+          "table": "public.appointments",
+          "referenced_table": "public.staff",
+          "columns": [
+            "booked_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_cancelled_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (cancelled_by) REFERENCES staff(id)",
+          "table": "public.appointments",
+          "referenced_table": "public.staff",
+          "columns": [
+            "cancelled_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)",
+          "table": "public.appointments",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_resource_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (resource_id) REFERENCES resources(id)",
+          "table": "public.appointments",
+          "referenced_table": "public.resources",
+          "columns": [
+            "resource_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "table": "public.appointments",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointments_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.appointments",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "no_staff_double_booking",
+          "type": "x",
+          "def": "EXCLUDE USING gist (staff_id WITH =, tstzrange(blocked_from, blocked_until) WITH \u0026\u0026) WHERE ((status \u003c\u003e ALL (ARRAY['cancelled'::text, 'no_show'::text])))",
+          "table": "public.appointments",
+          "referenced_table": "",
+          "columns": [
+            "staff_id"
+          ]
+        },
+        {
+          "name": "no_room_double_booking",
+          "type": "x",
+          "def": "EXCLUDE USING gist (resource_id WITH =, tstzrange(blocked_from, blocked_until) WITH \u0026\u0026) WHERE (((status \u003c\u003e ALL (ARRAY['cancelled'::text, 'no_show'::text])) AND (resource_id IS NOT NULL)))",
+          "table": "public.appointments",
+          "referenced_table": "",
+          "columns": [
+            "resource_id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_appointments_touch",
+          "def": "CREATE TRIGGER trg_appointments_touch BEFORE UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        },
+        {
+          "name": "trg_no_show_counter",
+          "def": "CREATE TRIGGER trg_no_show_counter AFTER UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION maintain_no_show_count()"
+        }
+      ]
+    },
+    {
+      "name": "public.appointment_services",
+      "type": "BASE TABLE",
+      "comment": "Line items with name/price/duration SNAPSHOTS taken at booking: catalog edits never rewrite booked history.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "appointment_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "service_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "name_snapshot",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "price_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "duration_min",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "sort_order",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "appointment_services_pkey",
+          "def": "CREATE UNIQUE INDEX appointment_services_pkey ON public.appointment_services USING btree (id)",
+          "table": "public.appointment_services",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointment_services_appt",
+          "def": "CREATE INDEX appointment_services_appt ON public.appointment_services USING btree (appointment_id)",
+          "table": "public.appointment_services",
+          "columns": [
+            "appointment_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "appointment_services_service_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (service_id) REFERENCES services(id)",
+          "table": "public.appointment_services",
+          "referenced_table": "public.services",
+          "columns": [
+            "service_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointment_services_appointment_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE",
+          "table": "public.appointment_services",
+          "referenced_table": "public.appointments",
+          "columns": [
+            "appointment_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "appointment_services_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.appointment_services",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.notifications",
+      "type": "BASE TABLE",
+      "comment": "In-app notifications. Created ONLY by triggers/service role (no authenticated insert policy). RLS scopes reads and mark-read to the recipient — including over Realtime, which is published for this table.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "link",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "notifications_pkey",
+          "def": "CREATE UNIQUE INDEX notifications_pkey ON public.notifications USING btree (id)",
+          "table": "public.notifications",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "notifications_staff",
+          "def": "CREATE INDEX notifications_staff ON public.notifications USING btree (staff_id, created_at DESC)",
+          "table": "public.notifications",
+          "columns": [
+            "staff_id",
+            "created_at"
+          ]
+        },
+        {
+          "name": "notifications_unread",
+          "def": "CREATE INDEX notifications_unread ON public.notifications USING btree (staff_id) WHERE (read_at IS NULL)",
+          "table": "public.notifications",
+          "columns": [
+            "staff_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "notifications_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE",
+          "table": "public.notifications",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "notifications_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.notifications",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "table": "public.locations",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.staff",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.staff_locations",
+      "columns": [
+        "location_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.locations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.staff_locations",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.roles",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.role_permissions",
+      "columns": [
+        "role_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.roles",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.role_permissions",
+      "columns": [
+        "permission_key"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.permissions",
+      "parent_columns": [
+        "key"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (permission_key) REFERENCES permissions(key) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.staff_roles",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.staff_roles",
+      "columns": [
+        "role_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.roles",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.audit_log",
+      "columns": [
+        "actor_staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (actor_staff_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.staff_invites",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.staff_invites",
+      "columns": [
+        "invited_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (invited_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.service_categories",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.services",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.services",
+      "columns": [
+        "category_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.service_categories",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (category_id) REFERENCES service_categories(id)"
+    },
+    {
+      "table": "public.resource_types",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.resources",
+      "columns": [
+        "location_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.locations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (location_id) REFERENCES locations(id)"
+    },
+    {
+      "table": "public.resources",
+      "columns": [
+        "resource_type_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.resource_types",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (resource_type_id) REFERENCES resource_types(id)"
+    },
+    {
+      "table": "public.service_resource_requirements",
+      "columns": [
+        "service_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.services",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.service_resource_requirements",
+      "columns": [
+        "resource_type_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.resource_types",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (resource_type_id) REFERENCES resource_types(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.service_staff",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.service_staff",
+      "columns": [
+        "service_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.services",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.clients",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.clients",
+      "columns": [
+        "preferred_staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (preferred_staff_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.client_notes",
+      "columns": [
+        "author_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (author_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.client_notes",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.availability_rules",
+      "columns": [
+        "location_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.locations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (location_id) REFERENCES locations(id)"
+    },
+    {
+      "table": "public.availability_rules",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.availability_exceptions",
+      "columns": [
+        "created_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (created_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.availability_exceptions",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.appointments",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.appointments",
+      "columns": [
+        "location_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.locations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (location_id) REFERENCES locations(id)"
+    },
+    {
+      "table": "public.appointments",
+      "columns": [
+        "booked_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (booked_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.appointments",
+      "columns": [
+        "cancelled_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (cancelled_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.appointments",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.appointments",
+      "columns": [
+        "resource_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.resources",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (resource_id) REFERENCES resources(id)"
+    },
+    {
+      "table": "public.appointments",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.appointment_services",
+      "columns": [
+        "service_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.services",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (service_id) REFERENCES services(id)"
+    },
+    {
+      "table": "public.appointment_services",
+      "columns": [
+        "appointment_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.appointments",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.notifications",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    }
+  ],
+  "functions": [
+    {
+      "name": "public.current_staff_id",
+      "return_type": "uuid",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.current_org_id",
+      "return_type": "uuid",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.has_permission",
+      "return_type": "bool",
+      "arguments": "perm text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.prevent_last_super_admin_removal",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.accept_staff_invite",
+      "return_type": "uuid",
+      "arguments": "invite_token uuid, new_user_id uuid, final_display_name text, final_title text DEFAULT NULL::text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.count_other_active_super_admins",
+      "return_type": "int4",
+      "arguments": "org uuid, excluded_staff uuid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.prevent_last_super_admin_deactivation",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.prevent_system_role_deletion",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.audit_staff_role_change",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.get_my_permissions",
+      "return_type": "text",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.touch_updated_at",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey4_in",
+      "return_type": "gbtreekey4",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey4_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey4",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey8_in",
+      "return_type": "gbtreekey8",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey8_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey8",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey16_in",
+      "return_type": "gbtreekey16",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey16_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey16",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey32_in",
+      "return_type": "gbtreekey32",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey32_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey32",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey_var_in",
+      "return_type": "gbtreekey_var",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey_var_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey_var",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.cash_dist",
+      "return_type": "money",
+      "arguments": "money, money",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.date_dist",
+      "return_type": "int4",
+      "arguments": "date, date",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.float4_dist",
+      "return_type": "float4",
+      "arguments": "real, real",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.float8_dist",
+      "return_type": "float8",
+      "arguments": "double precision, double precision",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.int2_dist",
+      "return_type": "int2",
+      "arguments": "smallint, smallint",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.int4_dist",
+      "return_type": "int4",
+      "arguments": "integer, integer",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.int8_dist",
+      "return_type": "int8",
+      "arguments": "bigint, bigint",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.interval_dist",
+      "return_type": "interval",
+      "arguments": "interval, interval",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.oid_dist",
+      "return_type": "oid",
+      "arguments": "oid, oid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.time_dist",
+      "return_type": "interval",
+      "arguments": "time without time zone, time without time zone",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.ts_dist",
+      "return_type": "interval",
+      "arguments": "timestamp without time zone, timestamp without time zone",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.tstz_dist",
+      "return_type": "interval",
+      "arguments": "timestamp with time zone, timestamp with time zone",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_consistent",
+      "return_type": "bool",
+      "arguments": "internal, oid, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_distance",
+      "return_type": "float8",
+      "arguments": "internal, oid, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_decompress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_var_decompress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_var_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_oid_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_consistent",
+      "return_type": "bool",
+      "arguments": "internal, smallint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_distance",
+      "return_type": "float8",
+      "arguments": "internal, smallint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_union",
+      "return_type": "gbtreekey4",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int2_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey4, gbtreekey4, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_consistent",
+      "return_type": "bool",
+      "arguments": "internal, integer, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_distance",
+      "return_type": "float8",
+      "arguments": "internal, integer, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int4_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_consistent",
+      "return_type": "bool",
+      "arguments": "internal, bigint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_distance",
+      "return_type": "float8",
+      "arguments": "internal, bigint, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_int8_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_consistent",
+      "return_type": "bool",
+      "arguments": "internal, real, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_distance",
+      "return_type": "float8",
+      "arguments": "internal, real, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float4_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_consistent",
+      "return_type": "bool",
+      "arguments": "internal, double precision, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_distance",
+      "return_type": "float8",
+      "arguments": "internal, double precision, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_float8_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_consistent",
+      "return_type": "bool",
+      "arguments": "internal, timestamp without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_distance",
+      "return_type": "float8",
+      "arguments": "internal, timestamp without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_tstz_consistent",
+      "return_type": "bool",
+      "arguments": "internal, timestamp with time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_tstz_distance",
+      "return_type": "float8",
+      "arguments": "internal, timestamp with time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_tstz_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_ts_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_consistent",
+      "return_type": "bool",
+      "arguments": "internal, time without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_distance",
+      "return_type": "float8",
+      "arguments": "internal, time without time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_timetz_consistent",
+      "return_type": "bool",
+      "arguments": "internal, time with time zone, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_timetz_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_time_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_consistent",
+      "return_type": "bool",
+      "arguments": "internal, date, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_distance",
+      "return_type": "float8",
+      "arguments": "internal, date, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_date_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_consistent",
+      "return_type": "bool",
+      "arguments": "internal, interval, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_distance",
+      "return_type": "float8",
+      "arguments": "internal, interval, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_decompress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_union",
+      "return_type": "gbtreekey32",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_intv_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey32, gbtreekey32, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_consistent",
+      "return_type": "bool",
+      "arguments": "internal, money, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_distance",
+      "return_type": "float8",
+      "arguments": "internal, money, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_cash_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_consistent",
+      "return_type": "bool",
+      "arguments": "internal, macaddr, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_consistent",
+      "return_type": "bool",
+      "arguments": "internal, text, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bpchar_consistent",
+      "return_type": "bool",
+      "arguments": "internal, character, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bpchar_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_text_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_consistent",
+      "return_type": "bool",
+      "arguments": "internal, bytea, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bytea_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_consistent",
+      "return_type": "bool",
+      "arguments": "internal, numeric, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_numeric_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_consistent",
+      "return_type": "bool",
+      "arguments": "internal, bit, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_union",
+      "return_type": "gbtreekey_var",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bit_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey_var, gbtreekey_var, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_consistent",
+      "return_type": "bool",
+      "arguments": "internal, inet, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_inet_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_consistent",
+      "return_type": "bool",
+      "arguments": "internal, uuid, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_union",
+      "return_type": "gbtreekey32",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_uuid_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey32, gbtreekey32, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_consistent",
+      "return_type": "bool",
+      "arguments": "internal, macaddr8, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_union",
+      "return_type": "gbtreekey16",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_macad8_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey16, gbtreekey16, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_consistent",
+      "return_type": "bool",
+      "arguments": "internal, anyenum, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_union",
+      "return_type": "gbtreekey8",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_enum_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey8, gbtreekey8, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey2_in",
+      "return_type": "gbtreekey2",
+      "arguments": "cstring",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbtreekey2_out",
+      "return_type": "cstring",
+      "arguments": "gbtreekey2",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_consistent",
+      "return_type": "bool",
+      "arguments": "internal, boolean, smallint, oid, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_compress",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_fetch",
+      "return_type": "internal",
+      "arguments": "internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_penalty",
+      "return_type": "internal",
+      "arguments": "internal, internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_picksplit",
+      "return_type": "internal",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_union",
+      "return_type": "gbtreekey2",
+      "arguments": "internal, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gbt_bool_same",
+      "return_type": "internal",
+      "arguments": "gbtreekey2, gbtreekey2, internal",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.maintain_no_show_count",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.timerange",
+      "return_type": "timerange",
+      "arguments": "time without time zone, time without time zone",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.timerange",
+      "return_type": "timerange",
+      "arguments": "time without time zone, time without time zone, text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.timemultirange",
+      "return_type": "timemultirange",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.timemultirange",
+      "return_type": "timemultirange",
+      "arguments": "timerange",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.timemultirange",
+      "return_type": "timemultirange",
+      "arguments": "VARIADIC timerange[]",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.notify_timeoff_decision",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.notify_timeoff_requested",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.guard_staff_self_update",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    }
+  ],
+  "enums": [
+    {
+      "name": "auth.aal_level",
+      "values": [
+        "aal1",
+        "aal2",
+        "aal3"
+      ]
+    },
+    {
+      "name": "auth.code_challenge_method",
+      "values": [
+        "plain",
+        "s256"
+      ]
+    },
+    {
+      "name": "auth.factor_status",
+      "values": [
+        "unverified",
+        "verified"
+      ]
+    },
+    {
+      "name": "auth.factor_type",
+      "values": [
+        "phone",
+        "totp",
+        "webauthn"
+      ]
+    },
+    {
+      "name": "auth.oauth_authorization_status",
+      "values": [
+        "approved",
+        "denied",
+        "expired",
+        "pending"
+      ]
+    },
+    {
+      "name": "auth.oauth_client_type",
+      "values": [
+        "confidential",
+        "public"
+      ]
+    },
+    {
+      "name": "auth.oauth_registration_type",
+      "values": [
+        "dynamic",
+        "manual"
+      ]
+    },
+    {
+      "name": "auth.oauth_response_type",
+      "values": [
+        "code"
+      ]
+    },
+    {
+      "name": "auth.one_time_token_type",
+      "values": [
+        "confirmation_token",
+        "email_change_token_current",
+        "email_change_token_new",
+        "phone_change_token",
+        "reauthentication_token",
+        "recovery_token"
+      ]
+    },
+    {
+      "name": "realtime.action",
+      "values": [
+        "DELETE",
+        "ERROR",
+        "INSERT",
+        "TRUNCATE",
+        "UPDATE"
+      ]
+    },
+    {
+      "name": "realtime.equality_op",
+      "values": [
+        "eq",
+        "gt",
+        "gte",
+        "ilike",
+        "imatch",
+        "in",
+        "is",
+        "isdistinct",
+        "like",
+        "lt",
+        "lte",
+        "match",
+        "neq"
+      ]
+    },
+    {
+      "name": "storage.buckettype",
+      "values": [
+        "ANALYTICS",
+        "STANDARD",
+        "VECTOR"
+      ]
+    }
+  ],
+  "driver": {
+    "name": "postgres",
+    "database_version": "PostgreSQL 17.6 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit",
+    "meta": {
+      "current_schema": "public",
+      "search_paths": [
+        "\"\\$user\"",
+        "public",
+        "extensions"
+      ],
+      "dict": {
+        "Functions": "Stored procedures and functions"
+      }
+    }
+  }
+}

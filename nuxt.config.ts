@@ -1,0 +1,92 @@
+// NPM Modules
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineNuxtConfig({
+  modules: [
+    "@nuxt/eslint",
+    "@nuxt/icon",
+    "@nuxt/test-utils/module",
+    "@nuxtjs/supabase",
+    "@pinia/nuxt",
+    "@vee-validate/nuxt",
+    "@vueuse/nuxt",
+    "motion-v/nuxt",
+    "vue-sonner/nuxt",
+    "@nuxtjs/color-mode",
+  ],
+  imports: {
+    imports: [
+      { from: "tailwind-variants", name: "tv" },
+      { from: "tailwind-variants", name: "VariantProps", type: true },
+      { from: "vue-sonner", name: "toast", as: "useSonner" },
+    ],
+  },
+  devtools: {
+    enabled: true,
+  },
+  app: {
+    head: {
+      htmlAttrs: {
+        lang: "en",
+      },
+      title: "The Reserve",
+      meta: [
+        { charset: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+      ],
+    },
+  },
+  css: ["~/assets/css/main.css"],
+  colorMode: {
+    classSuffix: "", // ui-thing/Tailwind expect 'dark' class, not 'dark-mode'
+  },
+  compatibilityDate: "2026-07-25",
+  vite: {
+    plugins: [tailwindcss()],
+  },
+  typescript: {
+    strict: true,
+  },
+  eslint: {
+    config: {
+      stylistic: {
+        semi: true,
+        quotes: "double",
+        commaDangle: "always-multiline",
+        indent: 2,
+      },
+    },
+  },
+  icon: {
+    serverBundle: {
+      collections: ["lucide"],
+    },
+  },
+  supabase: {
+    types: "~~/shared/types/database.ts",
+    redirect: true,
+    redirectOptions: {
+      login: "/login",
+      callback: "/confirm",
+      exclude: ["/invite/**", "/forgot-password", "/reset-password"],
+    },
+    clientOptions: {
+      auth: {
+        flowType: "pkce", // Most secure auth flow
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    },
+    cookieOptions: {
+      maxAge: 60 * 60 * 24 * 7, // 1 week
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    },
+  },
+  // zod 4 works with vee-validate directly (Standard Schema);
+  // the @vee-validate/zod adapter is zod-3-only, so skip the check.
+  veeValidate: {
+    typedSchemaPackage: "none",
+  },
+});

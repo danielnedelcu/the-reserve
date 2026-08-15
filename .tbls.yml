@@ -1,0 +1,31 @@
+# tbls configuration — generates docs/schema/ from the live database.
+# Run via: npm run db:docs   (requires TBLS_DSN in .env)
+
+dsn: ${TBLS_DSN}
+
+docPath: docs/schema
+
+# Supabase projects carry many internal schemas; document only ours.
+exclude:
+  - auth.*
+  - storage.*
+  - realtime.*
+  - vault.*
+  - extensions.*
+  - graphql.*
+  - graphql_public.*
+  - pgsodium.*
+  - pgsodium_masks.*
+  - supabase_migrations.*
+  - net.*
+  - cron.*
+  - pgbouncer.*
+
+er:
+  format: svg
+  comment: true
+  distance: 1
+
+format:
+  adjust: true
+  sort: false
