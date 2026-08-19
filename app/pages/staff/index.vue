@@ -201,12 +201,12 @@ async function revoke(invite: InviteRow) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <div
       class="grid grid-cols-1 gap-5 md:flex md:items-center md:justify-between"
     >
       <div class="flex flex-col">
-        <h1 class="text-2xl font-semibold text-[#3b2f1e]">Staff</h1>
+        <h1 class="text-2xl font-semibold">Staff Management</h1>
         <p class="text-muted-foreground mt-1 text-sm">
           Your team, their roles, and pending invitations.
         </p>
@@ -226,7 +226,7 @@ async function revoke(invite: InviteRow) {
     <!-- Invite form -->
     <section
       v-if="can('staff.invite')"
-      class="mt-8 rounded-xl border border-[#d9cdb4] bg-background p-6"
+      class="mt-8 rounded-md border p-6 bg-card"
     >
       <h2 class="font-medium text-foreground">Invite an employee</h2>
       <form class="mt-4" @submit="sendInvite">
@@ -295,9 +295,7 @@ async function revoke(invite: InviteRow) {
     <!-- Pending invites -->
     <section v-if="can('staff.invite') && invites?.length" class="mt-8">
       <h2 class="font-medium text-foreground">Pending invites</h2>
-      <ul
-        class="mt-3 divide-y divide-[#eee5d2] rounded-xl border border-[#d9cdb4] bg-background"
-      >
+      <ul class="mt-3 divide-y divide-[#eee5d2] rounded-md border bg-card">
         <li
           v-for="invite in invites"
           :key="invite.id"
@@ -328,9 +326,7 @@ async function revoke(invite: InviteRow) {
     <section class="mt-8">
       <h2 class="font-medium text-foreground">Directory</h2>
 
-      <div
-        class="mt-3 rounded-xl border border-[#d9cdb4] bg-background px-5 [&>div]:max-h-[500px]"
-      >
+      <div class="mt-3 rounded-md border bg-card px-5 [&>div]:max-h-[500px]">
         <UiTable>
           <UiTableHeader
             class="bg-background/90 sticky top-0 z-10 backdrop-blur-sm"

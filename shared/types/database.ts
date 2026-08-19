@@ -481,32 +481,107 @@ export type Database = {
           },
         ]
       }
+      gift_cards: {
+        Row: {
+          active: boolean
+          balance_cents: number
+          code: string
+          created_at: string
+          id: string
+          initial_balance_cents: number
+          organization_id: string
+          purchaser_client_id: string | null
+          recipient_email: string | null
+          recipient_name: string | null
+        }
+        Insert: {
+          active?: boolean
+          balance_cents: number
+          code: string
+          created_at?: string
+          id?: string
+          initial_balance_cents: number
+          organization_id: string
+          purchaser_client_id?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+        }
+        Update: {
+          active?: boolean
+          balance_cents?: number
+          code?: string
+          created_at?: string
+          id?: string
+          initial_balance_cents?: number
+          organization_id?: string
+          purchaser_client_id?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gift_cards_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_cards_purchaser_client_id_fkey"
+            columns: ["purchaser_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           active: boolean
+          address_line1: string | null
+          address_line2: string | null
           business_hours: Json | null
+          city: string | null
           created_at: string
           id: string
           name: string
           organization_id: string
+          phone: string | null
+          postal_code: string | null
+          state: string | null
+          tax_rate_bps: number
           timezone: string
         }
         Insert: {
           active?: boolean
+          address_line1?: string | null
+          address_line2?: string | null
           business_hours?: Json | null
+          city?: string | null
           created_at?: string
           id?: string
           name: string
           organization_id: string
+          phone?: string | null
+          postal_code?: string | null
+          state?: string | null
+          tax_rate_bps?: number
           timezone: string
         }
         Update: {
           active?: boolean
+          address_line1?: string | null
+          address_line2?: string | null
           business_hours?: Json | null
+          city?: string | null
           created_at?: string
           id?: string
           name?: string
           organization_id?: string
+          phone?: string | null
+          postal_code?: string | null
+          state?: string | null
+          tax_rate_bps?: number
           timezone?: string
         }
         Relationships: [
@@ -584,6 +659,51 @@ export type Database = {
         }
         Relationships: []
       }
+      payments: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          gift_card_id: string | null
+          id: string
+          method: string
+          reference: string | null
+          transaction_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          gift_card_id?: string | null
+          id?: string
+          method: string
+          reference?: string | null
+          transaction_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          gift_card_id?: string | null
+          id?: string
+          method?: string
+          reference?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_gift_card_id_fkey"
+            columns: ["gift_card_id"]
+            isOneToOne: false
+            referencedRelation: "gift_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permissions: {
         Row: {
           description: string
@@ -598,6 +718,59 @@ export type Database = {
           key?: string
         }
         Relationships: []
+      }
+      products: {
+        Row: {
+          active: boolean
+          cost_cents: number | null
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+          price_cents: number
+          sku: string | null
+          stock_quantity: number
+          taxable: boolean
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          cost_cents?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          price_cents: number
+          sku?: string | null
+          stock_quantity?: number
+          taxable?: boolean
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          cost_cents?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          price_cents?: number
+          sku?: string | null
+          stock_quantity?: number
+          taxable?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       resource_types: {
         Row: {
@@ -1089,6 +1262,187 @@ export type Database = {
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transaction_items: {
+        Row: {
+          appointment_id: string | null
+          discount_reason: string | null
+          gift_card_id: string | null
+          id: string
+          kind: string
+          name_snapshot: string
+          product_id: string | null
+          quantity: number
+          staff_id: string | null
+          tax_cents: number
+          taxable: boolean
+          total_cents: number
+          transaction_id: string
+          unit_price_cents: number
+        }
+        Insert: {
+          appointment_id?: string | null
+          discount_reason?: string | null
+          gift_card_id?: string | null
+          id?: string
+          kind: string
+          name_snapshot: string
+          product_id?: string | null
+          quantity?: number
+          staff_id?: string | null
+          tax_cents?: number
+          taxable?: boolean
+          total_cents: number
+          transaction_id: string
+          unit_price_cents: number
+        }
+        Update: {
+          appointment_id?: string | null
+          discount_reason?: string | null
+          gift_card_id?: string | null
+          id?: string
+          kind?: string
+          name_snapshot?: string
+          product_id?: string | null
+          quantity?: number
+          staff_id?: string | null
+          tax_cents?: number
+          taxable?: boolean
+          total_cents?: number
+          transaction_id?: string
+          unit_price_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_items_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_gift_card_id_fkey"
+            columns: ["gift_card_id"]
+            isOneToOne: false
+            referencedRelation: "gift_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transactions: {
+        Row: {
+          appointment_id: string | null
+          checked_out_by: string
+          client_id: string | null
+          created_at: string
+          discount_cents: number
+          id: string
+          location_id: string
+          note: string | null
+          organization_id: string
+          refunds_transaction_id: string | null
+          subtotal_cents: number
+          tax_cents: number
+          tip_cents: number
+          total_cents: number
+        }
+        Insert: {
+          appointment_id?: string | null
+          checked_out_by: string
+          client_id?: string | null
+          created_at?: string
+          discount_cents?: number
+          id?: string
+          location_id: string
+          note?: string | null
+          organization_id: string
+          refunds_transaction_id?: string | null
+          subtotal_cents: number
+          tax_cents?: number
+          tip_cents?: number
+          total_cents: number
+        }
+        Update: {
+          appointment_id?: string | null
+          checked_out_by?: string
+          client_id?: string | null
+          created_at?: string
+          discount_cents?: number
+          id?: string
+          location_id?: string
+          note?: string | null
+          organization_id?: string
+          refunds_transaction_id?: string | null
+          subtotal_cents?: number
+          tax_cents?: number
+          tip_cents?: number
+          total_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_checked_out_by_fkey"
+            columns: ["checked_out_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunds_transaction_id_fkey"
+            columns: ["refunds_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
         ]

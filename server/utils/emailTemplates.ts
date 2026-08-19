@@ -100,3 +100,63 @@ export function bookingConfirmationEmail(options: {
       `),
   };
 }
+
+export function receiptEmail(options: {
+  firstName: string | null;
+  items: { name: string; quantity: number; totalCents: number }[];
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  tipCents: number;
+  totalCents: number;
+}) {
+  const dollars = (cents: number) => `$${(Math.abs(cents) / 100).toFixed(2)}`;
+
+  const itemRows = options.items
+    .map(
+      (item) => `
+      <tr>
+        <td style="padding:6px 0;color:#3b3428;font-size:14px;">
+          ${item.name}${item.quantity > 1 ? ` &times; ${item.quantity}` : ""}
+        </td>
+        <td style="padding:6px 0;color:#3b3428;font-size:14px;text-align:right;white-space:nowrap;">
+          ${item.totalCents < 0 ? "&minus;" : ""}${dollars(item.totalCents)}
+        </td>
+      </tr>`,
+    )
+    .join("");
+
+  const summaryRow = (
+    label: string,
+    cents: number,
+    options_?: { bold?: boolean; negative?: boolean },
+  ) =>
+    cents === 0 && !options_?.bold
+      ? ""
+      : `<tr>
+          <td style="padding:3px 0;color:${options_?.bold ? "#2a2419" : "#8a7d63"};font-size:${options_?.bold ? "15px" : "13px"};${options_?.bold ? "font-weight:600;" : ""}">${label}</td>
+          <td style="padding:3px 0;color:${options_?.bold ? "#2a2419" : "#8a7d63"};font-size:${options_?.bold ? "15px" : "13px"};text-align:right;${options_?.bold ? "font-weight:600;" : ""}">${options_?.negative ? "&minus;" : ""}${dollars(cents)}</td>
+        </tr>`;
+
+  const body = `
+    <p style="margin:0 0 16px;color:#3b3428;font-size:15px;line-height:1.6;">
+      ${options.firstName ? `Hi ${options.firstName},` : "Hello,"} thank you for visiting The Reserve.
+      Here's your receipt.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e5dcc8;border-bottom:1px solid #e5dcc8;margin:8px 0;">
+      ${itemRows}
+    </table>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      ${summaryRow("Subtotal", options.subtotalCents)}
+      ${summaryRow("Discount", options.discountCents, { negative: true })}
+      ${summaryRow("Tax", options.taxCents)}
+      ${summaryRow("Gratuity", options.tipCents)}
+      ${summaryRow("Total", options.totalCents, { bold: true })}
+    </table>
+    <p style="margin:20px 0 0;color:#8a7d63;font-size:13px;line-height:1.6;">
+      We look forward to seeing you again.
+    </p>`;
+
+  // Wrap in the same brand shell the other templates use:
+  return brandShell("Your receipt", body);
+}

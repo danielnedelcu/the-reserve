@@ -206,7 +206,7 @@ async function saveRename() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <div
       class="grid grid-cols-1 gap-5 md:flex md:items-center md:justify-between"
     >

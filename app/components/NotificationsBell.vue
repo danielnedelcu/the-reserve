@@ -107,7 +107,7 @@ function timeAgo(iso: string) {
         :text="unreadCount > 99 ? '99+' : unreadCount.toString()"
       >
         <UiButton
-          size="icon"
+          size="icon-sm"
           variant="outline"
           class="relative"
           aria-label="Open notifications"
@@ -117,7 +117,7 @@ function timeAgo(iso: string) {
       </UiChip>
       <UiButton
         v-else
-        size="icon"
+        size="icon-sm"
         variant="outline"
         class="relative"
         aria-label="Open notifications"

@@ -6,21 +6,26 @@ const supabase = useSupabaseClient();
 const { can } = usePermissions();
 const toast = useToast();
 const staffId = route.params.id as string;
+// script: state for the sheet
+const editOpen = ref(false);
 
 // ---------------------------------------------------------------------------
 // Staff member + "is this me?"
 // ---------------------------------------------------------------------------
-const { data: member } = await useAsyncData(`staff-${staffId}`, async () => {
-  const { data, error } = await supabase
-    .from("staff")
-    .select(
-      "id, display_name, email, title, bookable, active, staff_roles(roles(name))",
-    )
-    .eq("id", staffId)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-});
+const { data: member, refresh: refreshStaff } = await useAsyncData(
+  `staff-${staffId}`,
+  async () => {
+    const { data, error } = await supabase
+      .from("staff")
+      .select(
+        "id, display_name, email, title, bookable, active, staff_roles(roles(name))",
+      )
+      .eq("id", staffId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+);
 
 const { data: myStaffId } = await useAsyncData("my-staff-id", async () => {
   const { data } = await supabase.rpc("current_staff_id");
@@ -247,10 +252,14 @@ function formatRange(startIso: string, endIso: string) {
   };
   return `${new Date(startIso).toLocaleString("en-US", opts)} → ${new Date(endIso).toLocaleString("en-US", opts)}`;
 }
+
+async function onStaffSaved() {
+  await Promise.all([refreshStaff(), refreshRules(), refreshExceptions()]);
+}
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <NuxtLink to="/staff" class="text-muted-foreground text-sm hover:underline">
       ← All staff
     </NuxtLink>
@@ -267,6 +276,15 @@ function formatRange(startIso: string, endIso: string) {
           {{ member.title ?? "—" }} · {{ member.email }}
           <span v-if="!member.active"> · Inactive</span>
         </p>
+        <UiButton
+          v-if="can('staff.edit')"
+          size="sm"
+          variant="outline"
+          @click="editOpen = true"
+        >
+          <Icon name="lucide:pencil" class="size-4" />
+          Edit
+        </UiButton>
       </div>
 
       <!-- Weekly hours -->
@@ -277,7 +295,7 @@ function formatRange(startIso: string, endIso: string) {
           The scheduler only offers slots inside these windows.
         </p>
 
-        <div class="mt-3 overflow-hidden rounded-xl border bg-card">
+        <div class="mt-3 overflow-hidden rounded-md border bg-card">
           <div
             v-for="(day, index) in DAYS"
             :key="day"
@@ -313,7 +331,7 @@ function formatRange(startIso: string, endIso: string) {
         <!-- Add hours -->
         <div
           v-if="canEditAvailability"
-          class="mt-3 flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4"
+          class="mt-3 flex flex-wrap items-end gap-3 rounded-md border bg-card p-4"
         >
           <div>
             <label class="text-sm font-medium" for="rule-day">Day</label>
@@ -362,7 +380,7 @@ function formatRange(startIso: string, endIso: string) {
           <li
             v-for="exception in exceptions"
             :key="exception.id"
-            class="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-5 py-3"
+            class="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-5 py-3"
           >
             <div>
               <p class="text-sm font-medium">
@@ -406,7 +424,7 @@ function formatRange(startIso: string, endIso: string) {
         </ul>
 
         <!-- Request form -->
-        <div v-if="canRequest" class="mt-4 rounded-xl border bg-card p-4">
+        <div v-if="canRequest" class="mt-4 rounded-md border bg-card p-4">
           <p class="text-sm font-medium">
             {{ canApprove ? "Add time off" : "Request time off" }}
           </p>
@@ -464,5 +482,12 @@ function formatRange(startIso: string, endIso: string) {
         </div>
       </section>
     </template>
+
+    <!-- at the bottom of the template -->
+    <StaffEditSheet
+      v-model:open="editOpen"
+      :staff-id="staffId"
+      @saved="onStaffSaved()"
+    />
   </div>
 </template>

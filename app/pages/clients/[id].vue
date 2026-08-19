@@ -137,7 +137,7 @@ const kindBadge: Record<string, string> = {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <NuxtLink
       to="/clients"
       class="text-muted-foreground text-sm hover:underline"
@@ -178,7 +178,7 @@ const kindBadge: Record<string, string> = {
 
       <!-- Contact & details -->
       <section
-        class="mt-6 grid gap-x-6 gap-y-4 rounded-xl border bg-card p-5 sm:grid-cols-3"
+        class="mt-6 grid gap-x-6 gap-y-4 rounded-md border bg-card p-5 sm:grid-cols-3"
       >
         <div>
           <p class="text-muted-foreground text-xs uppercase tracking-wide">
@@ -276,20 +276,24 @@ const kindBadge: Record<string, string> = {
       <section class="mt-8">
         <h2 class="font-medium">Notes</h2>
 
-        <div class="mt-3 rounded-xl border bg-card p-4">
+        <div class="mt-3 rounded-md border bg-card p-4">
           <div class="flex flex-wrap items-start gap-3">
-            <select
-              v-model="noteKind"
-              class="border-input h-9 rounded-md border bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option
-                v-for="opt in kindOptions"
-                :key="opt.value"
-                :value="opt.value"
-              >
-                {{ opt.label }}
-              </option>
-            </select>
+            <UiSelect v-model="noteKind">
+              <UiSelectTrigger
+                id="note-kind"
+                class="mt-1.5 sm:max-w-48"
+                placeholder="Note type"
+              />
+              <UiSelectContent>
+                <UiSelectItem value="preference" text="Preference" />
+                <UiSelectItem value="internal" text="Internal" />
+                <UiSelectItem
+                  v-if="canSeeHealth"
+                  value="health"
+                  text="Health (restricted)"
+                />
+              </UiSelectContent>
+            </UiSelect>
             <textarea
               v-model="noteBody"
               rows="2"
@@ -317,7 +321,7 @@ const kindBadge: Record<string, string> = {
             <li
               v-for="note in healthNotes"
               :key="note.id"
-              class="border-destructive/30 rounded-lg border bg-card p-3"
+              class="border-destructive/30 rounded-md border bg-card p-3"
             >
               <p class="text-sm">{{ note.body }}</p>
               <p class="text-muted-foreground mt-1 text-xs">
@@ -332,7 +336,7 @@ const kindBadge: Record<string, string> = {
           <li
             v-for="note in generalNotes"
             :key="note.id"
-            class="rounded-lg border bg-card p-3"
+            class="rounded-md border bg-card p-3"
           >
             <div class="flex items-center gap-2">
               <span

@@ -752,6 +752,18 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
 
         <UiDialogFooter class="flex-wrap gap-2">
           <UiButton
+            v-if="
+              ['checked_in', 'in_progress', 'completed'].includes(
+                detailAppt.status,
+              ) && can('pos.checkout')
+            "
+            size="sm"
+            :to="`/checkout?appointment=${detailAppt.id}`"
+          >
+            <Icon name="lucide:credit-card" class="size-4" />
+            Checkout
+          </UiButton>
+          <UiButton
             v-for="next in NEXT_STATUSES[detailAppt.status] ?? []"
             :key="next.to"
             size="sm"

@@ -13,6 +13,7 @@ export default defineNuxtConfig({
     "motion-v/nuxt",
     "vue-sonner/nuxt",
     "@nuxtjs/color-mode",
+    "@yuta-inoue-ph/nuxt-vcalendar",
   ],
   imports: {
     imports: [
@@ -39,6 +40,9 @@ export default defineNuxtConfig({
   css: ["~/assets/css/main.css"],
   colorMode: {
     classSuffix: "", // ui-thing/Tailwind expect 'dark' class, not 'dark-mode'
+  },
+  build: {
+    transpile: ["@tanstack/vue-table"],
   },
   compatibilityDate: "2026-07-25",
   vite: {

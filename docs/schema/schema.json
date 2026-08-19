@@ -82,7 +82,8 @@
         {
           "name": "timezone",
           "type": "text",
-          "nullable": false
+          "nullable": false,
+          "comment": "IANA timezone driving availability math and notification formatting. Change with care: weekly hours are interpreted in this zone."
         },
         {
           "name": "business_hours",
@@ -100,6 +101,43 @@
           "type": "timestamp with time zone",
           "nullable": false,
           "default": "now()"
+        },
+        {
+          "name": "tax_rate_bps",
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "comment": "Sales tax in basis points (800 = 8%). Applied to taxable transaction items (retail); services are non-taxable in GA."
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "address_line1",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "address_line2",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "postal_code",
+          "type": "text",
+          "nullable": true
         }
       ],
       "indexes": [
@@ -113,6 +151,16 @@
         }
       ],
       "constraints": [
+        {
+          "name": "locations_tax_rate_bps_check",
+          "type": "CHECK",
+          "def": "CHECK (((tax_rate_bps \u003e= 0) AND (tax_rate_bps \u003c= 3000)))",
+          "table": "public.locations",
+          "referenced_table": "",
+          "columns": [
+            "tax_rate_bps"
+          ]
+        },
         {
           "name": "locations_organization_id_fkey",
           "type": "FOREIGN KEY",
@@ -2696,6 +2744,857 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.products",
+      "type": "BASE TABLE",
+      "comment": "Retail catalog (lotions, candles, ...). Stock decremented by trigger on sale. cost_cents enables margin reporting. Deactivated, never deleted.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "sku",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "price_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "cost_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "stock_quantity",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "taxable",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "products_pkey",
+          "def": "CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)",
+          "table": "public.products",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "products_organization_id_name_key",
+          "def": "CREATE UNIQUE INDEX products_organization_id_name_key ON public.products USING btree (organization_id, name)",
+          "table": "public.products",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "products_cost_cents_check",
+          "type": "CHECK",
+          "def": "CHECK ((cost_cents \u003e= 0))",
+          "table": "public.products",
+          "referenced_table": "",
+          "columns": [
+            "cost_cents"
+          ]
+        },
+        {
+          "name": "products_price_cents_check",
+          "type": "CHECK",
+          "def": "CHECK ((price_cents \u003e= 0))",
+          "table": "public.products",
+          "referenced_table": "",
+          "columns": [
+            "price_cents"
+          ]
+        },
+        {
+          "name": "products_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.products",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "products_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.products",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "products_organization_id_name_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (organization_id, name)",
+          "table": "public.products",
+          "referenced_table": "",
+          "columns": [
+            "organization_id",
+            "name"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_products_touch",
+          "def": "CREATE TRIGGER trg_products_touch BEFORE UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        }
+      ]
+    },
+    {
+      "name": "public.gift_cards",
+      "type": "BASE TABLE",
+      "comment": "Balance maintained by triggers: created/loaded by a gift_card SALE item, decremented by a gift_card PAYMENT. Balance can never go negative (trigger).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "initial_balance_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "balance_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "purchaser_client_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "recipient_name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "recipient_email",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "gift_cards_pkey",
+          "def": "CREATE UNIQUE INDEX gift_cards_pkey ON public.gift_cards USING btree (id)",
+          "table": "public.gift_cards",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "gift_cards_code_key",
+          "def": "CREATE UNIQUE INDEX gift_cards_code_key ON public.gift_cards USING btree (code)",
+          "table": "public.gift_cards",
+          "columns": [
+            "code"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "gift_cards_balance_cents_check",
+          "type": "CHECK",
+          "def": "CHECK ((balance_cents \u003e= 0))",
+          "table": "public.gift_cards",
+          "referenced_table": "",
+          "columns": [
+            "balance_cents"
+          ]
+        },
+        {
+          "name": "gift_cards_initial_balance_cents_check",
+          "type": "CHECK",
+          "def": "CHECK ((initial_balance_cents \u003e 0))",
+          "table": "public.gift_cards",
+          "referenced_table": "",
+          "columns": [
+            "initial_balance_cents"
+          ]
+        },
+        {
+          "name": "gift_cards_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.gift_cards",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "gift_cards_purchaser_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (purchaser_client_id) REFERENCES clients(id)",
+          "table": "public.gift_cards",
+          "referenced_table": "public.clients",
+          "columns": [
+            "purchaser_client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "gift_cards_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.gift_cards",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "gift_cards_code_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (code)",
+          "table": "public.gift_cards",
+          "referenced_table": "",
+          "columns": [
+            "code"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.transactions",
+      "type": "BASE TABLE",
+      "comment": "The immutable money ledger: one row per checkout. NEVER updated or deleted (no policies exist). Refunds are new rows with negative amounts referencing the original via refunds_transaction_id. All financial reporting reads from here.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "location_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "appointment_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "refunds_transaction_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "subtotal_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "discount_cents",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "tax_cents",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "tip_cents",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "total_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "checked_out_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "transactions_pkey",
+          "def": "CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (id)",
+          "table": "public.transactions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transactions_org_day",
+          "def": "CREATE INDEX transactions_org_day ON public.transactions USING btree (organization_id, created_at DESC)",
+          "table": "public.transactions",
+          "columns": [
+            "organization_id",
+            "created_at"
+          ]
+        },
+        {
+          "name": "transactions_client",
+          "def": "CREATE INDEX transactions_client ON public.transactions USING btree (client_id, created_at DESC)",
+          "table": "public.transactions",
+          "columns": [
+            "client_id",
+            "created_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "transactions_check",
+          "type": "CHECK",
+          "def": "CHECK ((total_cents = (((subtotal_cents - discount_cents) + tax_cents) + tip_cents)))",
+          "table": "public.transactions",
+          "referenced_table": "",
+          "columns": [
+            "total_cents",
+            "subtotal_cents",
+            "discount_cents",
+            "tax_cents",
+            "tip_cents"
+          ]
+        },
+        {
+          "name": "transactions_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.transactions",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transactions_location_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (location_id) REFERENCES locations(id)",
+          "table": "public.transactions",
+          "referenced_table": "public.locations",
+          "columns": [
+            "location_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transactions_checked_out_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (checked_out_by) REFERENCES staff(id)",
+          "table": "public.transactions",
+          "referenced_table": "public.staff",
+          "columns": [
+            "checked_out_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transactions_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "table": "public.transactions",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transactions_appointment_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)",
+          "table": "public.transactions",
+          "referenced_table": "public.appointments",
+          "columns": [
+            "appointment_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transactions_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.transactions",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transactions_refunds_transaction_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id)",
+          "table": "public.transactions",
+          "referenced_table": "public.transactions",
+          "columns": [
+            "refunds_transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.transaction_items",
+      "type": "BASE TABLE",
+      "comment": "Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history). kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "transaction_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "appointment_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "product_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "gift_card_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "name_snapshot",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "nullable": false,
+          "default": "1"
+        },
+        {
+          "name": "unit_price_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "taxable",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        {
+          "name": "tax_cents",
+          "type": "integer",
+          "nullable": false,
+          "default": "0"
+        },
+        {
+          "name": "total_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "discount_reason",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "transaction_items_pkey",
+          "def": "CREATE UNIQUE INDEX transaction_items_pkey ON public.transaction_items USING btree (id)",
+          "table": "public.transaction_items",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transaction_items_txn",
+          "def": "CREATE INDEX transaction_items_txn ON public.transaction_items USING btree (transaction_id)",
+          "table": "public.transaction_items",
+          "columns": [
+            "transaction_id"
+          ]
+        },
+        {
+          "name": "transaction_items_staff",
+          "def": "CREATE INDEX transaction_items_staff ON public.transaction_items USING btree (staff_id) WHERE (staff_id IS NOT NULL)",
+          "table": "public.transaction_items",
+          "columns": [
+            "staff_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "transaction_items_kind_check",
+          "type": "CHECK",
+          "def": "CHECK ((kind = ANY (ARRAY['service'::text, 'product'::text, 'gift_card'::text, 'tip'::text, 'discount'::text])))",
+          "table": "public.transaction_items",
+          "referenced_table": "",
+          "columns": [
+            "kind"
+          ]
+        },
+        {
+          "name": "transaction_items_quantity_check",
+          "type": "CHECK",
+          "def": "CHECK ((quantity \u003e 0))",
+          "table": "public.transaction_items",
+          "referenced_table": "",
+          "columns": [
+            "quantity"
+          ]
+        },
+        {
+          "name": "transaction_items_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)",
+          "table": "public.transaction_items",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transaction_items_appointment_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)",
+          "table": "public.transaction_items",
+          "referenced_table": "public.appointments",
+          "columns": [
+            "appointment_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transaction_items_product_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (product_id) REFERENCES products(id)",
+          "table": "public.transaction_items",
+          "referenced_table": "public.products",
+          "columns": [
+            "product_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transaction_items_gift_card_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)",
+          "table": "public.transaction_items",
+          "referenced_table": "public.gift_cards",
+          "columns": [
+            "gift_card_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transaction_items_transaction_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT",
+          "table": "public.transaction_items",
+          "referenced_table": "public.transactions",
+          "columns": [
+            "transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "transaction_items_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.transaction_items",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_product_sale",
+          "def": "CREATE TRIGGER trg_product_sale AFTER INSERT ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION apply_product_sale()"
+        }
+      ]
+    },
+    {
+      "name": "public.payments",
+      "type": "BASE TABLE",
+      "comment": "How each transaction settled. Multiple rows = split tender (\"$80 gift card + rest on card\"). card_external = charged on the spa's existing physical terminal and recorded here; in-app charging arrives with Stripe (4b).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "transaction_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "method",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "amount_cents",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "gift_card_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "reference",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "payments_pkey",
+          "def": "CREATE UNIQUE INDEX payments_pkey ON public.payments USING btree (id)",
+          "table": "public.payments",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "payments_txn",
+          "def": "CREATE INDEX payments_txn ON public.payments USING btree (transaction_id)",
+          "table": "public.payments",
+          "columns": [
+            "transaction_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "payments_check",
+          "type": "CHECK",
+          "def": "CHECK (((method = 'gift_card'::text) = (gift_card_id IS NOT NULL)))",
+          "table": "public.payments",
+          "referenced_table": "",
+          "columns": [
+            "method",
+            "gift_card_id"
+          ]
+        },
+        {
+          "name": "payments_method_check",
+          "type": "CHECK",
+          "def": "CHECK ((method = ANY (ARRAY['card_external'::text, 'gift_card'::text, 'cash'::text])))",
+          "table": "public.payments",
+          "referenced_table": "",
+          "columns": [
+            "method"
+          ]
+        },
+        {
+          "name": "payments_gift_card_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)",
+          "table": "public.payments",
+          "referenced_table": "public.gift_cards",
+          "columns": [
+            "gift_card_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "payments_transaction_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT",
+          "table": "public.payments",
+          "referenced_table": "public.transactions",
+          "columns": [
+            "transaction_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "payments_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.payments",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_gift_card_payment",
+          "def": "CREATE TRIGGER trg_gift_card_payment AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION apply_gift_card_payment()"
+        }
+      ]
     }
   ],
   "relations": [
@@ -3218,6 +4117,214 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.products",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.gift_cards",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.gift_cards",
+      "columns": [
+        "purchaser_client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (purchaser_client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.transactions",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.transactions",
+      "columns": [
+        "location_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.locations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (location_id) REFERENCES locations(id)"
+    },
+    {
+      "table": "public.transactions",
+      "columns": [
+        "checked_out_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (checked_out_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.transactions",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.transactions",
+      "columns": [
+        "appointment_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.appointments",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)"
+    },
+    {
+      "table": "public.transactions",
+      "columns": [
+        "refunds_transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id)"
+    },
+    {
+      "table": "public.transaction_items",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.transaction_items",
+      "columns": [
+        "appointment_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.appointments",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)"
+    },
+    {
+      "table": "public.transaction_items",
+      "columns": [
+        "product_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.products",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (product_id) REFERENCES products(id)"
+    },
+    {
+      "table": "public.transaction_items",
+      "columns": [
+        "gift_card_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.gift_cards",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)"
+    },
+    {
+      "table": "public.transaction_items",
+      "columns": [
+        "transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT"
+    },
+    {
+      "table": "public.payments",
+      "columns": [
+        "gift_card_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.gift_cards",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)"
+    },
+    {
+      "table": "public.payments",
+      "columns": [
+        "transaction_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.transactions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT"
     }
   ],
   "functions": [
@@ -4465,6 +5572,18 @@
     },
     {
       "name": "public.guard_staff_self_update",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.apply_gift_card_payment",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.apply_product_sale",
       "return_type": "trigger",
       "arguments": "",
       "type": "FUNCTION"

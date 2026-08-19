@@ -78,6 +78,32 @@ const visibleClients = computed(() => {
 });
 
 // ---------------------------------------------------------------------------
+// TanStack table columns
+// ---------------------------------------------------------------------------
+const clientColumns = [
+  {
+    id: "name",
+    accessorFn: (c: ClientRow) =>
+      `${c.last_name}, ${c.first_name}`.toLowerCase(),
+    header: "Name",
+    enableSorting: true,
+  },
+  {
+    id: "contact",
+    accessorFn: (c: ClientRow) => c.email ?? c.phone ?? "",
+    header: "Contact",
+    enableSorting: true,
+  },
+  {
+    id: "noShows",
+    accessorFn: (c: ClientRow) => c.no_show_count,
+    header: "No-shows",
+    enableSorting: true,
+  },
+  { id: "actions", header: "", enableSorting: false },
+];
+
+// ---------------------------------------------------------------------------
 // Create / edit sheet
 // ---------------------------------------------------------------------------
 const ClientSchema = z.object({
@@ -255,85 +281,90 @@ const saveClient = handleSubmit(async (values) => {
     </div>
 
     <div
-      class="mt-4 overflow-hidden rounded-xl border bg-card px-5 [&>div]:max-h-[70vh]"
+      class="mt-4 border bg-card **:data-[slot=table-container]:max-h-[70vh] **:data-[slot=table-container]:overflow-y-auto"
     >
-      <UiTable
-        class="[&_td]:border-border [&_th]:border-border border-separate border-spacing-0 [&_tfoot_td]:border-t [&_th]:border-b [&_tr]:border-none [&_tr:not(:last-child)_td]:border-b"
+      <UiTanStackTable
+        :data="visibleClients"
+        :columns="clientColumns"
+        :show-selected-count="false"
+        :show-rows-per-page="false"
       >
-        <UiTableHeader class="bg-card/95 sticky top-0 z-10 backdrop-blur-sm">
-          <UiTableRow class="hover:bg-transparent">
-            <UiTableHead class="pl-0">Name</UiTableHead>
-            <UiTableHead class="hidden pl-0 md:table-cell">
-              Contact
-            </UiTableHead>
-            <UiTableHead class="pl-0">No-shows</UiTableHead>
-            <UiTableHead class="pl-0">
-              <span class="sr-only">Actions</span>
-            </UiTableHead>
-          </UiTableRow>
-        </UiTableHeader>
-        <UiTableBody>
-          <UiTableRow v-for="client in visibleClients" :key="client.id">
-            <UiTableCell class="pl-0">
-              <NuxtLink :to="`/clients/${client.id}`" class="hover:underline">
-                <p
-                  class="font-medium"
-                  :class="
-                    !client.active && 'text-muted-foreground line-through'
-                  "
+        <template #name-cell="{ row }">
+          <NuxtLink :to="`/clients/${row.original.id}`" class="hover:underline">
+            <p
+              class="font-medium"
+              :class="
+                !row.original.active && 'text-muted-foreground line-through'
+              "
+            >
+              {{ row.original.last_name }}, {{ row.original.first_name }}
+            </p>
+          </NuxtLink>
+          <p
+            v-if="row.original.flags?.requires_card_on_file"
+            class="text-muted-foreground text-xs"
+          >
+            Card on file required
+          </p>
+        </template>
+
+        <template #contact-cell="{ row }">
+          <p v-if="row.original.email" class="text-muted-foreground text-sm">
+            {{ row.original.email }}
+          </p>
+          <p v-if="row.original.phone" class="text-muted-foreground text-xs">
+            {{ row.original.phone }}
+          </p>
+        </template>
+
+        <template #noShows-cell="{ row }">
+          <UiBadge
+            variant="outline"
+            class="min-w-9 justify-center rounded-full tabular-nums"
+            :class="
+              row.original.no_show_count > 0
+                ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/50 dark:text-red-400'
+                : ''
+            "
+          >
+            {{ row.original.no_show_count }}
+          </UiBadge>
+        </template>
+
+        <template #actions-cell="{ row }">
+          <div class="flex justify-end gap-1">
+            <UiTooltip>
+              <UiTooltipTrigger as-child>
+                <UiButton
+                  variant="ghost"
+                  size="icon-sm"
+                  class="text-muted-foreground"
+                  :aria-label="`View ${row.original.first_name} ${row.original.last_name}`"
+                  :to="`/clients/${row.original.id}`"
                 >
-                  {{ client.last_name }}, {{ client.first_name }}
-                </p>
-              </NuxtLink>
-              <p
-                v-if="client.flags?.requires_card_on_file"
-                class="text-muted-foreground text-xs"
-              >
-                Card on file required
-              </p>
-            </UiTableCell>
-            <UiTableCell
-              class="text-muted-foreground hidden pl-0 md:table-cell"
-            >
-              <p v-if="client.email" class="text-sm">{{ client.email }}</p>
-              <p v-if="client.phone" class="text-xs">{{ client.phone }}</p>
-            </UiTableCell>
-            <UiTableCell class="pl-0">
-              <span
-                class="inline-block rounded-full px-2.5 py-0.5 text-xs"
-                :class="
-                  client.no_show_count > 0
-                    ? 'bg-destructive/10 text-destructive'
-                    : 'bg-secondary text-muted-foreground'
-                "
-              >
-                {{ client.no_show_count }}
-              </span>
-            </UiTableCell>
-            <UiTableCell class="pl-0 text-right">
-              <UiButton variant="ghost" size="sm" :to="`/clients/${client.id}`"
-                >View</UiButton
-              >
-              <UiButton
-                v-if="can('clients.edit')"
-                variant="ghost"
-                size="sm"
-                @click="openEdit(client)"
-              >
-                Edit
-              </UiButton>
-            </UiTableCell>
-          </UiTableRow>
-          <UiTableRow v-if="!visibleClients.length">
-            <UiTableCell
-              colspan="4"
-              class="text-muted-foreground py-6 text-center"
-            >
-              {{ search ? "No clients match your search." : "No clients yet." }}
-            </UiTableCell>
-          </UiTableRow>
-        </UiTableBody>
-      </UiTable>
+                  <Icon name="lucide:eye" class="size-4" />
+                </UiButton>
+              </UiTooltipTrigger>
+              <UiTooltipContent>View client</UiTooltipContent>
+            </UiTooltip>
+
+            <UiTooltip v-if="can('clients.edit')">
+              <UiTooltipTrigger as-child>
+                <UiButton
+                  variant="ghost"
+                  size="icon-sm"
+                  class="text-muted-foreground"
+                  :aria-label="`Edit ${row.original.first_name} ${row.original.last_name}`"
+                  @click="openEdit(row.original)"
+                >
+                  <Icon name="lucide:pencil" class="size-4" />
+                </UiButton>
+              </UiTooltipTrigger>
+              <UiTooltipContent>Edit client</UiTooltipContent>
+            </UiTooltip>
+          </div>
+        </template>
+      </UiTanStackTable>
     </div>
 
     <!-- Create / edit sheet (documented ui-thing convention:
@@ -392,7 +423,7 @@ const saveClient = handleSubmit(async (values) => {
                 <UiSelect v-model="preferredContact">
                   <UiSelectTrigger
                     id="c-contact-method"
-                    class="mt-1.5 sm:max-w-48"
+                    class="mt-1.5"
                     placeholder="Email"
                   />
                   <UiSelectContent>
@@ -489,14 +520,15 @@ const saveClient = handleSubmit(async (values) => {
         </template>
 
         <template #footer>
-          <UiSheetFooter
-            class="border-t p-4 flex-row justify-end gap-2 items-center"
-          >
-            <UiSheetClose as-child>
-              <UiButton variant="outline" type="button" class="mt-2 sm:mt-0">
-                Cancel
-              </UiButton>
-            </UiSheetClose>
+          <UiSheetFooter class="flex-row justify-end gap-2 border-t p-4">
+            <UiButton
+              variant="outline"
+              type="button"
+              class="mt-2 sm:mt-0"
+              @click="sheetOpen = false"
+            >
+              Cancel
+            </UiButton>
             <UiButton
               type="submit"
               form="client-form"

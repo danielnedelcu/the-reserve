@@ -240,14 +240,12 @@ const saveService = handleSubmit(async (values) => {
 
   await supabase.from("service_staff").delete().eq("service_id", serviceId);
   if (selectedStaff.value.length) {
-    const { error } = await supabase
-      .from("service_staff")
-      .insert(
-        selectedStaff.value.map((st) => ({
-          service_id: serviceId,
-          staff_id: st,
-        })),
-      );
+    const { error } = await supabase.from("service_staff").insert(
+      selectedStaff.value.map((st) => ({
+        service_id: serviceId,
+        staff_id: st,
+      })),
+    );
     if (error)
       return toast.error("Could not save qualifications", error.message);
   }
@@ -275,7 +273,7 @@ async function toggleActive(service: ServiceRow) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <div
       class="grid grid-cols-1 gap-5 md:flex md:items-center md:justify-between"
     >

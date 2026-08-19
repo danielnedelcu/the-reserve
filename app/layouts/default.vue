@@ -20,7 +20,7 @@ interface NavSection {
 const navSections = computed<NavSection[]>(() =>
   [
     {
-      label: "Operations",
+      label: "", // top group: the daily-driver pages, no label needed
       items: [
         {
           title: "Dashboard",
@@ -37,8 +37,14 @@ const navSections = computed<NavSection[]>(() =>
       ],
     },
     {
-      label: "Administrative",
+      label: "Operations",
       items: [
+        {
+          title: "Clients",
+          to: "/clients",
+          icon: "lucide:contact",
+          show: can("clients.view"),
+        },
         {
           title: "Staff",
           to: "/staff",
@@ -52,12 +58,6 @@ const navSections = computed<NavSection[]>(() =>
           show: can("timeoff.approve"),
         },
         {
-          title: "Clients",
-          to: "/clients",
-          icon: "lucide:contact",
-          show: can("clients.view"),
-        },
-        {
           title: "Services",
           to: "/services",
           icon: "lucide:sparkles",
@@ -69,8 +69,35 @@ const navSections = computed<NavSection[]>(() =>
           icon: "lucide:door-open",
           show: can("services.view"),
         },
-        // Future entries follow the same pattern:
-        // { title: "Financials", to: "/financials", icon: "lucide:chart-bar", show: can("financials.view_summary") },
+        {
+          title: "Products",
+          to: "/products",
+          icon: "lucide:package",
+          show: can("products.view"),
+        },
+      ],
+    },
+    {
+      label: "Finance",
+      items: [
+        {
+          title: "Transactions",
+          to: "/transactions",
+          icon: "lucide:receipt",
+          show: can("transactions.view"),
+        },
+        {
+          title: "Financials",
+          to: "/financials",
+          icon: "lucide:chart-bar",
+          show: can("financials.view_summary"),
+        },
+        {
+          title: "Business",
+          to: "/business",
+          icon: "lucide:building",
+          show: can("org.settings.manage"),
+        },
       ],
     },
   ]
@@ -78,7 +105,6 @@ const navSections = computed<NavSection[]>(() =>
       ...section,
       items: section.items.filter((item) => item.show),
     }))
-    // A role that can't see any item in a section shouldn't see the label either
     .filter((section) => section.items.length > 0),
 );
 
@@ -89,6 +115,29 @@ function isActive(to: string) {
 const initials = computed(() =>
   (user.value?.email ?? "?").slice(0, 2).toUpperCase(),
 );
+
+// in the layout's <script setup>
+const searchInput = ref<{ $el?: HTMLElement } | null>(null);
+
+const keys = useMagicKeys({
+  passive: false,
+  onEventFired(e) {
+    if (
+      (e.metaKey || e.ctrlKey) &&
+      e.key.toLowerCase() === "k" &&
+      e.type === "keydown"
+    ) {
+      e.preventDefault(); // stop the browser's own ⌘K (URL bar focus in some browsers)
+    }
+  },
+});
+
+watch([keys["Meta+K"], keys["Ctrl+K"]], ([meta, ctrl]) => {
+  if (meta || ctrl) {
+    const el = searchInput.value?.$el as HTMLInputElement | undefined;
+    (el?.tagName === "INPUT" ? el : el?.querySelector("input"))?.focus();
+  }
+});
 </script>
 
 <template>
@@ -201,6 +250,7 @@ const initials = computed(() =>
       <header
         class="flex h-12 items-center gap-2 px-4 justify-end sticky top-0 bg-background z-10"
       >
+        <AppCommandPalette />
         <NotificationsBell />
       </header>
       <slot />

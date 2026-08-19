@@ -106,7 +106,7 @@ async function decide(row: ExceptionRow, status: "approved" | "denied") {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <h1 class="text-2xl font-semibold">Time off</h1>
     <p class="text-muted-foreground mt-1 text-sm">
       Approve or deny requests. Approved time off is removed from bookable

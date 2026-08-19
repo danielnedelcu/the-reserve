@@ -182,7 +182,7 @@ async function changePassword() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <h1 class="text-2xl font-semibold">Settings</h1>
     <p class="text-muted-foreground mt-1 text-sm">
       Your personal details and preferences.
@@ -195,16 +195,16 @@ async function changePassword() {
     <template v-else>
       <!-- Avatar -->
       <section
-        class="mt-8 flex items-center gap-5 rounded-xl border bg-card p-5"
+        class="mt-8 flex items-center gap-5 rounded-md border bg-card p-5"
       >
-        <UiAvatar class="size-16 rounded-xl">
+        <UiAvatar class="size-16 rounded-md">
           <UiAvatarImage
             v-if="me.avatar_url"
             :src="me.avatar_url"
             alt="Your avatar"
           />
           <UiAvatarFallback
-            class="rounded-xl bg-[#f0e9d8] text-lg text-[#4a3d2a]"
+            class="rounded-md bg-[#f0e9d8] text-lg text-[#4a3d2a]"
           >
             {{ initials }}
           </UiAvatarFallback>
@@ -234,11 +234,11 @@ async function changePassword() {
       </section>
 
       <!-- Profile -->
-      <section class="mt-6 rounded-xl border bg-card p-5">
+      <section class="mt-6 rounded-md border bg-card p-5">
         <h2 class="font-medium">Profile</h2>
         <p class="text-muted-foreground mt-1 text-xs">
-          Signed in as {{ me.email }} — email and role are managed by an
-          administrator.
+          Signed in as {{ me.email }} · {{ me.title ?? "No title" }} — email,
+          title, and role are managed by an administrator.
         </p>
         <form class="mt-4" @submit="saveProfile">
           <fieldset :disabled="isSubmitting" class="grid gap-4">
@@ -290,7 +290,7 @@ async function changePassword() {
       </section>
 
       <!-- Appearance -->
-      <section class="mt-6 rounded-xl border bg-card p-5">
+      <section class="mt-6 rounded-md border bg-card p-5">
         <h2 class="font-medium">Appearance</h2>
         <p class="text-muted-foreground mt-1 text-xs">
           Theme preference for this browser.
@@ -312,7 +312,7 @@ async function changePassword() {
       </section>
 
       <!-- Security -->
-      <section class="mt-6 rounded-xl border bg-card p-5">
+      <section class="mt-6 rounded-md border bg-card p-5">
         <h2 class="font-medium">Security</h2>
         <div class="mt-3 grid gap-4 sm:max-w-sm">
           <div>
@@ -352,7 +352,7 @@ async function changePassword() {
       </section>
 
       <!-- Notifications (stub — grows with the notification kinds) -->
-      <section class="mt-6 rounded-xl border bg-card p-5">
+      <section class="mt-6 rounded-md border bg-card p-5">
         <h2 class="font-medium">Notifications</h2>
         <p class="text-muted-foreground mt-1 text-xs">
           In-app notifications are on for time-off decisions and requests.
