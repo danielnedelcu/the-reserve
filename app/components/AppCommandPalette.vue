@@ -4,6 +4,7 @@ const { can } = usePermissions();
 
 const dialog = ref(false);
 const query = ref("");
+const giftLookupOpen = ref(false);
 
 // Both triggers flip the same ref: the header button (click) and ⌘K/Ctrl+K.
 useEventListener("keydown", (e) => {
@@ -217,6 +218,17 @@ function go(to: string) {
             />
             <span>{{ dest.text }}</span>
           </UiCommandItem>
+          <UiCommandItem
+            value="gift card balance lookup"
+            @select="((dialog = false), (giftLookupOpen = true))"
+          >
+            <Icon
+              name="lucide:gift"
+              class="size-4 opacity-60"
+              aria-hidden="true"
+            />
+            <span>Gift card lookup</span>
+          </UiCommandItem>
         </UiCommandGroup>
 
         <UiCommandSeparator />
@@ -233,5 +245,7 @@ function go(to: string) {
         </UiCommandGroup>
       </UiCommandList>
     </UiCommandDialog>
+
+    <GiftCardLookup v-model:open="giftLookupOpen" />
   </div>
 </template>

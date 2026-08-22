@@ -34,6 +34,12 @@ const navSections = computed<NavSection[]>(() =>
           icon: "lucide:calendar-days",
           show: can("appointments.view.own"),
         },
+        {
+          title: "Messages",
+          to: "/messages",
+          icon: "lucide:message-circle",
+          show: true,
+        },
       ],
     },
     {

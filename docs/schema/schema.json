@@ -3595,6 +3595,307 @@
           "def": "CREATE TRIGGER trg_gift_card_payment AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION apply_gift_card_payment()"
         }
       ]
+    },
+    {
+      "name": "public.conversations",
+      "type": "BASE TABLE",
+      "comment": "DMs and ad-hoc group chats. updated_at is bumped by every message (list sort key). Append-only messaging: no edit/delete in v1.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "conversations_pkey",
+          "def": "CREATE UNIQUE INDEX conversations_pkey ON public.conversations USING btree (id)",
+          "table": "public.conversations",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "conversations_kind_check",
+          "type": "CHECK",
+          "def": "CHECK ((kind = ANY (ARRAY['dm'::text, 'group'::text])))",
+          "table": "public.conversations",
+          "referenced_table": "",
+          "columns": [
+            "kind"
+          ]
+        },
+        {
+          "name": "conversations_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.conversations",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "conversations_created_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (created_by) REFERENCES staff(id)",
+          "table": "public.conversations",
+          "referenced_table": "public.staff",
+          "columns": [
+            "created_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "conversations_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.conversations",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.conversation_participants",
+      "type": "BASE TABLE",
+      "comment": "Membership + read state. last_read_at is the unread mechanism: unread = messages newer than it. Rows are created only by the conversation functions (security definer).",
+      "columns": [
+        {
+          "name": "conversation_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "last_read_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "conversation_participants_pkey",
+          "def": "CREATE UNIQUE INDEX conversation_participants_pkey ON public.conversation_participants USING btree (conversation_id, staff_id)",
+          "table": "public.conversation_participants",
+          "columns": [
+            "conversation_id",
+            "staff_id"
+          ]
+        },
+        {
+          "name": "conversation_participants_staff",
+          "def": "CREATE INDEX conversation_participants_staff ON public.conversation_participants USING btree (staff_id)",
+          "table": "public.conversation_participants",
+          "columns": [
+            "staff_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "conversation_participants_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE",
+          "table": "public.conversation_participants",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "conversation_participants_conversation_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE",
+          "table": "public.conversation_participants",
+          "referenced_table": "public.conversations",
+          "columns": [
+            "conversation_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "conversation_participants_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (conversation_id, staff_id)",
+          "table": "public.conversation_participants",
+          "referenced_table": "",
+          "columns": [
+            "conversation_id",
+            "staff_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.messages",
+      "type": "BASE TABLE",
+      "comment": "Append-only (no update/delete policies). Org-scoped through the parent conversation (transaction_items precedent). Published to realtime; RLS limits delivery to participants.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "conversation_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "sender_staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "messages_pkey",
+          "def": "CREATE UNIQUE INDEX messages_pkey ON public.messages USING btree (id)",
+          "table": "public.messages",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "messages_conversation",
+          "def": "CREATE INDEX messages_conversation ON public.messages USING btree (conversation_id, created_at DESC)",
+          "table": "public.messages",
+          "columns": [
+            "conversation_id",
+            "created_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "messages_body_check",
+          "type": "CHECK",
+          "def": "CHECK (((length(body) \u003e= 1) AND (length(body) \u003c= 4000)))",
+          "table": "public.messages",
+          "referenced_table": "",
+          "columns": [
+            "body"
+          ]
+        },
+        {
+          "name": "messages_sender_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (sender_staff_id) REFERENCES staff(id)",
+          "table": "public.messages",
+          "referenced_table": "public.staff",
+          "columns": [
+            "sender_staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "messages_conversation_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE",
+          "table": "public.messages",
+          "referenced_table": "public.conversations",
+          "columns": [
+            "conversation_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "messages_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.messages",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_message_bumps_conversation",
+          "def": "CREATE TRIGGER trg_message_bumps_conversation AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION message_bumps_conversation()"
+        },
+        {
+          "name": "trg_notify_message_received",
+          "def": "CREATE TRIGGER trg_notify_message_received AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION notify_message_received()"
+        }
+      ]
     }
   ],
   "relations": [
@@ -4325,6 +4626,84 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT"
+    },
+    {
+      "table": "public.conversations",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.conversations",
+      "columns": [
+        "created_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (created_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.conversation_participants",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.conversation_participants",
+      "columns": [
+        "conversation_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.conversations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.messages",
+      "columns": [
+        "sender_staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (sender_staff_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.messages",
+      "columns": [
+        "conversation_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.conversations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE"
     }
   ],
   "functions": [
@@ -5586,6 +5965,48 @@
       "name": "public.apply_product_sale",
       "return_type": "trigger",
       "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.is_conversation_participant",
+      "return_type": "bool",
+      "arguments": "p_conversation_id uuid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.find_or_create_dm",
+      "return_type": "uuid",
+      "arguments": "p_other_staff_id uuid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.create_group_conversation",
+      "return_type": "uuid",
+      "arguments": "p_name text, p_staff_ids uuid[]",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.mark_conversation_read",
+      "return_type": "void",
+      "arguments": "p_conversation_id uuid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.message_bumps_conversation",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.notify_message_received",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.leave_conversation",
+      "return_type": "void",
+      "arguments": "p_conversation_id uuid",
       "type": "FUNCTION"
     }
   ],

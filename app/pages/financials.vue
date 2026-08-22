@@ -601,13 +601,15 @@ const detail = ref<Txn | null>(null);
 
 // Refund
 const refunding = ref(false);
-async function refundTxn(txn: Txn) {
-  if (
-    !confirm(
-      `Refund ${dollars(txn.total_cents)} to ${txnClient(txn)}? This can't be undone.`,
-    )
-  )
-    return;
+const confirmingRefund = ref(false);
+
+// leaving the dialog or switching transactions resets the confirm state
+watch(detail, () => (confirmingRefund.value = false));
+
+async function refundTxn() {
+  const txn = detail.value;
+  if (!txn) return;
+  confirmingRefund.value = false;
   refunding.value = true;
   try {
     await $fetch(`/api/transactions/${txn.id}/refund`, { method: "POST" });
@@ -1025,7 +1027,7 @@ function printReceipt(txn: Txn) {
                   icon="lucide:rotate-ccw"
                   title="Refund"
                   :disabled="!refundable(row.original)"
-                  @select="refundTxn(row.original)"
+                  @select="((detail = row.original), (confirmingRefund = true))"
                 />
               </UiDropdownMenuContent>
             </UiDropdownMenu>
@@ -1214,20 +1216,44 @@ function printReceipt(txn: Txn) {
             {{ detail.note }}
           </p>
         </div>
-        <UiDialogFooter>
+        <UiDialogFooter v-if="!confirmingRefund">
           <UiButton
             v-if="refundable(detail)"
             variant="outline"
             class="text-destructive"
-            :disabled="refunding"
-            :text="refunding ? 'Refunding…' : 'Refund'"
-            @click="refundTxn(detail)"
-          />
+            @click="confirmingRefund = true"
+          >
+            Refund
+          </UiButton>
           <UiButton variant="outline" @click="printReceipt(detail)"
             >Print receipt</UiButton
           >
           <UiButton variant="outline" @click="detail = null">Close</UiButton>
         </UiDialogFooter>
+
+        <div v-else class="space-y-3">
+          <div class="flex justify-end gap-2">
+            <UiButton variant="outline" @click="confirmingRefund = false"
+              >Cancel</UiButton
+            >
+            <UiButton
+              variant="destructive"
+              :disabled="refunding"
+              :text="
+                refunding
+                  ? 'Refunding…'
+                  : `Refund ${dollars(detail.total_cents)}`
+              "
+              @click="refundTxn"
+            />
+          </div>
+          <p class="text-muted-foreground text-xs">
+            Refunding {{ txnClient(detail) }} ·
+            {{ txnWhen(detail.created_at) }}. This creates a permanent refund
+            entry, restores product stock and gift card balances, and can't be
+            undone.
+          </p>
+        </div>
       </UiDialogContent>
     </UiDialog>
   </div>

@@ -1,4 +1,7 @@
-import { serverSupabaseClient, serverSupabaseServiceRole } from "#supabase/server";
+import {
+  serverSupabaseClient,
+  serverSupabaseServiceRole,
+} from "#supabase/server";
 
 /**
  * POST /api/transactions/:id/refund — full refund (v1).
@@ -13,9 +16,14 @@ export default defineEventHandler(async (event) => {
   const userClient = await serverSupabaseClient(event);
   const admin = serverSupabaseServiceRole(event);
 
-  const { data: allowed } = await userClient.rpc("has_permission", { p_key: "pos.refund" });
+  const { data: allowed } = await userClient.rpc("has_permission", {
+    perm: "pos.refund",
+  });
   if (!allowed) {
-    throw createError({ statusCode: 403, statusMessage: "Missing permission: pos.refund" });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Missing permission: pos.refund",
+    });
   }
   const { data: staffId } = await userClient.rpc("current_staff_id");
   const { data: orgId } = await userClient.rpc("current_org_id");
@@ -28,10 +36,16 @@ export default defineEventHandler(async (event) => {
     .single();
 
   if (!original || original.organization_id !== orgId) {
-    throw createError({ statusCode: 404, statusMessage: "Transaction not found" });
+    throw createError({
+      statusCode: 404,
+      statusMessage: "Transaction not found",
+    });
   }
   if (original.refunds_transaction_id) {
-    throw createError({ statusCode: 422, statusMessage: "This IS a refund transaction" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "This IS a refund transaction",
+    });
   }
 
   // Already refunded?
@@ -58,7 +72,8 @@ export default defineEventHandler(async (event) => {
     if (card && card.balance_cents !== card.initial_balance_cents) {
       throw createError({
         statusCode: 422,
-        statusMessage: "A gift card from this sale has been partially used — refund it manually",
+        statusMessage:
+          "A gift card from this sale has been partially used — refund it manually",
       });
     }
   }
@@ -83,7 +98,10 @@ export default defineEventHandler(async (event) => {
     .select("id")
     .single();
   if (txnError || !refundTxn) {
-    throw createError({ statusCode: 500, statusMessage: txnError?.message ?? "Refund write failed" });
+    throw createError({
+      statusCode: 500,
+      statusMessage: txnError?.message ?? "Refund write failed",
+    });
   }
 
   const itemRows = (original.transaction_items ?? []).map(
@@ -103,41 +121,64 @@ export default defineEventHandler(async (event) => {
       discount_reason: item.discount_reason,
     }),
   );
-  const { error: itemsError } = await admin.from("transaction_items").insert(itemRows);
+  const { error: itemsError } = await admin
+    .from("transaction_items")
+    .insert(itemRows);
   if (itemsError) {
-    await admin.from("transaction_items").delete().eq("transaction_id", refundTxn.id);
+    await admin
+      .from("transaction_items")
+      .delete()
+      .eq("transaction_id", refundTxn.id);
     await admin.from("transactions").delete().eq("id", refundTxn.id);
     throw createError({ statusCode: 500, statusMessage: itemsError.message });
   }
 
-  const paymentRows = (original.payments ?? []).map((payment: Record<string, unknown>) => ({
-    transaction_id: refundTxn.id,
-    method: payment.method,
-    amount_cents: -(payment.amount_cents as number),
-    gift_card_id: payment.gift_card_id, // negative amount → trigger restores balance
-    reference: payment.reference ? `refund: ${payment.reference}` : null,
-  }));
-  const { error: paymentsError } = await admin.from("payments").insert(paymentRows);
+  const paymentRows = (original.payments ?? []).map(
+    (payment: Record<string, unknown>) => ({
+      transaction_id: refundTxn.id,
+      method: payment.method,
+      amount_cents: -(payment.amount_cents as number),
+      gift_card_id: payment.gift_card_id, // negative amount → trigger restores balance
+      reference: payment.reference ? `refund: ${payment.reference}` : null,
+    }),
+  );
+  const { error: paymentsError } = await admin
+    .from("payments")
+    .insert(paymentRows);
   if (paymentsError) {
     await admin.from("payments").delete().eq("transaction_id", refundTxn.id);
-    await admin.from("transaction_items").delete().eq("transaction_id", refundTxn.id);
+    await admin
+      .from("transaction_items")
+      .delete()
+      .eq("transaction_id", refundTxn.id);
     await admin.from("transactions").delete().eq("id", refundTxn.id);
-    throw createError({ statusCode: 500, statusMessage: paymentsError.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: paymentsError.message,
+    });
   }
 
   // Deactivate refunded (unused) gift cards
   for (const cardItem of soldCards) {
-    await admin.from("gift_cards").update({ active: false }).eq("id", cardItem.gift_card_id);
+    await admin
+      .from("gift_cards")
+      .update({ active: false })
+      .eq("id", cardItem.gift_card_id);
   }
 
-  await admin.from("audit_log").insert({
-    organization_id: orgId,
+  const { error: auditError } = await admin.from("audit_log").insert({
     actor_staff_id: staffId,
     action: "pos.refund",
-    subject_type: "transaction",
-    subject_id: original.id,
-    detail: { refund_transaction_id: refundTxn.id, total_cents: -original.total_cents },
+    entity_type: "transaction",
+    entity_id: original.id,
+    detail: {
+      refund_transaction_id: refundTxn.id,
+      total_cents: -original.total_cents,
+    },
   });
+  if (auditError) {
+    console.error("[refund] audit failed:", auditError);
+  }
 
   return { id: refundTxn.id };
 });

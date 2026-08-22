@@ -32,6 +32,9 @@
 | [public.transactions](public.transactions.md)                                   | 14      | The immutable money ledger: one row per checkout. NEVER updated or deleted (no policies exist). Refunds are new rows with negative amounts referencing the original via refunds_transaction_id. All financial reporting reads from here.                                                     | BASE TABLE |
 | [public.transaction_items](public.transaction_items.md)                         | 14      | Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history). kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting. | BASE TABLE |
 | [public.payments](public.payments.md)                                           | 7       | How each transaction settled. Multiple rows = split tender ("$80 gift card + rest on card"). card_external = charged on the spa's existing physical terminal and recorded here; in-app charging arrives with Stripe (4b).                                                                    | BASE TABLE |
+| [public.conversations](public.conversations.md)                                 | 7       | DMs and ad-hoc group chats. updated_at is bumped by every message (list sort key). Append-only messaging: no edit/delete in v1.                                                                                                                                                              | BASE TABLE |
+| [public.conversation_participants](public.conversation_participants.md)         | 4       | Membership + read state. last_read_at is the unread mechanism: unread = messages newer than it. Rows are created only by the conversation functions (security definer).                                                                                                                      | BASE TABLE |
+| [public.messages](public.messages.md)                                           | 5       | Append-only (no update/delete policies). Org-scoped through the parent conversation (transaction_items precedent). Published to realtime; RLS limits delivery to participants.                                                                                                               | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -247,6 +250,13 @@
 | public.guard_staff_self_update               | trigger        |                                                                                                   | FUNCTION |
 | public.apply_gift_card_payment               | trigger        |                                                                                                   | FUNCTION |
 | public.apply_product_sale                    | trigger        |                                                                                                   | FUNCTION |
+| public.is_conversation_participant           | bool           | p_conversation_id uuid                                                                            | FUNCTION |
+| public.find_or_create_dm                     | uuid           | p_other_staff_id uuid                                                                             | FUNCTION |
+| public.create_group_conversation             | uuid           | p_name text, p_staff_ids uuid[]                                                                   | FUNCTION |
+| public.mark_conversation_read                | void           | p_conversation_id uuid                                                                            | FUNCTION |
+| public.message_bumps_conversation            | trigger        |                                                                                                   | FUNCTION |
+| public.notify_message_received               | trigger        |                                                                                                   | FUNCTION |
+| public.leave_conversation                    | void           | p_conversation_id uuid                                                                            | FUNCTION |
 
 ## Enums
 

@@ -86,6 +86,7 @@ const KIND_ICONS: Record<string, string> = {
   "timeoff.approved": "lucide:check-circle-2",
   "timeoff.denied": "lucide:x-circle",
   "timeoff.requested": "lucide:inbox",
+  "message.received": "lucide:message-circle",
 };
 
 function timeAgo(iso: string) {
@@ -103,7 +104,8 @@ function timeAgo(iso: string) {
     <UiPopoverTrigger as="div">
       <UiChip
         v-if="unreadCount"
-        size="3xl"
+        size="xl"
+        color="bg-emerald-500 text-white dark:bg-emerald-400 dark:text-emerald-950"
         :text="unreadCount > 99 ? '99+' : unreadCount.toString()"
       >
         <UiButton
@@ -182,20 +184,18 @@ function timeAgo(iso: string) {
             </div>
             <div
               v-if="!notification.read_at"
-              class="absolute end-0 self-center"
+              class="absolute inset-e-0 self-center"
             >
               <span class="sr-only">Unread</span>
-              <svg
-                width="6"
-                height="6"
-                fill="currentColor"
-                viewBox="0 0 6 6"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden="true"
-                class="text-primary"
+              <div
+                v-if="!notification.read_at"
+                class="absolute inset-e-0 self-center"
               >
-                <circle cx="3" cy="3" r="3" />
-              </svg>
+                <span class="sr-only">Unread</span>
+                <span
+                  class="block size-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                ></span>
+              </div>
             </div>
           </div>
         </div>

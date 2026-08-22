@@ -67,7 +67,7 @@ export default defineEventHandler(async (event) => {
 
   // ---- permission gate -----------------------------------------------------
   const { data: allowed } = await userClient.rpc("has_permission", {
-    p_key: "pos.checkout",
+    perm: "pos.checkout",
   });
   if (!allowed) {
     throw createError({
@@ -465,47 +465,54 @@ export default defineEventHandler(async (event) => {
   }
 
   // 4. audit
-  await admin.from("audit_log").insert({
-    organization_id: orgId,
+  const { error: auditError } = await admin.from("audit_log").insert({
     actor_staff_id: staffId,
+    actor_user_id: user.user.id,
     action: "pos.checkout",
-    subject_type: "transaction",
-    subject_id: txn.id,
+    entity_type: "transaction",
+    entity_id: txn.id,
     detail: {
       total_cents: total,
       items: rows.length,
       payments: paymentRows.length,
     },
   });
+  if (auditError) {
+    console.error("[checkout] audit failed:", auditError);
+  }
 
   // 5. receipt (fire and forget)
-  if (body.clientId) {
-    const { data: client } = await admin
-      .from("clients")
-      .select("email, first_name")
-      .eq("id", body.clientId)
-      .single();
-    if (client?.email) {
-      sendMail({
-        to: client.email,
-        subject: "Your receipt from The Reserve",
-        html: receiptEmail({
-          firstName: client.first_name,
-          items: rows.map((r) => ({
-            name: r.name_snapshot,
-            quantity: r.quantity,
-            totalCents: r.total_cents + r.tax_cents,
-          })),
-          subtotalCents: subtotal,
-          discountCents: discount,
-          taxCents: tax,
-          tipCents: tip,
-          totalCents: total,
-        }),
-      }).catch((mailError) =>
-        console.error("[checkout] receipt failed:", mailError),
-      );
+  try {
+    if (body.clientId) {
+      const { data: client } = await admin
+        .from("clients")
+        .select("email, first_name")
+        .eq("id", body.clientId)
+        .single();
+      if (client?.email) {
+        sendMail({
+          to: client.email,
+          subject: "Your receipt from The Reserve",
+          html: receiptEmail({
+            firstName: client.first_name,
+            items: rows.map((r) => ({
+              name: r.name_snapshot,
+              quantity: r.quantity,
+              totalCents: r.total_cents + r.tax_cents,
+            })),
+            subtotalCents: subtotal,
+            discountCents: discount,
+            taxCents: tax,
+            tipCents: tip,
+            totalCents: total,
+          }),
+        }).catch((mailError) =>
+          console.error("[checkout] receipt failed:", mailError),
+        );
+      }
     }
+  } catch (receiptError) {
+    console.error("[checkout] receipt failed:", receiptError);
   }
 
   return { id: txn.id, totalCents: total };

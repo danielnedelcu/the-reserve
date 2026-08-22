@@ -114,7 +114,7 @@ async function refund(txn: TxnRow) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-6 md:p-10">
+  <div class="mx-auto w-full p-6 md:p-10">
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold">Transactions</h1>
@@ -271,5 +271,6 @@ async function refund(txn: TxnRow) {
         </UiDialogFooter>
       </UiDialogContent>
     </UiDialog>
+    <GiftCardsSection v-if="can('gift_cards.view')" class="mt-10" />
   </div>
 </template>

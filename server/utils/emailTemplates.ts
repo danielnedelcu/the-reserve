@@ -158,5 +158,5 @@ export function receiptEmail(options: {
     </p>`;
 
   // Wrap in the same brand shell the other templates use:
-  return brandShell("Your receipt", body);
+  return shell(body);
 }
