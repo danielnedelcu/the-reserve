@@ -6,25 +6,27 @@ How each transaction settled. Multiple rows = split tender ("$80 gift card + res
 
 ## Columns
 
-| Name           | Type                     | Default           | Nullable | Children | Parents                                       | Comment |
-| -------------- | ------------------------ | ----------------- | -------- | -------- | --------------------------------------------- | ------- |
-| id             | uuid                     | gen_random_uuid() | false    |          |                                               |         |
-| transaction_id | uuid                     |                   | false    |          | [public.transactions](public.transactions.md) |         |
-| method         | text                     |                   | false    |          |                                               |         |
-| amount_cents   | integer                  |                   | false    |          |                                               |         |
-| gift_card_id   | uuid                     |                   | true     |          | [public.gift_cards](public.gift_cards.md)     |         |
-| reference      | text                     |                   | true     |          |                                               |         |
-| created_at     | timestamp with time zone | now()             | false    |          |                                               |         |
+| Name                     | Type                     | Default           | Nullable | Children | Parents                                       | Comment                                                                                                                                                                                                |
+| ------------------------ | ------------------------ | ----------------- | -------- | -------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| id                       | uuid                     | gen_random_uuid() | false    |          |                                               |                                                                                                                                                                                                        |
+| transaction_id           | uuid                     |                   | false    |          | [public.transactions](public.transactions.md) |                                                                                                                                                                                                        |
+| method                   | text                     |                   | false    |          |                                               |                                                                                                                                                                                                        |
+| amount_cents             | integer                  |                   | false    |          |                                               |                                                                                                                                                                                                        |
+| gift_card_id             | uuid                     |                   | true     |          | [public.gift_cards](public.gift_cards.md)     |                                                                                                                                                                                                        |
+| reference                | text                     |                   | true     |          |                                               |                                                                                                                                                                                                        |
+| created_at               | timestamp with time zone | now()             | false    |          |                                               |                                                                                                                                                                                                        |
+| stripe_payment_intent_id | text                     |                   | true     |          |                                               | Set on method=stripe_card rows (pi_...). The refund route calls stripe.refunds.create against this. The sync charge flow guarantees it: ledger rows are written only after the PaymentIntent succeeds. |
 
 ## Constraints
 
-| Name                         | Type        | Definition                                                                             |
-| ---------------------------- | ----------- | -------------------------------------------------------------------------------------- |
-| payments_check               | CHECK       | CHECK (((method = 'gift_card'::text) = (gift_card_id IS NOT NULL)))                    |
-| payments_method_check        | CHECK       | CHECK ((method = ANY (ARRAY['card_external'::text, 'gift_card'::text, 'cash'::text]))) |
-| payments_gift_card_id_fkey   | FOREIGN KEY | FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)                                   |
-| payments_transaction_id_fkey | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT            |
-| payments_pkey                | PRIMARY KEY | PRIMARY KEY (id)                                                                       |
+| Name                            | Type        | Definition                                                                                                  |
+| ------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------- |
+| payments_check                  | CHECK       | CHECK (((method = 'gift_card'::text) = (gift_card_id IS NOT NULL)))                                         |
+| payments_method_check           | CHECK       | CHECK ((method = ANY (ARRAY['card_external'::text, 'gift_card'::text, 'cash'::text, 'stripe_card'::text]))) |
+| payments_stripe_intent_presence | CHECK       | CHECK (((method = 'stripe_card'::text) = (stripe_payment_intent_id IS NOT NULL)))                           |
+| payments_gift_card_id_fkey      | FOREIGN KEY | FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)                                                        |
+| payments_transaction_id_fkey    | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT                                 |
+| payments_pkey                   | PRIMARY KEY | PRIMARY KEY (id)                                                                                            |
 
 ## Indexes
 

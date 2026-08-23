@@ -41,6 +41,15 @@ export default defineNuxtConfig({
   colorMode: {
     classSuffix: "", // ui-thing/Tailwind expect 'dark' class, not 'dark-mode'
   },
+  runtimeConfig: {
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    // ...existing server-side entries...
+    public: {
+      stripePublishableKey: process.env.NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      // ...existing public entries...
+    },
+  },
   build: {
     transpile: ["@tanstack/vue-table"],
   },

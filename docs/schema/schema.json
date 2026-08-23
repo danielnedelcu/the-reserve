@@ -1720,6 +1720,12 @@
           "name": "preferred_staff_id",
           "type": "uuid",
           "nullable": true
+        },
+        {
+          "name": "stripe_customer_id",
+          "type": "text",
+          "nullable": true,
+          "comment": "Stripe Customer id (cus_...). Created lazily by the setup-intent route on first card save. Single platform Stripe account; a future Connect retrofit would add an account dimension here."
         }
       ],
       "indexes": [
@@ -1748,6 +1754,14 @@
           "columns": [
             "organization_id",
             "lower"
+          ]
+        },
+        {
+          "name": "clients_stripe_customer_id_key",
+          "def": "CREATE UNIQUE INDEX clients_stripe_customer_id_key ON public.clients USING btree (stripe_customer_id)",
+          "table": "public.clients",
+          "columns": [
+            "stripe_customer_id"
           ]
         }
       ],
@@ -1796,6 +1810,16 @@
           "referenced_table": "",
           "columns": [
             "id"
+          ]
+        },
+        {
+          "name": "clients_stripe_customer_id_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (stripe_customer_id)",
+          "table": "public.clients",
+          "referenced_table": "",
+          "columns": [
+            "stripe_customer_id"
           ]
         }
       ],
@@ -3510,6 +3534,12 @@
           "type": "timestamp with time zone",
           "nullable": false,
           "default": "now()"
+        },
+        {
+          "name": "stripe_payment_intent_id",
+          "type": "text",
+          "nullable": true,
+          "comment": "Set on method=stripe_card rows (pi_...). The refund route calls stripe.refunds.create against this. The sync charge flow guarantees it: ledger rows are written only after the PaymentIntent succeeds."
         }
       ],
       "indexes": [
@@ -3545,11 +3575,22 @@
         {
           "name": "payments_method_check",
           "type": "CHECK",
-          "def": "CHECK ((method = ANY (ARRAY['card_external'::text, 'gift_card'::text, 'cash'::text])))",
+          "def": "CHECK ((method = ANY (ARRAY['card_external'::text, 'gift_card'::text, 'cash'::text, 'stripe_card'::text])))",
           "table": "public.payments",
           "referenced_table": "",
           "columns": [
             "method"
+          ]
+        },
+        {
+          "name": "payments_stripe_intent_presence",
+          "type": "CHECK",
+          "def": "CHECK (((method = 'stripe_card'::text) = (stripe_payment_intent_id IS NOT NULL)))",
+          "table": "public.payments",
+          "referenced_table": "",
+          "columns": [
+            "method",
+            "stripe_payment_intent_id"
           ]
         },
         {
@@ -3894,6 +3935,338 @@
         {
           "name": "trg_notify_message_received",
           "def": "CREATE TRIGGER trg_notify_message_received AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION notify_message_received()"
+        }
+      ]
+    },
+    {
+      "name": "public.card_consents",
+      "type": "BASE TABLE",
+      "comment": "Consent records for storing a card on file (cancellation-fee enabler). Append-only: no update/delete policies. method=front_desk_attested is v1; client_signed arrives with intake forms. policy_text is a snapshot of the exact language shown at capture.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "captured_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "method",
+          "type": "text",
+          "nullable": false,
+          "default": "'front_desk_attested'::text"
+        },
+        {
+          "name": "policy_text",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "card_consents_pkey",
+          "def": "CREATE UNIQUE INDEX card_consents_pkey ON public.card_consents USING btree (id)",
+          "table": "public.card_consents",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "card_consents_client",
+          "def": "CREATE INDEX card_consents_client ON public.card_consents USING btree (client_id, created_at DESC)",
+          "table": "public.card_consents",
+          "columns": [
+            "client_id",
+            "created_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "card_consents_method_check",
+          "type": "CHECK",
+          "def": "CHECK ((method = ANY (ARRAY['front_desk_attested'::text, 'client_signed'::text])))",
+          "table": "public.card_consents",
+          "referenced_table": "",
+          "columns": [
+            "method"
+          ]
+        },
+        {
+          "name": "card_consents_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.card_consents",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "card_consents_captured_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (captured_by) REFERENCES staff(id)",
+          "table": "public.card_consents",
+          "referenced_table": "public.staff",
+          "columns": [
+            "captured_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "card_consents_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "table": "public.card_consents",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "card_consents_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.card_consents",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.client_payment_methods",
+      "type": "BASE TABLE",
+      "comment": "Display-fields-only mirror of Stripe PaymentMethods (pm_...). consent_id is NOT NULL: no card exists without a consent record. Detached/expired cards are deactivated (active=false), never deleted — historical payments may reference them.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "consent_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "stripe_payment_method_id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "brand",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "last4",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "exp_month",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "exp_year",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "client_payment_methods_pkey",
+          "def": "CREATE UNIQUE INDEX client_payment_methods_pkey ON public.client_payment_methods USING btree (id)",
+          "table": "public.client_payment_methods",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_payment_methods_stripe_payment_method_id_key",
+          "def": "CREATE UNIQUE INDEX client_payment_methods_stripe_payment_method_id_key ON public.client_payment_methods USING btree (stripe_payment_method_id)",
+          "table": "public.client_payment_methods",
+          "columns": [
+            "stripe_payment_method_id"
+          ]
+        },
+        {
+          "name": "client_payment_methods_client",
+          "def": "CREATE INDEX client_payment_methods_client ON public.client_payment_methods USING btree (client_id) WHERE active",
+          "table": "public.client_payment_methods",
+          "columns": [
+            "client_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "client_payment_methods_exp_month_check",
+          "type": "CHECK",
+          "def": "CHECK (((exp_month \u003e= 1) AND (exp_month \u003c= 12)))",
+          "table": "public.client_payment_methods",
+          "referenced_table": "",
+          "columns": [
+            "exp_month"
+          ]
+        },
+        {
+          "name": "client_payment_methods_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.client_payment_methods",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_payment_methods_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "table": "public.client_payment_methods",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_payment_methods_consent_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (consent_id) REFERENCES card_consents(id)",
+          "table": "public.client_payment_methods",
+          "referenced_table": "public.card_consents",
+          "columns": [
+            "consent_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_payment_methods_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.client_payment_methods",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "client_payment_methods_stripe_payment_method_id_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (stripe_payment_method_id)",
+          "table": "public.client_payment_methods",
+          "referenced_table": "",
+          "columns": [
+            "stripe_payment_method_id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.stripe_events",
+      "type": "BASE TABLE",
+      "comment": "Processed Stripe webhook event ids for idempotency. Insert-on-arrival; unique violation = duplicate delivery, skip. Service-role only (no policies).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "processed_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "stripe_events_pkey",
+          "def": "CREATE UNIQUE INDEX stripe_events_pkey ON public.stripe_events USING btree (id)",
+          "table": "public.stripe_events",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "stripe_events_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.stripe_events",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
         }
       ]
     }
@@ -4704,6 +5077,84 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.card_consents",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.card_consents",
+      "columns": [
+        "captured_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (captured_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.card_consents",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.client_payment_methods",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.client_payment_methods",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.client_payment_methods",
+      "columns": [
+        "consent_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.card_consents",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (consent_id) REFERENCES card_consents(id)"
     }
   ],
   "functions": [

@@ -340,6 +340,58 @@ export type Database = {
           },
         ]
       }
+      card_consents: {
+        Row: {
+          captured_by: string
+          client_id: string
+          created_at: string
+          id: string
+          method: string
+          organization_id: string
+          policy_text: string
+        }
+        Insert: {
+          captured_by: string
+          client_id: string
+          created_at?: string
+          id?: string
+          method?: string
+          organization_id: string
+          policy_text: string
+        }
+        Update: {
+          captured_by?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          method?: string
+          organization_id?: string
+          policy_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_consents_captured_by_fkey"
+            columns: ["captured_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_consents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_consents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_notes: {
         Row: {
           author_id: string
@@ -382,6 +434,70 @@ export type Database = {
           },
         ]
       }
+      client_payment_methods: {
+        Row: {
+          active: boolean
+          brand: string
+          client_id: string
+          consent_id: string
+          created_at: string
+          exp_month: number
+          exp_year: number
+          id: string
+          last4: string
+          organization_id: string
+          stripe_payment_method_id: string
+        }
+        Insert: {
+          active?: boolean
+          brand: string
+          client_id: string
+          consent_id: string
+          created_at?: string
+          exp_month: number
+          exp_year: number
+          id?: string
+          last4: string
+          organization_id: string
+          stripe_payment_method_id: string
+        }
+        Update: {
+          active?: boolean
+          brand?: string
+          client_id?: string
+          consent_id?: string
+          created_at?: string
+          exp_month?: number
+          exp_year?: number
+          id?: string
+          last4?: string
+          organization_id?: string
+          stripe_payment_method_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_payment_methods_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_payment_methods_consent_id_fkey"
+            columns: ["consent_id"]
+            isOneToOne: false
+            referencedRelation: "card_consents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_payment_methods_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           active: boolean
@@ -408,6 +524,7 @@ export type Database = {
           pronouns: string | null
           referral_source: string | null
           state: string | null
+          stripe_customer_id: string | null
           updated_at: string
         }
         Insert: {
@@ -435,6 +552,7 @@ export type Database = {
           pronouns?: string | null
           referral_source?: string | null
           state?: string | null
+          stripe_customer_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -462,6 +580,7 @@ export type Database = {
           pronouns?: string | null
           referral_source?: string | null
           state?: string | null
+          stripe_customer_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -787,6 +906,7 @@ export type Database = {
           id: string
           method: string
           reference: string | null
+          stripe_payment_intent_id: string | null
           transaction_id: string
         }
         Insert: {
@@ -796,6 +916,7 @@ export type Database = {
           id?: string
           method: string
           reference?: string | null
+          stripe_payment_intent_id?: string | null
           transaction_id: string
         }
         Update: {
@@ -805,6 +926,7 @@ export type Database = {
           id?: string
           method?: string
           reference?: string | null
+          stripe_payment_intent_id?: string | null
           transaction_id?: string
         }
         Relationships: [
@@ -1385,6 +1507,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stripe_events: {
+        Row: {
+          id: string
+          processed_at: string
+          type: string
+        }
+        Insert: {
+          id: string
+          processed_at?: string
+          type: string
+        }
+        Update: {
+          id?: string
+          processed_at?: string
+          type?: string
+        }
+        Relationships: []
       }
       transaction_items: {
         Row: {

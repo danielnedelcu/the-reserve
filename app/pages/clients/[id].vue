@@ -361,5 +361,6 @@ const kindBadge: Record<string, string> = {
         </ul>
       </section>
     </template>
+    <ClientCards v-if="can('cards.view')" :client-id="clientId" class="mt-8" />
   </div>
 </template>
