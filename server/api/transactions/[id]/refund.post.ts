@@ -2,6 +2,7 @@ import {
   serverSupabaseClient,
   serverSupabaseServiceRole,
 } from "#supabase/server";
+import type { TablesInsert } from "~~/shared/types/database";
 
 /**
  * POST /api/transactions/:id/refund — full refund (v1).
@@ -26,9 +27,21 @@ export default defineEventHandler(async (event) => {
     });
   }
   const { data: staffId } = await userClient.rpc("current_staff_id");
+  if (!staffId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "No staff record for this session",
+    });
+  }
   const { data: orgId } = await userClient.rpc("current_org_id");
 
   const originalId = getRouterParam(event, "id");
+  if (!originalId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Missing transaction ID",
+    });
+  }
   const { data: original } = await admin
     .from("transactions")
     .select("*, transaction_items(*), payments(*)")
@@ -60,14 +73,20 @@ export default defineEventHandler(async (event) => {
 
   // Gift cards SOLD in the original: refundable only if unused; deactivate on refund.
   const soldCards = (original.transaction_items ?? []).filter(
-    (item: { kind: string; gift_card_id: string | null }) =>
-      item.kind === "gift_card" && item.gift_card_id,
+    (item: {
+      kind: string;
+      gift_card_id: string | null;
+    }): item is { kind: string; gift_card_id: string } =>
+      item.kind === "gift_card" && item.gift_card_id !== null,
   );
   for (const cardItem of soldCards) {
+    const giftCardId = cardItem.gift_card_id;
+    if (!giftCardId) continue;
+
     const { data: card } = await admin
       .from("gift_cards")
       .select("id, initial_balance_cents, balance_cents")
-      .eq("id", cardItem.gift_card_id)
+      .eq("id", giftCardId)
       .single();
     if (card && card.balance_cents !== card.initial_balance_cents) {
       throw createError({
@@ -123,7 +142,7 @@ export default defineEventHandler(async (event) => {
   );
   const { error: itemsError } = await admin
     .from("transaction_items")
-    .insert(itemRows);
+    .insert(itemRows as TablesInsert<"transaction_items">[]);
   if (itemsError) {
     await admin
       .from("transaction_items")
@@ -144,7 +163,7 @@ export default defineEventHandler(async (event) => {
   );
   const { error: paymentsError } = await admin
     .from("payments")
-    .insert(paymentRows);
+    .insert(paymentRows as TablesInsert<"payments">[]);
   if (paymentsError) {
     await admin.from("payments").delete().eq("transaction_id", refundTxn.id);
     await admin
@@ -160,10 +179,13 @@ export default defineEventHandler(async (event) => {
 
   // Deactivate refunded (unused) gift cards
   for (const cardItem of soldCards) {
+    const giftCardId = cardItem.gift_card_id;
+    if (!giftCardId) continue;
+
     await admin
       .from("gift_cards")
       .update({ active: false })
-      .eq("id", cardItem.gift_card_id);
+      .eq("id", giftCardId);
   }
 
   const { error: auditError } = await admin.from("audit_log").insert({

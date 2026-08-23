@@ -115,6 +115,8 @@ async function addNote() {
   if (!noteBody.value.trim()) return;
   savingNote.value = true;
   const { data: staffId } = await supabase.rpc("current_staff_id");
+  if (!staffId) return toast.error("Session issue — please refresh");
+
   const { error } = await supabase.from("client_notes").insert({
     client_id: clientId,
     author_id: staffId,
@@ -256,7 +258,8 @@ const kindBadge: Record<string, string> = {
           </p>
           <p class="mt-1 text-sm">
             {{
-              client.flags?.requires_card_on_file
+              (client.flags as { requires_card_on_file?: boolean } | null)
+                ?.requires_card_on_file
                 ? "Card on file required"
                 : "—"
             }}

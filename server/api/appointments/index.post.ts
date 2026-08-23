@@ -101,7 +101,7 @@ export default defineEventHandler(async (event) => {
     });
 
   const requiredTypes = service.service_resource_requirements.map(
-    (r) => r.resource_type_id,
+    (r: { resource_type_id: string }) => r.resource_type_id,
   );
   let roomId: string | null = null;
 
@@ -151,7 +151,11 @@ export default defineEventHandler(async (event) => {
 
   // --- Insert (caller's RLS client; DB enforces booked_by + permissions) ------
   const { data: staffIdSelf } = await client.rpc("current_staff_id");
-
+  if (!staffIdSelf)
+    throw createError({
+      statusCode: 403,
+      statusMessage: "No staff record for this session",
+    });
   const { data: appointment, error: insertError } = await client
     .from("appointments")
     .insert({

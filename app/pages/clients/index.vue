@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { z } from "zod";
 import { toTypedSchema } from "@vee-validate/zod";
+import type { TablesUpdate, TablesInsert } from "~~/shared/types/database";
 
 definePageMeta({ middleware: "can", permission: "clients.view" });
 useSeoMeta({ title: "Clients — The Reserve" });
@@ -194,7 +195,7 @@ function openEdit(client: ClientRow) {
 }
 
 const saveClient = handleSubmit(async (values) => {
-  const payload: Record<string, unknown> = {
+  const payload: Omit<TablesInsert<"clients">, "organization_id"> = {
     first_name: values.firstName,
     last_name: values.lastName,
     email: values.email || null,
@@ -230,6 +231,7 @@ const saveClient = handleSubmit(async (values) => {
     if (error) return toast.error("Could not save client", error.message);
   } else {
     const { data: orgId } = await supabase.rpc("current_org_id");
+    if (!orgId) return toast.error("Session issue — please refresh");
     const { error } = await supabase
       .from("clients")
       .insert({ ...payload, organization_id: orgId });

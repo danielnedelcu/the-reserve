@@ -214,6 +214,8 @@ async function requestTimeOff() {
   }
   savingException.value = true;
   const { data: me } = await supabase.rpc("current_staff_id");
+  if (!me) return toast.error("Session issue — please refresh");
+
   const { error } = await supabase.from("availability_exceptions").insert({
     staff_id: staffId,
     starts_at: new Date(exStart.value).toISOString(),

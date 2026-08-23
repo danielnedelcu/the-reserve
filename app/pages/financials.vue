@@ -1091,7 +1091,7 @@ function printReceipt(txn: Txn) {
           <template #noShows-cell="{ row }">
             <span
               class="tabular-nums"
-              :class="row.original.noShows && 'text-destructive'"
+              :class="row.original.noShows > 0 && 'text-destructive'"
             >
               {{ row.original.noShows }}
             </span>

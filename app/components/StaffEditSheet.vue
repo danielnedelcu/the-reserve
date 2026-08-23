@@ -102,7 +102,7 @@ watch(open, async (isOpen) => {
 
   if (can("roles.manage")) {
     const [{ data: roles }, { data: assigned }] = await Promise.all([
-      supabase.from("roles").select("id, name, description").order("name"),
+      supabase.from("roles").select("id, name").order("name"),
       supabase
         .from("staff_roles")
         .select("role_id")

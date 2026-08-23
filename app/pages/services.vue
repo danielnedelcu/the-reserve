@@ -211,6 +211,8 @@ const saveService = handleSubmit(async (values) => {
     if (error) return toast.error("Could not save service", error.message);
   } else {
     const { data: orgId } = await supabase.rpc("current_org_id");
+    if (!orgId) return toast.error("Session issue — please refresh");
+
     const { data, error } = await supabase
       .from("services")
       .insert({ ...payload, organization_id: orgId })

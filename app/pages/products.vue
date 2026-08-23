@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { z } from "zod";
 import { toTypedSchema } from "@vee-validate/zod";
+import type { TablesInsert } from "~~/shared/types/database";
 
 definePageMeta({ middleware: "can", permission: "products.view" });
 useSeoMeta({ title: "Products — The Reserve" });
@@ -154,7 +155,7 @@ function openEdit(product: ProductRow) {
 }
 
 const saveProduct = handleSubmit(async (values) => {
-  const payload = {
+  const payload: Omit<TablesInsert<"products">, "organization_id"> = {
     name: values.name,
     sku: values.sku || null,
     description: description.value || null,
@@ -173,6 +174,8 @@ const saveProduct = handleSubmit(async (values) => {
     if (error) return toast.error("Could not save product", error.message);
   } else {
     const { data: orgId } = await supabase.rpc("current_org_id");
+    if (!orgId) return toast.error("Session issue — please refresh");
+
     const { error } = await supabase
       .from("products")
       .insert({ ...payload, organization_id: orgId });
@@ -309,7 +312,7 @@ async function toggleActive(product: ProductRow) {
                   :aria-label="`Edit ${row.original.name}`"
                   @click="openEdit(row.original)"
                 >
-                  <Icon name="heroicons:pencil-square" class="size-4" />
+                  <Icon name="lucide:pencil" class="size-4" />
                 </UiButton>
               </UiTooltipTrigger>
               <UiTooltipContent>Edit product</UiTooltipContent>

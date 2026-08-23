@@ -81,7 +81,7 @@ export default defineEventHandler(async (event) => {
   const bufferBefore = service.buffer_before_min;
   const bufferAfter = service.buffer_after_min;
   const requiredTypes = service.service_resource_requirements.map(
-    (r) => r.resource_type_id,
+    (r: { resource_type_id: string }) => r.resource_type_id,
   );
 
   // --- Location + timezone ---------------------------------------------------

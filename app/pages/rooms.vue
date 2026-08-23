@@ -165,6 +165,8 @@ async function addType() {
   if (!name) return;
   savingType.value = true;
   const { data: orgId } = await supabase.rpc("current_org_id");
+  if (!orgId) return toast.error("Session issue — please refresh");
+
   const { error } = await supabase
     .from("resource_types")
     .insert({ organization_id: orgId, name });

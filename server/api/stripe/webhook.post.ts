@@ -13,6 +13,8 @@
 
 import type Stripe from "stripe";
 import { serverSupabaseServiceRole } from "#supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "~~/shared/types/database";
 
 export default defineEventHandler(async (event) => {
   const stripe = useStripe();
@@ -149,7 +151,7 @@ export default defineEventHandler(async (event) => {
 
 /** Notify every staff member holding pos.refund (admins+) via the notifications rail. */
 async function notifyAdmins(
-  admin: ReturnType<typeof serverSupabaseServiceRole>,
+  admin: SupabaseClient<Database>,
   notification: { kind: string; title: string; body: string },
 ) {
   const { data: admins, error } = await admin

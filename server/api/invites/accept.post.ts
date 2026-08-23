@@ -39,10 +39,10 @@ export default defineEventHandler(async (event) => {
     .maybeSingle();
 
   if (
-    !invite
-    || invite.accepted_at
-    || invite.revoked_at
-    || new Date(invite.expires_at) < new Date()
+    !invite ||
+    invite.accepted_at ||
+    invite.revoked_at ||
+    new Date(invite.expires_at) < new Date()
   ) {
     throw createError({
       statusCode: 410,
@@ -51,8 +51,8 @@ export default defineEventHandler(async (event) => {
   }
 
   // 1. Create the auth user (email pre-confirmed: the invite email IS the verification)
-  const { data: created, error: createError_ }
-    = await admin.auth.admin.createUser({
+  const { data: created, error: createError_ } =
+    await admin.auth.admin.createUser({
       email: invite.email,
       password: body.password,
       email_confirm: true,
@@ -70,9 +70,8 @@ export default defineEventHandler(async (event) => {
     invite_token: body.token,
     new_user_id: created.user.id,
     final_display_name: body.displayName,
-    final_title: body.title ?? null,
+    final_title: body.title ?? undefined,
   });
-
   if (acceptError) {
     // Roll back the orphaned auth user so the invite remains usable
     await admin.auth.admin.deleteUser(created.user.id);
