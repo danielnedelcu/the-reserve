@@ -96,7 +96,30 @@ export default defineEventHandler(async (event) => {
       });
     }
   }
+  // Push stripe_card portions back to the card BEFORE any ledger write —
+  // a Stripe failure aborts the refund entirely, so ledger and money
+  // never disagree (decision #5: automatic, loud failure).
+  const stripePayments = (original.payments ?? []).filter(
+    (p: { method: string; stripe_payment_intent_id: string | null }) =>
+      p.method === "stripe_card" && p.stripe_payment_intent_id !== null,
+  );
 
+  for (const stripePayment of stripePayments) {
+    const intentId = stripePayment.stripe_payment_intent_id;
+    if (!intentId) continue;
+    try {
+      await useStripe().refunds.create({
+        payment_intent: intentId,
+        amount: stripePayment.amount_cents,
+      });
+    } catch (error: unknown) {
+      const stripeError = error as { message?: string };
+      throw createError({
+        statusCode: 502,
+        statusMessage: `Stripe refund failed: ${stripeError.message ?? "unknown"} — nothing was refunded`,
+      });
+    }
+  }
   // The negative mirror
   const { data: refundTxn, error: txnError } = await admin
     .from("transactions")
@@ -158,6 +181,7 @@ export default defineEventHandler(async (event) => {
       method: payment.method,
       amount_cents: -(payment.amount_cents as number),
       gift_card_id: payment.gift_card_id, // negative amount → trigger restores balance
+      stripe_payment_intent_id: payment.stripe_payment_intent_id ?? null,
       reference: payment.reference ? `refund: ${payment.reference}` : null,
     }),
   );

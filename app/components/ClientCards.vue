@@ -135,6 +135,33 @@ async function saveCard() {
     saving.value = false;
   }
 }
+
+// Remove card: inline confirm (financials idiom), Stripe-first
+const confirmingRemoveId = ref<string | null>(null);
+const removing = ref(false);
+
+async function removeCard(rowId: string) {
+  removing.value = true;
+  try {
+    await $fetch(
+      `/api/clients/${props.clientId}/payment-methods/${rowId}/detach`,
+      {
+        method: "POST",
+      },
+    );
+    toast.success("Card removed");
+    confirmingRemoveId.value = null;
+    await refreshCards();
+  } catch (error: unknown) {
+    const err = error as { data?: { statusMessage?: string } };
+    toast.error(
+      "Could not remove card",
+      err.data?.statusMessage ?? "Unknown error",
+    );
+  } finally {
+    removing.value = false;
+  }
+}
 </script>
 
 <template>
@@ -172,11 +199,42 @@ async function saveCard() {
             >{{ brandLabel(card.brand) }} •••• {{ card.last4 }}</span
           >
         </div>
-        <span class="text-muted-foreground text-xs tabular-nums">
-          exp {{ String(card.exp_month).padStart(2, "0") }}/{{
-            String(card.exp_year).slice(-2)
-          }}
-        </span>
+        <div class="flex items-center gap-3">
+          <template v-if="confirmingRemoveId === card.id">
+            <span class="text-muted-foreground text-xs">Remove this card?</span>
+            <UiButton
+              size="sm"
+              variant="ghost"
+              @click="confirmingRemoveId = null"
+              >Keep</UiButton
+            >
+            <UiButton
+              size="sm"
+              variant="destructive"
+              :disabled="removing"
+              @click="removeCard(card.id)"
+            >
+              {{ removing ? "Removing…" : "Remove" }}
+            </UiButton>
+          </template>
+          <template v-else>
+            <span class="text-muted-foreground text-xs tabular-nums">
+              exp {{ String(card.exp_month).padStart(2, "0") }}/{{
+                String(card.exp_year).slice(-2)
+              }}
+            </span>
+            <UiButton
+              v-if="can('cards.manage')"
+              variant="ghost"
+              size="icon-sm"
+              class="text-muted-foreground hover:text-destructive size-6"
+              aria-label="Remove card"
+              @click="confirmingRemoveId = card.id"
+            >
+              <Icon name="lucide:x" class="size-3.5" />
+            </UiButton>
+          </template>
+        </div>
       </li>
     </ul>
     <p v-else class="text-muted-foreground mt-3 text-sm">No cards on file.</p>

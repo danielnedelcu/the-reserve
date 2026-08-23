@@ -327,7 +327,16 @@ export default defineEventHandler(async (event) => {
     amount_cents: number;
     gift_card_id: string | null;
     reference: string | null;
+    stripe_payment_intent_id: string | null;
   }[] = [];
+
+  // stripe_card: validated in the loop, CHARGED after sum validation (one per checkout, v1)
+  let stripeCharge: {
+    paymentMethodId: string;
+    stripeCustomerId: string;
+    amountCents: number;
+    rowIndex: number;
+  } | null = null;
 
   for (const payment of paymentsIn) {
     const amount = Math.floor(Number(payment.amountCents ?? 0));
@@ -363,6 +372,53 @@ export default defineEventHandler(async (event) => {
         amount_cents: amount,
         gift_card_id: card.id,
         reference: code,
+        stripe_payment_intent_id: null,
+      });
+    } else if (payment.method === "stripe_card") {
+      if (stripeCharge) {
+        throw createError({
+          statusCode: 422,
+          statusMessage: "Only one stripe card payment allowed per checkout",
+        });
+      }
+      if (!body.clientId) {
+        throw createError({
+          statusCode: 422,
+          statusMessage: "Card on file requires a client",
+        });
+      }
+      const pmId = String(payment.paymentMethodId ?? "");
+      const { data: savedCard } = await admin
+        .from("client_payment_methods")
+        .select(
+          "stripe_payment_method_id, client_id, active, clients!inner(stripe_customer_id)",
+        )
+        .eq("stripe_payment_method_id", pmId)
+        .eq("client_id", body.clientId)
+        .eq("active", true)
+        .maybeSingle();
+      const stripeCustomerId = (
+        savedCard?.clients as { stripe_customer_id: string | null } | null
+      )?.stripe_customer_id;
+      if (!savedCard || !stripeCustomerId) {
+        throw createError({
+          statusCode: 422,
+          statusMessage: "Saved card not found for this client",
+        });
+      }
+      stripeCharge = {
+        paymentMethodId: pmId,
+        stripeCustomerId,
+        amountCents: amount,
+        rowIndex: paymentRows.length,
+      };
+
+      paymentRows.push({
+        method: "stripe_card",
+        amount_cents: amount,
+        gift_card_id: null,
+        reference: null,
+        stripe_payment_intent_id: null, // filled after the charge succeeds
       });
     } else if (
       payment.method === "card_external" ||
@@ -373,6 +429,7 @@ export default defineEventHandler(async (event) => {
         amount_cents: amount,
         gift_card_id: null,
         reference: payment.reference || null,
+        stripe_payment_intent_id: null,
       });
     } else {
       throw createError({
@@ -388,6 +445,42 @@ export default defineEventHandler(async (event) => {
       statusCode: 422,
       statusMessage: `Payments ($${(paymentsSum / 100).toFixed(2)}) don't match total ($${(total / 100).toFixed(2)})`,
     });
+  }
+
+  // ---- Stripe charge (sync flow): money moves BEFORE any ledger write.
+  // Success → we record it; failure → 402, nothing written. If a write fails
+  // AFTER this succeeds, the webhook's orphan reconciliation flags it loudly.
+  if (stripeCharge) {
+    const stripe = useStripe();
+    try {
+      const intent = await stripe.paymentIntents.create({
+        amount: stripeCharge.amountCents,
+        currency: "usd",
+        customer: stripeCharge.stripeCustomerId,
+        payment_method: stripeCharge.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        metadata: {
+          reserve_client_id: body.clientId,
+          reserve_staff_id: staffId,
+        },
+      });
+      if (intent.status !== "succeeded") {
+        throw createError({
+          statusCode: 402,
+          statusMessage: `Card charge did not complete (${intent.status})`,
+        });
+      }
+      paymentRows[stripeCharge.rowIndex]!.stripe_payment_intent_id = intent.id;
+      paymentRows[stripeCharge.rowIndex]!.reference = intent.id;
+    } catch (error: unknown) {
+      const stripeError = error as { message?: string; statusCode?: number };
+      if (stripeError.statusCode === 402) throw error; // our own throw above
+      throw createError({
+        statusCode: 402,
+        statusMessage: stripeError.message ?? "Card was declined",
+      });
+    }
   }
 
   // ---- writes (service role; cleanup on failure) --------------------------------

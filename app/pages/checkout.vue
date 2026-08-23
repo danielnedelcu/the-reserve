@@ -78,6 +78,31 @@ if (context.value) {
   });
 }
 
+// Saved cards for the selected client (stripe_card tender)
+interface SavedCard {
+  stripe_payment_method_id: string;
+  brand: string;
+  last4: string;
+}
+const savedCards = ref<SavedCard[]>([]);
+const chargeMethod = ref<"terminal" | string>("terminal"); // pm id when a saved card is picked
+
+watch(
+  clientId,
+  async (id) => {
+    chargeMethod.value = "terminal";
+    savedCards.value = [];
+    if (!id) return;
+    const { data } = await supabase
+      .from("client_payment_methods")
+      .select("stripe_payment_method_id, brand, last4")
+      .eq("client_id", id)
+      .eq("active", true)
+      .order("created_at", { ascending: false });
+    savedCards.value = (data ?? []) as SavedCard[];
+  },
+  { immediate: true },
+);
 // ---------------------------------------------------------------------------
 // Clients (standalone flow) + products + tax rate
 // ---------------------------------------------------------------------------
@@ -348,11 +373,19 @@ async function completeCheckout() {
     });
   }
   if (remainderCents.value > 0) {
-    payments.push({
-      method: "card_external",
-      amountCents: remainderCents.value,
-      reference: cardReference.value || undefined,
-    });
+    if (chargeMethod.value !== "terminal") {
+      payments.push({
+        method: "stripe_card",
+        paymentMethodId: chargeMethod.value,
+        amountCents: remainderCents.value,
+      });
+    } else {
+      payments.push({
+        method: "card_external",
+        amountCents: remainderCents.value,
+        reference: cardReference.value || undefined,
+      });
+    }
   }
 
   try {
@@ -667,7 +700,37 @@ async function completeCheckout() {
           </div>
 
           <!-- Card remainder -->
-          <div class="mt-4">
+          <!-- Charge method + card remainder -->
+          <div
+            v-if="savedCards.length && remainderCents > 0"
+            class="mt-4 space-y-1.5"
+          >
+            <p class="text-muted-foreground text-xs">Charge method</p>
+            <label
+              v-for="card in savedCards"
+              :key="card.stripe_payment_method_id"
+              class="flex cursor-pointer items-center gap-2 text-sm"
+            >
+              <input
+                v-model="chargeMethod"
+                type="radio"
+                :value="card.stripe_payment_method_id"
+                class="accent-primary size-4"
+              />
+              Card on file — {{ card.brand }} •••• {{ card.last4 }}
+            </label>
+            <label class="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                v-model="chargeMethod"
+                type="radio"
+                value="terminal"
+                class="accent-primary size-4"
+              />
+              Card terminal (external)
+            </label>
+          </div>
+
+          <div v-if="chargeMethod === 'terminal'" class="mt-4">
             <p class="text-sm">
               Card (terminal):
               <span class="font-medium tabular-nums">{{
@@ -684,6 +747,15 @@ async function completeCheckout() {
               here.
             </p>
           </div>
+          <p v-else class="mt-4 text-sm">
+            Charge on file:
+            <span class="font-medium tabular-nums">{{
+              dollars(Math.max(remainderCents, 0))
+            }}</span>
+            <span class="text-muted-foreground block text-xs">
+              Charged through Stripe when you complete.
+            </span>
+          </p>
 
           <UiButton
             class="mt-4 w-full"
