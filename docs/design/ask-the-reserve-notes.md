@@ -1,8 +1,9 @@
 # "Ask The Reserve" — AI query layer (pre-design notes)
 
-Status: pre-design capture (2026-08-30). No build scheduled — sequenced
-after memberships (§3); the pgvector half additionally waits on intake
-forms (§6) producing a corpus. Start the eventual design session here.
+Status: pre-design capture (2026-08-30); UI flow added same day.
+RESEQUENCED: the text-to-SQL half is pulled AHEAD of memberships (§3 is
+owner-blocked; this is unblocked). The pgvector half still waits on
+intake forms (§6) producing a corpus. Start the design session here.
 
 ## The vision (as raised)
 
@@ -87,15 +88,46 @@ accumulate. Staff messages are EXCLUDED from any corpus (private comms).
   answer synthesis over retrieved rows (RAG, capability 2). Only needed
   at the ask-a-question layer.
 
-## Sequencing recommendation
+## Sequencing recommendation (revised 2026-08-30)
 
-1. NOW: this capture. Nothing built.
-2. AFTER MEMBERSHIPS: text-to-SQL assistant as its own small phase —
-   modest lift, high value, and every subsequent phase (memberships,
+1. NOW: text-to-SQL assistant as the next build phase — memberships is
+   owner-blocked, this is unblocked, and every later phase (memberships,
    intake, cancellation) makes it more useful for free since it reads
-   whatever the schema holds.
-3. AFTER INTAKE FORMS: enable pgvector, build the embeddings pipeline for
+   whatever the schema holds. Design session first, same as every phase.
+2. AFTER INTAKE FORMS: enable pgvector, build the embeddings pipeline for
    notes + intake responses; fold semantic retrieval into the same ask UI.
+
+## UI flow (decided 2026-08-30, adapted from a reference React project)
+
+Two keyboard surfaces with two contracts — do NOT merge into the palette:
+
+- **⌘K stays what it is**: deterministic, instant, navigational.
+- **⌘I opens the ask modal**: generative, seconds-latency, informational.
+
+The flow: **⌘I → prompt modal → results panel.**
+
+1. **Prompt modal**, context-aware: shows ~3 preset questions keyed to
+   the current route (/clients → "Who hasn't visited in 90 days?",
+   "Top spenders this quarter", "New clients this month"; /financials →
+   its own trio; etc.) plus a free-text input. Presets live in a
+   route-keyed config — plain data, easy to grow.
+2. **Hybrid execution** (the key architecture decision): presets run
+   KNOWN-GOOD hardcoded SQL — instant, zero tokens, zero wrongness risk.
+   Only the free-text input goes through the LLM → SQL path. The LLM is
+   the fallback for the long tail, not the engine for the common case.
+3. **Results panel**, bottom-right chat-style: doesn't navigate away,
+   persists while the admin acts on the answer. Renderer handles tables,
+   paragraphs, and lists; entity rows are clickable to their pages
+   (client_id → /clients/[id] — the consistent-ID discipline pays off).
+   Every LLM-generated result carries a collapsible "show SQL"
+   affordance (transparency = trust + debuggability); preset results
+   may skip it.
+
+Reference implementation exists (a React project with this exact flow);
+review its code before building for: where SQL executes and as what
+role (our SELECT-only-role boundary is non-negotiable regardless),
+retry/error handling for bad LLM SQL, streaming vs blocking results,
+and whether the panel holds history.
 
 ## Open questions for the eventual design session
 
@@ -103,8 +135,9 @@ accumulate. Staff messages are EXCLUDED from any corpus (private comms).
   only own-book questions?)
 - Query cost controls: per-question LLM spend is real money — rate limit?
   cache repeated questions?
-- Where does the UI live? (A page? The command palette grows an "ask"
-  mode? The palette is the natural home for v1.)
+- Chat panel: does it hold conversation history across questions
+  (follow-up refinement) or reset per ask? (v1 lean: reset, single
+  exchange; history is the v2 upgrade.)
 - Does the assistant get WRITE-shaped abilities ever ("draft a winback
   email to lapsed members")? Recommendation: no in v1 — read-only answers;
   actions remain human-initiated.
