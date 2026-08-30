@@ -13,30 +13,33 @@ non-negotiable rules live (see `.claude/skills/reserve-migrations/` and
 
 ```mermaid
 flowchart TB
-    B["Browser — Nuxt app\npages, components, supabase-js session\ncan() gates UI only, never enforcement"]
+    B["Browser — Nuxt app<br/>can() gates UI only"]
 
-    PR["PostgREST + Realtime\nRLS enforced — org-scoped,\npermission-checked (sockets too)"]
-    SR["Nuxt server routes\ncheckout · refund · card save/detach\ninvites · stripe webhook\nrequireUser + has_permission gate"]
+    PR["PostgREST + Realtime<br/>RLS enforced, sockets too"]
+    SR["Server routes<br/>checkout · refund · cards · webhook"]
 
-    PG["Postgres — where the rules live\nRLS helpers: current_org_id,\ncurrent_staff_id, has_permission(perm)"]
-    LED["Append-only ledger\ntransactions · items · payments\nno update or delete, ever"]
-    TRG["Triggers + constraints\nstock, gift balances, guard triggers,\nexclusion constraints (no double-booking)"]
-    OPS["Operational tables\nclients · appointments · staff\nmessages · cards · notifications"]
+    subgraph PG["Postgres — where the rules live"]
+        LED["Append-only ledger"]
+        TRG["Triggers + constraints"]
+        OPS["Operational tables"]
+    end
 
-    STR["Stripe\ncustomers, saved cards, charges, refunds\nPANs never touch our systems"]
-    RES["Resend\nreceipt + invite email (fire-and-forget)"]
+    STR["Stripe"]
+    RES["Resend"]
 
-    B -->|"reads + simple writes (RLS)"| PR
-    PR -.->|"realtime: messages, notifications"| B
-    B -->|"money + multi-step"| SR
-    SR -->|"service-role writes\nAFTER external calls succeed"| PG
+    B -->|"reads (RLS)"| PR
+    PR -.->|realtime| B
+    B -->|"money, multi-step"| SR
+    SR -->|"service-role writes"| PG
     PR --> PG
-    PG --- LED
-    PG --- TRG
-    PG --- OPS
-    SR -->|"charge, save card, refund\n(money moves first)"| STR
-    STR -.->|"webhook: signature-verified,\nidempotent, reconciles"| SR
-    SR -->|receipts, invites| RES
+    SR -->|"money moves first"| STR
+    STR -.->|"webhook reconciles"| SR
+    SR -->|email| RES
+
+    classDef rules fill:#EEEDFE,stroke:#534AB7,color:#26215C
+    class PG,LED,TRG,OPS rules
+    classDef external fill:#FAECE7,stroke:#993C1D,color:#4A1B0C
+    class STR,RES external
 ```
 
 ## The two doors
