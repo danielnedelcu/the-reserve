@@ -257,9 +257,20 @@ watch([keys["Meta+K"], keys["Ctrl+K"]], ([meta, ctrl]) => {
         class="flex h-12 items-center gap-2 px-4 justify-end sticky top-0 bg-background z-10"
       >
         <AppCommandPalette />
+        <AskTrigger v-if="can('ask.query')" />
         <NotificationsBell />
       </header>
       <slot />
+
+      <!-- Ask The Reserve. Gated on the same key /api/ask asserts
+           server-side — UI gating here is convenience only.
+           Two entry points, one results surface: the header trigger opens
+           the dock directly, ⌘I opens the prompt modal. Both dispatch the
+           same ask event, so answers always land in the one dock. -->
+      <template v-if="can('ask.query')">
+        <AskModal />
+        <AskDock />
+      </template>
     </UiSidebarInset>
   </UiSidebarProvider>
 </template>

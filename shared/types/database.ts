@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -190,6 +190,63 @@ export type Database = {
           },
           {
             foreignKeyName: "appointments_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ask_queries: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          generated_sql: string | null
+          id: string
+          organization_id: string
+          preset_id: string | null
+          question: string | null
+          row_count: number | null
+          source: string
+          staff_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          generated_sql?: string | null
+          id?: string
+          organization_id: string
+          preset_id?: string | null
+          question?: string | null
+          row_count?: number | null
+          source: string
+          staff_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          generated_sql?: string | null
+          id?: string
+          organization_id?: string
+          preset_id?: string | null
+          question?: string | null
+          row_count?: number | null
+          source?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ask_queries_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ask_queries_staff_id_fkey"
             columns: ["staff_id"]
             isOneToOne: false
             referencedRelation: "staff"

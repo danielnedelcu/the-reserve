@@ -44,6 +44,11 @@ export default defineNuxtConfig({
   runtimeConfig: {
     stripeSecretKey: process.env.STRIPE_SECRET_KEY,
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    // Ask The Reserve: question + schema go out, result rows never do.
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    // Connection string for the ask_readonly role. Its session user IS
+    // the safety boundary — never point this at a privileged role.
+    askDatabaseUrl: process.env.ASK_DATABASE_URL,
     // ...existing server-side entries...
     public: {
       stripePublishableKey: process.env.NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,

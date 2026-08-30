@@ -26,6 +26,12 @@ export default withNuxt({
   rules: {
     "@typescript-eslint/no-explicit-any": "off",
   },
+}, {
+  // Verification scripts are CLIs — stdout IS their output.
+  files: ["scripts/**"],
+  rules: {
+    "no-console": "off",
+  },
 },
 // Must be last: disables all ESLint formatting rules that conflict with
 // Prettier (which owns formatting via format-on-save).
