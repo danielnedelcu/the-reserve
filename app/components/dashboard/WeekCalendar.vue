@@ -77,6 +77,17 @@ const attributes = computed(() => {
       });
     }
   }
+
+  // LOAD-BEARING: v-calendar's weekly view opens on the FIRST attribute's week.
+  // This invisible anchor must be unshifted LAST (array position 0) so the
+  // calendar opens on today instead of the oldest appointment's week.
+  // Delete this and the dashboard opens ~2 weeks in the past.
+  attrs.unshift({
+    key: "today-anchor",
+    dates: new Date(),
+    highlight: { fillMode: "none" }, // renders nothing visible
+  });
+
   return attrs;
 });
 

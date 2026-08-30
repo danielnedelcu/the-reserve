@@ -8,16 +8,20 @@ await load();
 
 <template>
   <div class="mx-auto w-full p-6 md:p-10">
-    <div class="grid gap-8 lg:grid-cols-3">
+    <div class="grid gap-8 xl:grid-cols-[minmax(0,1fr)_436px]">
       <!-- Main column -->
-      <div class="lg:col-span-2">
+      <div class="">
         <DashboardFrontDeskToday />
         <DashboardKpiCards class="mt-6" />
       </div>
 
       <!-- Right column: week calendar -->
-      <div>
+      <div class="grid gap-8 md:grid-cols-2 xl:block">
         <DashboardWeekCalendar />
+        <DashboardNewClients
+          v-if="can('clients.view')"
+          class="md:mt-0 xl:mt-8"
+        />
       </div>
     </div>
   </div>
