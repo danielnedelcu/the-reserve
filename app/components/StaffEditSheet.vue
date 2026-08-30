@@ -48,7 +48,7 @@ interface Role {
 const record = ref<StaffRecord | null>(null);
 const allRoles = ref<Role[]>([]);
 const currentRoleIds = ref<Set<string>>(new Set());
-const checkedRoleIds = ref<Set<string>>(new Set());
+const checkedRoles = useToggleSet();
 const bookable = ref(false);
 
 const StaffSchema = z.object({
@@ -110,16 +110,9 @@ watch(open, async (isOpen) => {
     ]);
     allRoles.value = (roles ?? []) as Role[];
     currentRoleIds.value = new Set((assigned ?? []).map((r) => r.role_id));
-    checkedRoleIds.value = new Set(currentRoleIds.value);
+    checkedRoles.set.value = new Set(currentRoleIds.value);
   }
 });
-
-function toggleRole(roleId: string, checked: boolean) {
-  const next = new Set(checkedRoleIds.value);
-  if (checked) next.add(roleId);
-  else next.delete(roleId);
-  checkedRoleIds.value = next;
-}
 
 // ---------------------------------------------------------------------------
 // Save: profile update + role adds/removes
@@ -150,14 +143,14 @@ const save = handleSubmit(async (values) => {
 
   // Role changes (only when the section was shown and something changed)
   if (can("roles.manage")) {
-    const toAdd = [...checkedRoleIds.value].filter(
+    const toAdd = [...checkedRoles.set.value].filter(
       (id) => !currentRoleIds.value.has(id),
     );
     const toRemove = [...currentRoleIds.value].filter(
-      (id) => !checkedRoleIds.value.has(id),
+      (id) => !checkedRoles.has(id),
     );
 
-    if (checkedRoleIds.value.size === 0) {
+    if (checkedRoles.set.value.size === 0) {
       return toast.error(
         "Roles required",
         "A staff member needs at least one role.",
@@ -264,13 +257,8 @@ const { data: existingTitles } = await useAsyncData(
                   <input
                     type="checkbox"
                     class="mt-0.5 size-4 accent-primary"
-                    :checked="checkedRoleIds.has(role.id)"
-                    @change="
-                      toggleRole(
-                        role.id,
-                        ($event.target as HTMLInputElement).checked,
-                      )
-                    "
+                    :checked="checkedRoles.has(role.id)"
+                    @change="checkedRoles.toggle(role.id)"
                   />
                   <span>
                     <span class="font-medium capitalize">{{
