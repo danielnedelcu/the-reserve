@@ -343,3 +343,28 @@ After approval and `npm run db:push`:
 - `npx nuxt typecheck` still at 0
 - new/changed RPC signatures re-read from the regenerated
   `shared/types/database.ts` before any call site is written
+- any type shim added to bridge the gap is **deleted now**, not later
+
+## Ordering: push before the code that reads the schema
+
+When one change adds columns or tables *and* the route code consuming
+them, apply the migration first. `db:push` chains typegen, so the moment
+it lands `shared/types/database.ts` knows the new shape and the call site
+types itself. Write the consumer first and TypeScript sees columns that
+do not exist yet, which pushes you toward a shim that casts the error
+away — and that shim disables type checking on precisely the table whose
+schema just moved. The protection is switched off exactly where the risk
+is highest.
+
+This runs into the other standing rule — a push needs explicit approval —
+so it is a default, not a law. For an additive change (new columns on an
+existing table) the migration stands on its own and is easy to approve
+before any consumer exists. For a schema-shape change, the reviewer may
+reasonably want to see the route that uses it before approving anything,
+and then the consumer has to come first.
+
+So: **prefer push-first to avoid shims. When the consumer must be written
+first to make the change reviewable, the shim is the acknowledged cost —
+mark it with what removes it, and delete it the moment typegen lands.**
+A shim outliving its migration is the thing to catch; grep for its marker
+before calling the work done.

@@ -74,6 +74,30 @@ QUEUED (in order):
 - StaffEditSheet Roles section: confirm roles list renders + pre-checks +
   save works (after the description-column fix AND the toggle-set
   migration)
+- Ask: verify the prompt cache is actually hitting — `cache_read_tokens`
+  should be > 0 on the SECOND and later asks of a session. The schema
+  prompt is identical every time and is the bulk of the input, so a
+  persistent zero means something is busting the cached prefix and the
+  bill is roughly 3x what it should be. Check after a handful of real
+  asks, before the cost normalises as "just what it costs":
+
+      select created_at, input_tokens, cache_read_tokens, cost_micros
+        from ask_queries where model is not null
+       order by created_at desc limit 10;
+
+  A zero on the first ask of a cold window is expected; zeros all the way
+  down are the bug. Likeliest causes: the system prompt being rebuilt
+  per-request, `cache_control` dropped, or anything volatile creeping in
+  ahead of the breakpoint.
+
+  BASELINE 2026-09-05, two sequential asks, cache confirmed working:
+
+      ask 1 (cold): in=225 out=78 cache_read=0    cache_write=3218  $0.0232
+      ask 2 (warm): in=225 out=89 cache_read=3218 cache_write=0     $0.0050
+
+  So a warm ask is ~4.6x cheaper than a cold one, and the schema prompt is
+  the 3218 tokens doing the work. Compare against this when re-checking:
+  a warm ask drifting back toward $0.023 means the prefix broke.
 
 ## Blocked on the owner
 
