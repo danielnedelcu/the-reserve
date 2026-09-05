@@ -1,16 +1,53 @@
 # Ask The Reserve — AI query layer: Design
 
-STATUS: PHASE 1 APPLIED 2026-08-30. Both migrations are on the hosted
-database and the safety boundary is verified against it (see Verification
-below). The free-text path is built but has never executed — it needs
-ANTHROPIC_API_KEY — so the feature is not yet end-to-end live.
-This document records the design as decided and built. Decisions were
-locked in the 2026-08-30 session; the pre-design capture that fed it is
-preserved in `ask-the-reserve-notes.md`. Deviations found during the
-build are noted inline as [AS-BUILT].
+STATUS: PHASE 1 LIVE as of 2026-09-05 — end to end, verified against the
+hosted database. This document records the design as decided and built;
+decisions were locked in the 2026-08-30 session, the pre-design capture
+that fed it is preserved in `ask-the-reserve-notes.md`, and deviations
+found during the build are noted inline as [AS-BUILT].
 
 Phase 1 is the text-to-SQL half only. The pgvector/semantic half still
 waits on intake forms (§6) producing a corpus — see the notes doc.
+
+## What's live
+
+An admin opens the dock (header ⊕ sparkle, or ⌘I for the preset modal),
+asks a question in plain English, and gets a table back from their own
+data. Gated on `ask.query` — super_admin and admin.
+
+- **Preset questions** run known-good hardcoded SQL: instant, no tokens,
+  no wrongness risk. Route-keyed, so /clients offers different ones than
+  /transactions. 15 of them.
+- **Free text** goes to `claude-opus-5`, which writes one SELECT. The SQL
+  is shown on demand behind "show the query" — an admin can always see
+  what produced a number.
+- **Follow-ups resolve within a thread.** "How many gift cards were used
+  in the last 2 months?" then "and who used it?" works. "New thread"
+  starts a fresh conversation. (Decision 7.)
+- **Results render by column name**: `_cents` becomes currency, `_at` a
+  date, `_id` is consumed to link a record's name through to its page —
+  first/last name merge into one linked "Name" cell. (Rendering contract.)
+- **History stacks** as Q&A pairs and each answer can be copied as text
+  plus TSV, for pasting into an email.
+
+What is guaranteed, and enforced rather than intended:
+
+| Guarantee | By what |
+| --- | --- |
+| Generated SQL cannot write, or read outside an 18-table allowlist | the `ask_readonly` role, whose session user is the connection |
+| No client data reaches the model | the model is called before execution, never after |
+| Results are scoped to the asking admin's org and permissions | existing RLS, via injected `request.jwt.claims` |
+| One admin cannot load another's thread | enforced predicate on the context query |
+| Every ask is reconstructable, with its SQL and its cost | `ask_queries` (append-only) |
+
+Cost is metered per ask: a cold question runs ~$0.023, a warm one ~$0.005
+once the schema prompt is cached. Health check and baseline in
+`docs/TODO.md`.
+
+Deliberately not built: rate limiting and cost caps (deferred — the meter
+now supplies the data to size them), a scoped-down provider version, and
+answer summarization, which would send result rows to the model and needs
+an explicit egress review first.
 
 ## Decisions locked from Q&A
 
