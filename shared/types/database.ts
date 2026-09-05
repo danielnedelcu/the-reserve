@@ -199,12 +199,18 @@ export type Database = {
       }
       ask_queries: {
         Row: {
+          cache_read_tokens: number | null
+          cache_write_tokens: number | null
+          cost_micros: number | null
           created_at: string
           duration_ms: number | null
           error: string | null
           generated_sql: string | null
           id: string
+          input_tokens: number | null
+          model: string | null
           organization_id: string
+          output_tokens: number | null
           preset_id: string | null
           question: string | null
           row_count: number | null
@@ -212,12 +218,18 @@ export type Database = {
           staff_id: string
         }
         Insert: {
+          cache_read_tokens?: number | null
+          cache_write_tokens?: number | null
+          cost_micros?: number | null
           created_at?: string
           duration_ms?: number | null
           error?: string | null
           generated_sql?: string | null
           id?: string
+          input_tokens?: number | null
+          model?: string | null
           organization_id: string
+          output_tokens?: number | null
           preset_id?: string | null
           question?: string | null
           row_count?: number | null
@@ -225,12 +237,18 @@ export type Database = {
           staff_id: string
         }
         Update: {
+          cache_read_tokens?: number | null
+          cache_write_tokens?: number | null
+          cost_micros?: number | null
           created_at?: string
           duration_ms?: number | null
           error?: string | null
           generated_sql?: string | null
           id?: string
+          input_tokens?: number | null
+          model?: string | null
           organization_id?: string
+          output_tokens?: number | null
           preset_id?: string | null
           question?: string | null
           row_count?: number | null
@@ -1822,12 +1840,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1851,11 +1869,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1876,11 +1894,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1901,11 +1919,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1918,11 +1936,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

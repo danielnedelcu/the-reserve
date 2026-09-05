@@ -26,6 +26,43 @@ import { assertAskConfigured, executeAskQuery } from "../utils/askConnection";
  */
 
 const ROW_LIMIT = 500;
+const ASK_MODEL = "claude-opus-5";
+
+/**
+ * Rates in US dollars per million tokens, for the model above.
+ *
+ * Kept beside the call rather than in config on purpose: the cost written
+ * to ask_queries is a SNAPSHOT priced at the moment the ask ran, so this
+ * constant changing later must not retroactively alter what past asks
+ * cost. Same reasoning as price snapshots on transaction_items.
+ */
+const RATES_PER_MTOK = {
+  input: 5,
+  output: 25,
+  cacheRead: 0.5, // cached input bills at roughly a tenth
+  cacheWrite: 6.25, // writing to the cache carries a small premium
+};
+
+/** What one model call cost and consumed. Null on the preset path. */
+interface AskUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costMicros: number;
+}
+
+/** Millionths of a dollar — cents would round a two-cent ask to nothing. */
+function priceInMicros(u: Omit<AskUsage, "model" | "costMicros">): number {
+  const dollars =
+    (u.inputTokens * RATES_PER_MTOK.input +
+      u.outputTokens * RATES_PER_MTOK.output +
+      u.cacheReadTokens * RATES_PER_MTOK.cacheRead +
+      u.cacheWriteTokens * RATES_PER_MTOK.cacheWrite) /
+    1_000_000;
+  return Math.round(dollars * 1_000_000);
+}
 
 interface AskBody {
   question?: string;
@@ -79,7 +116,7 @@ function buildCaption(
 async function generateSql(
   question: string,
   route: string | undefined,
-): Promise<{ sql: string | null; reason: string | null }> {
+): Promise<{ sql: string | null; reason: string | null; usage: AskUsage }> {
   const apiKey = useRuntimeConfig().anthropicApiKey;
   if (!apiKey) {
     throw createError({
@@ -91,7 +128,7 @@ async function generateSql(
   const client = new Anthropic({ apiKey });
 
   const response = await client.messages.create({
-    model: "claude-opus-5",
+    model: ASK_MODEL,
     max_tokens: 4096,
     thinking: { type: "adaptive" },
     // The schema prompt is long and identical on every ask — cache it.
@@ -154,7 +191,21 @@ async function generateSql(
   }
 
   const input = toolUse.input as { sql?: string | null; reason?: string | null };
-  return { sql: input.sql ?? null, reason: input.reason ?? null };
+
+  // Recorded even when the model declines: a decline still costs money, and
+  // a spike in declines is exactly the kind of thing the meter should show.
+  const counts = {
+    inputTokens: response.usage.input_tokens ?? 0,
+    outputTokens: response.usage.output_tokens ?? 0,
+    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
+  };
+
+  return {
+    sql: input.sql ?? null,
+    reason: input.reason ?? null,
+    usage: { model: ASK_MODEL, ...counts, costMicros: priceInMicros(counts) },
+  };
 }
 
 export default defineEventHandler(async (event): Promise<AskResponse> => {
@@ -200,6 +251,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
 
   let sql: string | null;
   let unanswerableReason: string | null = null;
+  let usage: AskUsage | null = null;
 
   if (presetId) {
     sql = PRESET_SQL[presetId] ?? null;
@@ -210,6 +262,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
     const generated = await generateSql(question!, body.route);
     sql = generated.sql;
     unanswerableReason = generated.reason;
+    usage = generated.usage;
   }
 
   // The model declined to invent a query. That is a good outcome, not an
@@ -224,6 +277,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
       rowCount: null,
       durationMs: Date.now() - startedAt,
       error: unanswerableReason ?? "No SQL generated",
+      usage,
     });
     return {
       source,
@@ -254,6 +308,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
       rowCount: null,
       durationMs: Date.now() - startedAt,
       error: message,
+      usage,
     });
     // A 503 from the connection helper means Ask is unconfigured — let
     // that through rather than reporting it as a bad question.
@@ -279,6 +334,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
     rowCount: rows.length,
     durationMs,
     error: null,
+    usage,
   });
 
   return {
@@ -317,6 +373,8 @@ async function logAsk(
     rowCount: number | null;
     durationMs: number;
     error: string | null;
+    /** Null on the preset path — no model was called. */
+    usage: AskUsage | null;
   },
 ) {
   if (!entry.staffId) return;
@@ -339,5 +397,11 @@ async function logAsk(
     row_count: entry.rowCount,
     duration_ms: entry.durationMs,
     error: entry.error,
+    model: entry.usage?.model ?? null,
+    input_tokens: entry.usage?.inputTokens ?? null,
+    output_tokens: entry.usage?.outputTokens ?? null,
+    cache_read_tokens: entry.usage?.cacheReadTokens ?? null,
+    cache_write_tokens: entry.usage?.cacheWriteTokens ?? null,
+    cost_micros: entry.usage?.costMicros ?? null,
   });
 }

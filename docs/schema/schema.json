@@ -4273,7 +4273,7 @@
     {
       "name": "public.ask_queries",
       "type": "BASE TABLE",
-      "comment": "Append-only record of every Ask The Reserve question: the text asked, the SQL that ran, and what came back. No update/delete policies — a query log that can be edited is not a query log. Written by the /api/ask route; readable with ask.query. Rows with a non-null error are failed generations, which is the signal for prompt work.",
+      "comment": "Append-only record of every Ask The Reserve question: the text asked, the SQL that ran, what came back, and what it cost. No update/delete policies — a query log that can be edited is not a query log. Written by the /api/ask route; readable with ask.query. Rows with a non-null error are failed generations, which is the signal for prompt work. Rows with a null model are the preset path: answered with human-written SQL, no tokens spent.",
       "columns": [
         {
           "name": "id",
@@ -4332,6 +4332,40 @@
           "type": "timestamp with time zone",
           "nullable": false,
           "default": "now()"
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "nullable": true,
+          "comment": "Which model answered, e.g. claude-opus-5. Null on the preset path — no model was called, which is the point of presets."
+        },
+        {
+          "name": "input_tokens",
+          "type": "integer",
+          "nullable": true,
+          "comment": "Uncached input tokens billed at full rate. The cached schema prompt lands in cache_read_tokens instead, so this stays small on a warm cache."
+        },
+        {
+          "name": "output_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cache_read_tokens",
+          "type": "integer",
+          "nullable": true,
+          "comment": "Tokens served from the prompt cache (~0.1x input price). The system prompt is identical on every ask, so a healthy value here is the sign caching is working; a persistent zero means something is invalidating the prefix."
+        },
+        {
+          "name": "cache_write_tokens",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "cost_micros",
+          "type": "integer",
+          "nullable": true,
+          "comment": "What this ask cost, in MILLIONTHS of a dollar (22500 = $0.0225). Cents would round a two-cent ask to nothing. Priced at the rate in force when it ran and never recomputed — a rate change must not rewrite history."
         }
       ],
       "indexes": [
@@ -4358,6 +4392,15 @@
           "table": "public.ask_queries",
           "columns": [
             "staff_id",
+            "created_at"
+          ]
+        },
+        {
+          "name": "ask_queries_org_cost",
+          "def": "CREATE INDEX ask_queries_org_cost ON public.ask_queries USING btree (organization_id, created_at DESC) WHERE (cost_micros IS NOT NULL)",
+          "table": "public.ask_queries",
+          "columns": [
+            "organization_id",
             "created_at"
           ]
         }
