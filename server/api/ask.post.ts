@@ -397,11 +397,14 @@ async function resolveStaff(
   if (!staffId) return { staffId: null, organizationId: null };
 
   const admin = serverSupabaseServiceRole(event);
+  // maybeSingle, not single: current_staff_id() just returned this id, so no
+  // row is impossible — but .single() turns "impossible" into a thrown 500,
+  // where the null path already degrades to a skipped log entry.
   const { data: staff } = await admin
     .from("staff")
     .select("organization_id")
     .eq("id", staffId)
-    .single();
+    .maybeSingle();
   return { staffId, organizationId: staff?.organization_id ?? null };
 }
 
