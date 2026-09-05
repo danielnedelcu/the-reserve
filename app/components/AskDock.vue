@@ -20,14 +20,20 @@
  * Entries still complete independently: a slow question left pending does
  * not block a later quick one, and each fills its own slot when it lands.
  *
- * Results render through the rendering contract (app/utils/askFormat.ts):
+ * Results render through the rendering contract (shared/ask/format.ts):
  * a column's NAME decides its display — `_cents` → currency, `_at` → a
  * date, `_id` consumed to link the name it identifies. The caption above
  * each table is built server-side from the result shape; result rows
  * never leave the database, so there is no model-written prose to show.
  */
 import type { AskRequest, AskResult } from "~/composables/useAsk";
-import type { ColumnPlan, DisplayColumn } from "~/utils/askFormat";
+import {
+  planColumns,
+  cellValue,
+  cellLink,
+  type ColumnPlan,
+  type DisplayColumn,
+} from "~~/shared/ask/format";
 
 interface AskEntry {
   id: number;

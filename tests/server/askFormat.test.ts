@@ -9,7 +9,8 @@ import {
   cellHref,
   cellValue,
   cellLink,
-} from "../../app/utils/askFormat";
+  buildCaption,
+} from "../../shared/ask/format";
 import { coerceRows } from "../../server/utils/askConnection";
 
 /**
@@ -402,5 +403,64 @@ describe("merged Name column", () => {
     const r = { client_id: "c1", first_name: "Cher", last_name: null };
     const p = planColumns(["client_id", "first_name", "last_name"], [r]);
     expect(cellValue(p.display[0]!, r, p)).toBe("Cher");
+  });
+});
+
+describe("caption and table agree — one rendering contract", () => {
+  /**
+   * The divergence this locks down: the route used to carry its own copy of
+   * the money rules for captions. It required `typeof value === "number"`,
+   * which a `numeric`-typed column does NOT satisfy — numeric is left as a
+   * string on purpose, to preserve precision past 2^53. So a single-cell
+   * result read "Avg spend: 4064" in the caption and "$40.64" in the table
+   * directly beneath it: a raw cents figure under a dollars label, which is
+   * exactly what the columnLabel honesty rule exists to prevent.
+   */
+  const CAP = 500;
+  const asTable = (row: Record<string, unknown>, columns: string[]) => {
+    const plan = planColumns(columns, [row]);
+    const column = plan.display[0]!;
+    return `${column.label}: ${cellValue(column, row, plan)}`;
+  };
+
+  it("agrees when the value is a number (int8, the sum() case)", () => {
+    const row = { avg_spend_cents: 4064 };
+    const cols = ["avg_spend_cents"];
+    expect(buildCaption([row], cols, false, CAP)).toBe("Avg spend: $40.64");
+    expect(asTable(row, cols)).toBe("Avg spend: $40.64");
+  });
+
+  it("agrees when the value is a numeric STRING (the avg()/round() case)", () => {
+    // The case that used to disagree.
+    const row = { avg_spend_cents: "4064" };
+    const cols = ["avg_spend_cents"];
+    expect(buildCaption([row], cols, false, CAP)).toBe("Avg spend: $40.64");
+    expect(buildCaption([row], cols, false, CAP)).toBe(asTable(row, cols));
+  });
+
+  it("keeps the label honest in the caption when the value will not format", () => {
+    // The caption must not strip _cents unconditionally: a label promising
+    // dollars over a raw figure is the failure being guarded against.
+    const row = { spend_cents: "n/a" };
+    const caption = buildCaption([row], ["spend_cents"], false, CAP);
+    expect(caption).toBe("Spend cents: n/a");
+    expect(caption).not.toBe("Spend: n/a");
+  });
+
+  it("formats a date caption through the same rules", () => {
+    const row = { last_visit_at: "2026-08-23T00:00:00.000Z" };
+    expect(buildCaption([row], ["last_visit_at"], false, CAP)).toBe(
+      "Last visit: Aug 23, 2026",
+    );
+  });
+
+  it("counts rows when the result is not a single value", () => {
+    expect(buildCaption([{ a: 1 }, { a: 2 }], ["a"], false, CAP)).toBe("2 rows.");
+    expect(buildCaption([{ a: 1 }], ["a", "b"], false, CAP)).toBe("1 row.");
+    expect(buildCaption([{ a: 1 }], ["a", "b"], true, CAP)).toBe("1 row (capped at 500).");
+  });
+
+  it("says so when nothing matched", () => {
+    expect(buildCaption([], [], false, CAP)).toBe("No rows matched that question.");
   });
 });

@@ -8,6 +8,7 @@ import {
   CONTEXT_DEPTH,
   type ContextMessage,
 } from "../utils/askContext";
+import { buildCaption } from "~~/shared/ask/format";
 
 /**
  * POST /api/ask — Ask The Reserve, phase 1 (text-to-SQL, read-only).
@@ -84,39 +85,6 @@ interface AskResponse {
   rows: Record<string, unknown>[];
   answer: string | null;
   truncated: boolean;
-}
-
-/**
- * A caption built from the result shape alone — no model involved, so no
- * rows leave the database to produce it. Deterministic by construction:
- * the same result always reads the same way.
- */
-function buildCaption(
-  rows: Record<string, unknown>[],
-  columns: string[],
-  truncated: boolean,
-): string {
-  if (!rows.length) return "No rows matched that question.";
-
-  // A single number is the common shape for "how many" / "how much".
-  if (rows.length === 1 && columns.length === 1) {
-    const column = columns[0]!;
-    const value = rows[0]![column];
-    const label = column.replace(/_cents$/, "").replace(/_/g, " ");
-    const formatted =
-      typeof value === "number" && column.endsWith("_cents")
-        ? new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-          }).format(value / 100)
-        : String(value ?? "—");
-    return `${label.charAt(0).toUpperCase()}${label.slice(1)}: ${formatted}`;
-  }
-
-  const noun = rows.length === 1 ? "row" : "rows";
-  return truncated
-    ? `${rows.length} ${noun} (capped at ${ROW_LIMIT}).`
-    : `${rows.length} ${noun}.`;
 }
 
 /** Asks Claude for one SELECT. Returns null when the question is unanswerable. */
@@ -411,7 +379,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
     sql: source === "llm" ? sql : null,
     columns,
     rows,
-    answer: buildCaption(rows, columns, truncated),
+    answer: buildCaption(rows, columns, truncated, ROW_LIMIT),
     truncated,
   };
 });

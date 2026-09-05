@@ -1,5 +1,13 @@
 /**
- * Ask The Reserve — the rendering contract, client half.
+ * Ask The Reserve — the rendering contract.
+ *
+ * ONE source of truth, used by the route (captions), the dock (tables) and
+ * the verification scripts. It lived in app/utils/ while only the renderer
+ * needed it; the route then grew its own copy of the money rules for
+ * captions, and the two drifted — a numeric-typed single-cell result read
+ * "Avg spend: 4064" in the caption and "$40.64" in the table, which is
+ * precisely the "wrong number wearing a right label" the honesty rule below
+ * exists to prevent. Hence shared/, next to presets.ts.
  *
  * A column's NAME decides how it displays. The prompt names columns, the
  * coercion layer types them, this formats them:
@@ -8,10 +16,10 @@
  *   _at     -> date/time         (Aug 23, 2026)
  *   _id     -> a link on the record's name (the id column stays hidden)
  *
- * Extracted from the dock so it can be unit-tested: getting money or dates
- * wrong on screen is the failure mode most likely to be believed. A raw
- * 35641 reads as a plausible dollar figure, which is worse than an obvious
- * error.
+ * Kept separate from any component so it can be unit-tested: getting money
+ * or dates wrong on screen is the failure mode most likely to be believed.
+ * A raw 35641 reads as a plausible dollar figure, which is worse than an
+ * obvious error.
  *
  * `_id` columns are CONSUMED, not displayed. The prompt asks the model to
  * select entity ids alongside their labels; the id becomes the href on the
@@ -354,4 +362,37 @@ export function cellLink(
   const id = row[column.link.idColumn];
   if (typeof id !== "string" || id === "") return null;
   return `${column.link.routeBase}/${id}`;
+}
+
+/**
+ * The one-line caption above a result.
+ *
+ * Deterministic and built from the result SHAPE — no model is involved, so
+ * no rows leave the database to produce it (design doc, decision 4).
+ *
+ * It formats through the same plan the table uses, deliberately. When the
+ * route carried its own copy it required `typeof value === "number"`, which
+ * a `numeric`-typed column does not satisfy (it stays a string to preserve
+ * precision), and it stripped `_cents` from the label unconditionally. The
+ * result was a caption reading raw cents under a dollars label while the
+ * cell beneath it read correctly.
+ */
+export function buildCaption(
+  rows: Record<string, unknown>[],
+  columns: string[],
+  truncated: boolean,
+  rowCap: number,
+): string {
+  if (!rows.length) return "No rows matched that question.";
+
+  // A single value is the common shape for "how many" / "how much" — say it
+  // as a sentence rather than making the reader parse a one-cell table.
+  if (rows.length === 1 && columns.length === 1) {
+    const column = columns[0]!;
+    const plan = planColumns(columns, rows);
+    return `${columnLabel(column, plan)}: ${formatCell(column, rows[0]![column], plan)}`;
+  }
+
+  const noun = rows.length === 1 ? "row" : "rows";
+  return truncated ? `${rows.length} ${noun} (capped at ${rowCap}).` : `${rows.length} ${noun}.`;
 }

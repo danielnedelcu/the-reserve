@@ -27,7 +27,7 @@ const g = (k) => {
 const { PRESET_SQL } = await import(`${PROJECT}/server/utils/askPresets.ts`);
 const { coerceRows } = await import(`${PROJECT}/server/utils/askConnection.ts`);
 const { planColumns, columnLabel, formatCell } = await import(
-  `${PROJECT}/app/utils/askFormat.ts`
+  `${PROJECT}/shared/ask/format.ts`
 );
 
 // --- find a real admin (privileged connection, id only) ---------------
