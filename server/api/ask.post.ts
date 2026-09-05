@@ -3,6 +3,11 @@ import { serverSupabaseServiceRole } from "#supabase/server";
 import { ASK_SYSTEM_PROMPT } from "../utils/askSchema";
 import { PRESET_SQL } from "../utils/askPresets";
 import { assertAskConfigured, executeAskQuery } from "../utils/askConnection";
+import {
+  buildContextMessages,
+  CONTEXT_DEPTH,
+  type ContextMessage,
+} from "../utils/askContext";
 
 /**
  * POST /api/ask — Ask The Reserve, phase 1 (text-to-SQL, read-only).
@@ -68,6 +73,8 @@ interface AskBody {
   question?: string;
   presetId?: string;
   route?: string;
+  /** Groups the asks of one dock session so follow-ups can resolve. */
+  threadId?: string;
 }
 
 interface AskResponse {
@@ -116,6 +123,7 @@ function buildCaption(
 async function generateSql(
   question: string,
   route: string | undefined,
+  context: ContextMessage[],
 ): Promise<{ sql: string | null; reason: string | null; usage: AskUsage }> {
   const apiKey = useRuntimeConfig().anthropicApiKey;
   if (!apiKey) {
@@ -165,7 +173,12 @@ async function generateSql(
       },
     ],
     tool_choice: { type: "tool", name: "answer_with_sql" },
+    // Context goes in MESSAGES, never in the system block. The system block
+    // carries cache_control and is byte-identical on every ask; folding
+    // prior turns into it would change the cached prefix on every follow-up
+    // and quietly cost ~4.6x per ask (baseline in docs/TODO.md).
     messages: [
+      ...context,
       {
         role: "user",
         content: route
@@ -208,6 +221,48 @@ async function generateSql(
   };
 }
 
+/**
+ * The earlier asks of one thread, oldest first.
+ *
+ * Scoping is an enforced WHERE, not an ordering: thread_id alone would let
+ * anyone who guessed or reused an id pull another admin's questions and
+ * SQL into their own prompt. staff_id and organization_id are what make
+ * the thread the caller's own. This runs on the service role — it reads
+ * ask_queries, which ask_readonly deliberately cannot see — so RLS is not
+ * doing the filtering here and the predicate has to.
+ */
+async function loadThreadContext(
+  event: Parameters<typeof serverSupabaseServiceRole>[0],
+  threadId: string | null | undefined,
+  staffId: string | null,
+  organizationId: string | null,
+): Promise<ContextMessage[]> {
+  if (!threadId || !staffId || !organizationId) return [];
+
+  const admin = serverSupabaseServiceRole(event);
+  const { data } = await admin
+    .from("ask_queries")
+    .select("question, preset_id, generated_sql, error")
+    .eq("thread_id", threadId)
+    .eq("staff_id", staffId)
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(CONTEXT_DEPTH);
+
+  if (!data?.length) return [];
+
+  // Newest-first from the query so LIMIT keeps the most recent; reversed
+  // here so the model reads them in the order they were asked.
+  return buildContextMessages(
+    [...data].reverse().map((row) => ({
+      question: row.question,
+      presetId: row.preset_id,
+      generatedSql: row.generated_sql,
+      error: row.error,
+    })),
+  );
+}
+
 export default defineEventHandler(async (event): Promise<AskResponse> => {
   const { user, client } = await requirePermission(event, "ask.query");
 
@@ -248,6 +303,11 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
 
   const source: "preset" | "llm" = presetId ? "preset" : "llm";
   const startedAt = Date.now();
+  const threadId = body.threadId?.trim() || null;
+
+  // Resolved once, before anything is spent: the thread lookup needs both
+  // to scope, and logging needs them afterwards either way.
+  const { staffId, organizationId } = await resolveStaff(event, client);
 
   let sql: string | null;
   let unanswerableReason: string | null = null;
@@ -259,7 +319,9 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
       throw createError({ statusCode: 400, statusMessage: "Unknown question." });
     }
   } else {
-    const generated = await generateSql(question!, body.route);
+    // Prior turns of this thread, so "and who used it?" has an antecedent.
+    const context = await loadThreadContext(event, threadId, staffId, organizationId);
+    const generated = await generateSql(question!, body.route, context);
     sql = generated.sql;
     unanswerableReason = generated.reason;
     usage = generated.usage;
@@ -269,7 +331,9 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
   // error — report it as an answer with no rows.
   if (!sql) {
     await logAsk(event, {
-      staffId: await currentStaffId(client),
+      staffId,
+      organizationId,
+      threadId,
       source,
       presetId: presetId ?? null,
       question: question ?? null,
@@ -293,7 +357,6 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
 
   // Execute on the ask_readonly connection: session_user is the leash,
   // and the injected claims keep RLS scoped to this admin.
-  const staffId = await currentStaffId(client);
   let execution;
   try {
     execution = await executeAskQuery(sql, userId, ROW_LIMIT);
@@ -301,6 +364,8 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
     const message = error instanceof Error ? error.message : String(error);
     await logAsk(event, {
       staffId,
+      organizationId,
+      threadId,
       source,
       presetId: presetId ?? null,
       question: question ?? null,
@@ -327,6 +392,8 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
 
   await logAsk(event, {
     staffId,
+    organizationId,
+    threadId,
     source,
     presetId: presetId ?? null,
     question: question ?? null,
@@ -349,12 +416,25 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
   };
 });
 
-/** The asking admin's staff row, for attribution on the log entry. */
-async function currentStaffId(
+/**
+ * The asking admin's staff row and org — for log attribution, and for
+ * scoping the thread lookup to their own questions.
+ */
+async function resolveStaff(
+  event: Parameters<typeof serverSupabaseServiceRole>[0],
   client: Awaited<ReturnType<typeof requirePermission>>["client"],
-): Promise<string | null> {
+): Promise<{ staffId: string | null; organizationId: string | null }> {
   const { data } = await client.rpc("current_staff_id");
-  return (data as string | null) ?? null;
+  const staffId = (data as string | null) ?? null;
+  if (!staffId) return { staffId: null, organizationId: null };
+
+  const admin = serverSupabaseServiceRole(event);
+  const { data: staff } = await admin
+    .from("staff")
+    .select("organization_id")
+    .eq("id", staffId)
+    .single();
+  return { staffId, organizationId: staff?.organization_id ?? null };
 }
 
 /**
@@ -366,6 +446,8 @@ async function logAsk(
   event: Parameters<typeof serverSupabaseServiceRole>[0],
   entry: {
     staffId: string | null;
+    organizationId: string | null;
+    threadId: string | null;
     source: "preset" | "llm";
     presetId: string | null;
     question: string | null;
@@ -377,19 +459,13 @@ async function logAsk(
     usage: AskUsage | null;
   },
 ) {
-  if (!entry.staffId) return;
+  if (!entry.staffId || !entry.organizationId) return;
 
   const admin = serverSupabaseServiceRole(event);
-  const { data: staff } = await admin
-    .from("staff")
-    .select("organization_id")
-    .eq("id", entry.staffId)
-    .single();
-  if (!staff) return;
-
   await admin.from("ask_queries").insert({
-    organization_id: staff.organization_id,
+    organization_id: entry.organizationId,
     staff_id: entry.staffId,
+    thread_id: entry.threadId,
     source: entry.source,
     preset_id: entry.presetId,
     question: entry.question,

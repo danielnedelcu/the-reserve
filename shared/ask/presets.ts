@@ -98,3 +98,18 @@ export function presetsForRoute(path: string): AskPreset[] {
   )[0];
   return match?.presets ?? ORG_PRESETS;
 }
+
+/**
+ * The human label for a preset id, for anywhere the id alone is unhelpful.
+ *
+ * Follow-up context is one such place: ask_queries stores question = null
+ * for presets, so replaying "clients.top_spenders_quarter" as a prior turn
+ * would tell the model nothing. The label is what the admin actually saw.
+ */
+export function presetLabel(id: string): string | null {
+  for (const entry of ROUTE_PRESETS) {
+    const found = entry.presets.find((p) => p.id === id);
+    if (found) return found.label;
+  }
+  return ORG_PRESETS.find((p) => p.id === id)?.label ?? null;
+}

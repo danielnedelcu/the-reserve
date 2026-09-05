@@ -49,6 +49,23 @@ const ASK_EVENT = "reserve:ask";
 export function useAsk() {
   const dockOpen = useState("ask-dock-open", () => false);
 
+  /**
+   * The current conversation thread. Sent with every ask so the route can
+   * reconstruct prior turns from ask_queries and resolve follow-ups
+   * ("and who used it?") against them.
+   *
+   * Only the ID travels. The client never sends its own history — the
+   * server reads the thread back out of the log, so context cannot be
+   * forged and the audit trail is the source of truth for what a refined
+   * question was refining.
+   */
+  const threadId = useState<string>("ask-thread-id", () => crypto.randomUUID());
+
+  /** Start a fresh conversation. "New thread" means this, not just a wipe. */
+  function resetThread() {
+    threadId.value = crypto.randomUUID();
+  }
+
   /** The ⌘I prompt modal (AskModal). Its asks surface in the dock. */
   const modalOpen = useState("ask-modal-open", () => false);
 
@@ -86,6 +103,8 @@ export function useAsk() {
     ask,
     askText,
     onAsk,
+    threadId,
+    resetThread,
     dockOpen,
     openDock,
     closeDock,

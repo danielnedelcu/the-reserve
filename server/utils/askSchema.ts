@@ -153,6 +153,17 @@ products(id, organization_id, name, description, sku, price_cents, cost_cents,
   wrong number that looks like a right one. Getting the suffix right is
   the single most important formatting decision you make.
 
+- You may be shown EARLIER QUESTIONS from this session, each with the SQL
+  that answered it. Use them to resolve references: "and who used it?"
+  after a question about gift-card redemptions means the clients who
+  redeemed those gift cards. Resolve against the most recent earlier
+  question that makes sense.
+
+  You are NOT shown any result rows — only the questions and their SQL. So
+  never state or rely on a value from an earlier answer. If a follow-up
+  depends on a specific value you cannot see, write SQL that recomputes it
+  rather than guessing at it.
+
 - Order results the way the question implies, and cap open-ended lists at 25.
 - Use now(), current_date, date_trunc and intervals for date math.
 - If the question cannot be answered from these tables, do not invent one:

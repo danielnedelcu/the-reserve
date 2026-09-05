@@ -4366,6 +4366,12 @@
           "type": "integer",
           "nullable": true,
           "comment": "What this ask cost, in MILLIONTHS of a dollar (22500 = $0.0225). Cents would round a two-cent ask to nothing. Priced at the rate in force when it ran and never recomputed — a rate change must not rewrite history."
+        },
+        {
+          "name": "thread_id",
+          "type": "uuid",
+          "nullable": true,
+          "comment": "Groups the asks of one dock session, bounded by the \"New thread\" control. Null on rows written before threading existed, and on any ask made outside a thread. A refined question (\"and who used it?\") is only interpretable alongside the rows sharing its thread_id — note that generated_sql on each row stays self-contained, so an ANSWER is always auditable on its own; it is the question TEXT that needs its predecessors."
         }
       ],
       "indexes": [
@@ -4401,6 +4407,15 @@
           "table": "public.ask_queries",
           "columns": [
             "organization_id",
+            "created_at"
+          ]
+        },
+        {
+          "name": "ask_queries_thread",
+          "def": "CREATE INDEX ask_queries_thread ON public.ask_queries USING btree (thread_id, created_at DESC) WHERE (thread_id IS NOT NULL)",
+          "table": "public.ask_queries",
+          "columns": [
+            "thread_id",
             "created_at"
           ]
         }

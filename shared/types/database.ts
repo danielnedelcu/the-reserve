@@ -216,6 +216,7 @@ export type Database = {
           row_count: number | null
           source: string
           staff_id: string
+          thread_id: string | null
         }
         Insert: {
           cache_read_tokens?: number | null
@@ -235,6 +236,7 @@ export type Database = {
           row_count?: number | null
           source: string
           staff_id: string
+          thread_id?: string | null
         }
         Update: {
           cache_read_tokens?: number | null
@@ -254,6 +256,7 @@ export type Database = {
           row_count?: number | null
           source?: string
           staff_id?: string
+          thread_id?: string | null
         }
         Relationships: [
           {

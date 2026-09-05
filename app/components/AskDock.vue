@@ -11,17 +11,14 @@
  * page go through identical code. There is no second way in to keep
  * working.
  *
- * HISTORY IS VISUAL, NOT CONVERSATIONAL. Asks stack as Q&A pairs so an
- * admin can compare answers and scroll back, but every question is still
- * answered INDEPENDENTLY: /api/ask receives one question and no prior
- * turns, so nothing here lets "and how about last month?" resolve against
- * the question above it. Conversational follow-up — sending prior turns
- * so the model can refine — is a separate piece of work with its own cost
- * and prompt-caching consequences. See the design doc's open questions.
+ * Asks stack as Q&A pairs, and questions in the same THREAD resolve
+ * against each other — "and who used it?" works. Only the thread id is
+ * sent; the route reconstructs the prior turns from ask_queries, so this
+ * component never has to be trusted with conversation state. "New thread"
+ * starts a fresh one.
  *
- * Because entries are independent, they also complete independently: a
- * slow question left pending does not block a later quick one, and each
- * fills its own slot when it lands.
+ * Entries still complete independently: a slow question left pending does
+ * not block a later quick one, and each fills its own slot when it lands.
  *
  * Results render through the rendering contract (app/utils/askFormat.ts):
  * a column's NAME decides its display — `_cents` → currency, `_at` → a
@@ -44,7 +41,7 @@ interface AskEntry {
   showSql: boolean;
 }
 
-const { onAsk, askText, dockOpen, closeDock } = useAsk();
+const { onAsk, askText, dockOpen, closeDock, threadId, resetThread } = useAsk();
 const route = useRoute();
 
 const question = ref("");
@@ -90,6 +87,7 @@ onAsk(async (request: AskRequest) => {
         question: request.question,
         presetId: request.presetId,
         route: request.route,
+        threadId: threadId.value,
       },
     });
     entry.result = result;
@@ -112,9 +110,13 @@ function submit() {
   question.value = "";
 }
 
-/** Start over. Clears the transcript; nothing server-side is affected. */
+/**
+ * Start over. Clears the transcript AND starts a new conversation thread,
+ * so the next question is not resolved against the ones above it.
+ */
 async function newThread() {
   entries.value = [];
+  resetThread();
   question.value = "";
   await nextTick();
   inputEl.value?.inputRef?.focus();

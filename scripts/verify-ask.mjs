@@ -133,6 +133,73 @@ for (const [label, sql] of [
 
 await mustRefuse("write refused (read-only)", "update clients set active = active");
 
+// --- thread scoping ----------------------------------------------------
+// Follow-up context is loaded from ask_queries by the ROUTE, on the service
+// role — ask_readonly cannot see that table, so RLS is not filtering here
+// and the predicate has to. This checks the predicate the way the route
+// writes it: thread_id alone would let anyone who guessed or reused an id
+// pull another admin's questions and SQL into their own prompt.
+//
+// Deliberately asserts BOTH directions. "B sees nothing" alone would also
+// pass if the query were simply broken and returned nothing for everyone.
+{
+  const priv = new pg.Client({
+    connectionString: env.TBLS_DSN,
+    ssl: { rejectUnauthorized: false },
+  });
+  await priv.connect();
+
+  const owner = (
+    await priv.query(
+      `select thread_id, staff_id, organization_id
+         from ask_queries
+        where thread_id is not null
+        order by created_at desc limit 1`,
+    )
+  ).rows[0];
+
+  const other = owner
+    ? (
+        await priv.query(
+          `select id from staff
+            where organization_id = $1 and id <> $2 limit 1`,
+          [owner.organization_id, owner.staff_id],
+        )
+      ).rows[0]
+    : null;
+
+  const asStaff = async (staffId) =>
+    (
+      await priv.query(
+        `select count(*)::int n from ask_queries
+          where thread_id = $1 and staff_id = $2 and organization_id = $3`,
+        [owner.thread_id, staffId, owner.organization_id],
+      )
+    ).rows[0].n;
+
+  if (!owner) {
+    add("thread scoping", "ERROR", "no threaded asks yet — run one first");
+  } else if (!other) {
+    add("thread scoping", "ERROR", "no second staff member to test against");
+  } else {
+    const mine = await asStaff(owner.staff_id);
+    const theirs = await asStaff(other.id);
+    add(
+      "thread loads for its owner",
+      mine > 0 ? "PASS" : "FAIL",
+      `${mine} row(s) — a zero here would make the next check meaningless`,
+    );
+    add(
+      "same thread id refused to another staff member",
+      theirs === 0 ? "PASS" : "FAIL",
+      theirs === 0
+        ? "0 rows — guessing the id is not enough"
+        : `!! ${theirs} row(s) leaked`,
+    );
+  }
+  await priv.end();
+}
+
 console.log("");
 for (const r of results) console.log(`${r.state.padEnd(5)} ${r.name}\n      ${r.detail}`);
 const bad = results.filter((r) => r.state !== "PASS").length;
