@@ -82,6 +82,53 @@ waits on intake forms (§6) producing a corpus — see the notes doc.
    through the model. The LLM is the fallback for the long tail, not the
    engine for the common case.
 
+7. **Conversational follow-up — context is questions and SQL, never rows.**
+   Asks in one thread resolve against each other: "How many gift cards were
+   used in the last 2 months?" then "and who used it?" works. Shipped
+   2026-09-05, after the gap was hit on the second real question of the
+   first real session.
+
+   **What travels.** The prior questions and the SQL that answered them.
+   Never result rows, values, or captions. So the categorical claim from
+   decision 4 survives intact, and follow-up needed no BAA/egress review —
+   unlike answer-summarization, which still does. The prompt is explicit
+   that the model is shown no results and must recompute rather than guess
+   at a value it cannot see.
+
+   **Where it comes from.** The SERVER reconstructs context from
+   `ask_queries`; the client sends only a `thread_id`. Client-supplied
+   history would be forgeable, and reading it back here makes the log
+   load-bearing instead of write-only — the record of what was asked is now
+   the record of what a refinement was refining.
+
+   **Scoping is an enforced predicate, not an ordering.**
+   `where thread_id = $1 and staff_id = $2 and organization_id = $3`. This
+   query runs on the service role, because `ask_queries` is deliberately
+   outside `ask_readonly`'s grants — so RLS is *not* filtering here and the
+   `where` has to. `npm run verify:ask` checks both directions: the owner
+   gets their thread, and another staff member with the same thread id gets
+   zero rows. Asserting only the second would pass if the query were simply
+   broken.
+
+   **Where it goes in the request.** The `messages` array, after the cached
+   system block — never inside `system`. Folding context into the system
+   prompt is the natural-feeling wrong move: it changes the cached prefix on
+   every follow-up and silently costs ~4.6x. Measured on the shipped path, a
+   context-carrying follow-up still reads 3407 cached tokens: $0.0093 vs
+   $0.0259 cold. Context itself cost ~111 uncached tokens (~$0.0006).
+
+   **Depth: 3 exchanges**, bounded by the dock's "New thread" control, which
+   stops being cosmetic and starts meaning something. Failed asks and
+   declines are excluded — replaying broken SQL invites the model to copy
+   the mistake — as are presets whose label cannot be resolved, since a bare
+   id tells the model nothing a human said. Presets otherwise participate,
+   using their human label as the question text.
+
+   [AS-BUILT] The audit worry turned out narrower than the deferral
+   supposed. `generated_sql` on each row stays self-contained, so an ANSWER
+   is always auditable alone; only the question TEXT needs its predecessors,
+   and `thread_id` makes those reachable.
+
 ## Shape
 
 ```
@@ -481,17 +528,6 @@ read-only text-to-SQL through the SELECT-only role.
   hardcoded SQL (instant, free) with the LLM only for free text.
 
 ## Still open
-
-- **Conversational follow-up.** Sending prior turns to the model so a
-  question can refine the one before it ("and how about last month?").
-  Distinct from the visual history already shipped, and a bigger change
-  than it looks: it turns every ask into a growing prompt, so it needs
-  decisions on how many turns to carry, what that does to per-question
-  cost, and how it interacts with the cached system prompt (a growing
-  message list is fine, but the cache breakpoint has to stay put). It
-  also changes the audit story — `ask_queries` currently records one
-  self-contained question per row, and a refined question is only
-  interpretable alongside its predecessors.
 
 - Rate limiting and cost caps — deferred, not decided.
 - A scoped-down provider version answering only own-book questions.
