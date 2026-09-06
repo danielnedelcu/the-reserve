@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
       version: await publishVersion(
         client,
         definition.id,
+        definition.key,
         body?.fields,
         body?.consentText ?? null,
       ),

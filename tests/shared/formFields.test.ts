@@ -3,6 +3,8 @@ import { describe, it, expect } from "vitest";
 import {
   parseFields,
   validateAnswers,
+  assertProspectContactFields,
+  contactFromAnswers,
   FormShapeError,
   type FormField,
 } from "../../shared/forms/fields";
@@ -172,5 +174,62 @@ describe("validateAnswers", () => {
   it("refuses a non-object submission", () => {
     expect(() => validateAnswers(fields, [])).toThrow(/keyed by field/);
     expect(() => validateAnswers(fields, "first_name=Samuel")).toThrow(/keyed by field/);
+  });
+});
+
+describe("prospect contact rules", () => {
+  const base = [
+    field({ key: "first_name", label: "First name" }),
+    field({ key: "last_name", label: "Last name" }),
+    field({ key: "email", label: "Email", type: "email" }),
+  ];
+
+  it("accepts a form that can produce a prospect", () => {
+    expect(() => assertProspectContactFields(parseFields(base))).not.toThrow();
+  });
+
+  it("refuses a form missing a contact field", () => {
+    // Caught when the version is PUBLISHED, and again when a subject-less
+    // link is issued — so the failure never lands on a stranger who has
+    // already filled the form in.
+    const noEmail = parseFields(base.slice(0, 2));
+    expect(() => assertProspectContactFields(noEmail)).toThrow(/must include a "email"/);
+  });
+
+  it("refuses optional contact fields", () => {
+    const optional = parseFields([
+      field({ key: "first_name", required: false }),
+      field({ key: "last_name" }),
+      field({ key: "email", type: "email" }),
+    ]);
+    expect(() => assertProspectContactFields(optional)).toThrow(/must be required/);
+  });
+
+  it("refuses a contact field marked sensitive", () => {
+    // A sensitive email routes to the gated health rows, so promotion
+    // would find nothing and the prospect would arrive nameless — while
+    // the answer sat in a table meant for something else.
+    const sensitiveEmail = parseFields([
+      field({ key: "first_name" }),
+      field({ key: "last_name" }),
+      field({ key: "email", type: "email", sensitive: true }),
+    ]);
+    expect(() => assertProspectContactFields(sensitiveEmail)).toThrow(/cannot be marked sensitive/);
+  });
+
+  it("promotes contact from the answers, not from staff input", () => {
+    const fields = parseFields([...base, field({ key: "phone", type: "phone", required: false })]);
+    const { answers } = validateAnswers(fields, {
+      first_name: " Samuel ",
+      last_name: "Adeyemi",
+      email: "samuel@example.test",
+    });
+    const contact = contactFromAnswers(answers);
+    expect(contact).toEqual({
+      first_name: "Samuel",
+      last_name: "Adeyemi",
+      email: "samuel@example.test",
+      phone: null,
+    });
   });
 });

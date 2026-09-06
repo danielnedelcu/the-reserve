@@ -49,6 +49,11 @@ export default defineNuxtConfig({
     // Connection string for the ask_readonly role. Its session user IS
     // the safety boundary — never point this at a privileged role.
     askDatabaseUrl: process.env.ASK_DATABASE_URL,
+    // Keyed-hash secret for public form submission attempt logs. IPs are
+    // HMAC'd under this, never stored raw and never plainly hashed (an
+    // unsalted IPv4 digest is precomputable, so plaintext-equivalent).
+    // Absent => the public submission route refuses to serve.
+    formIpPepper: process.env.FORM_IP_PEPPER,
     // ...existing server-side entries...
     public: {
       stripePublishableKey: process.env.NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,

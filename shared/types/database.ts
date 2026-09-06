@@ -803,6 +803,77 @@ export type Database = {
           },
         ]
       }
+      form_links: {
+        Row: {
+          client_id: string | null
+          consumed_at: string | null
+          created_at: string
+          delivery_email: string | null
+          expires_at: string
+          form_version_id: string
+          id: string
+          issued_by: string
+          organization_id: string
+          revoked_at: string | null
+          token: string
+        }
+        Insert: {
+          client_id?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          delivery_email?: string | null
+          expires_at?: string
+          form_version_id: string
+          id?: string
+          issued_by: string
+          organization_id: string
+          revoked_at?: string | null
+          token?: string
+        }
+        Update: {
+          client_id?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          delivery_email?: string | null
+          expires_at?: string
+          form_version_id?: string
+          id?: string
+          issued_by?: string
+          organization_id?: string
+          revoked_at?: string | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_links_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_links_form_version_id_fkey"
+            columns: ["form_version_id"]
+            isOneToOne: false
+            referencedRelation: "form_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_links_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       form_response_health: {
         Row: {
           answer: Json
@@ -845,9 +916,11 @@ export type Database = {
           consent_text: string | null
           consented_at: string | null
           created_at: string
+          form_link_id: string | null
           form_version_id: string
           id: string
           organization_id: string
+          prospect_intake_id: string | null
           submitted_at: string
         }
         Insert: {
@@ -856,9 +929,11 @@ export type Database = {
           consent_text?: string | null
           consented_at?: string | null
           created_at?: string
+          form_link_id?: string | null
           form_version_id: string
           id?: string
           organization_id: string
+          prospect_intake_id?: string | null
           submitted_at?: string
         }
         Update: {
@@ -867,9 +942,11 @@ export type Database = {
           consent_text?: string | null
           consented_at?: string | null
           created_at?: string
+          form_link_id?: string | null
           form_version_id?: string
           id?: string
           organization_id?: string
+          prospect_intake_id?: string | null
           submitted_at?: string
         }
         Relationships: [
@@ -881,6 +958,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "form_responses_form_link_id_fkey"
+            columns: ["form_link_id"]
+            isOneToOne: false
+            referencedRelation: "form_links"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "form_responses_form_version_id_fkey"
             columns: ["form_version_id"]
             isOneToOne: false
@@ -889,6 +973,48 @@ export type Database = {
           },
           {
             foreignKeyName: "form_responses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_responses_prospect_intake_id_fkey"
+            columns: ["prospect_intake_id"]
+            isOneToOne: false
+            referencedRelation: "prospect_intake"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_submission_attempts: {
+        Row: {
+          created_at: string
+          id: number
+          ip_hash: string
+          organization_id: string | null
+          outcome: string
+          token: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_hash: string
+          organization_id?: string | null
+          outcome: string
+          token?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_hash?: string
+          organization_id?: string | null
+          outcome?: string
+          token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_submission_attempts_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1260,6 +1386,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "products_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospect_intake: {
+        Row: {
+          created_at: string
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          organization_id: string
+          phone: string | null
+          status: string
+          submitted_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          first_name: string
+          id?: string
+          last_name: string
+          organization_id: string
+          phone?: string | null
+          status?: string
+          submitted_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          first_name?: string
+          id?: string
+          last_name?: string
+          organization_id?: string
+          phone?: string | null
+          status?: string
+          submitted_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_intake_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1998,6 +2171,17 @@ export type Database = {
       mark_conversation_read: {
         Args: { p_conversation_id: string }
         Returns: undefined
+      }
+      submit_form_response: {
+        Args: {
+          p_answers: Json
+          p_consent_text: string
+          p_consented: boolean
+          p_contact: Json
+          p_health: Json
+          p_token: string
+        }
+        Returns: string
       }
       timemultirange: { Args: never; Returns: unknown }
     }

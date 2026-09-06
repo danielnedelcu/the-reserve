@@ -18,7 +18,9 @@
     "db:migrations": "supabase migration list",
     "db:docs": "dotenv -e .env -- tbls doc --force -c .tbls.yml",
     "verify:ask": "node scripts/verify-ask.mjs",
-    "verify:presets": "node --experimental-strip-types scripts/verify-presets.mjs"
+    "verify:presets": "node --experimental-strip-types scripts/verify-presets.mjs",
+    "verify:forms": "node scripts/verify-forms.mjs",
+    "e2e:forms": "node scripts/e2e-forms.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

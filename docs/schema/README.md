@@ -41,230 +41,234 @@
 | [public.ask_queries](public.ask_queries.md)                                     | 19      | Append-only record of every Ask The Reserve question: the text asked, the SQL that ran, what came back, and what it cost. No update/delete policies — a query log that can be edited is not a query log. Written by the /api/ask route; readable with ask.query. Rows with a non-null error are failed generations, which is the signal for prompt work. Rows with a null model are the preset path: answered with human-written SQL, no tokens spent.   | BASE TABLE |
 | [public.form_definitions](public.form_definitions.md)                           | 8       | A form's IDENTITY (org + key), separate from its answerable shape, which lives in versioned form_versions rows. One row per form the business asks people to fill: prospect_intake, service_waiver. Deactivated, never deleted — a definition with responses against it must stay resolvable forever.                                                                                                                                                    | BASE TABLE |
 | [public.form_versions](public.form_versions.md)                                 | 7       | One immutable published shape of a form. APPEND-ONLY BY DESIGN: no update or delete policy exists, so Postgres denies both, and the revoke below states that intent out loud. Editing a form means inserting a new version. That immutability is what lets a response REFERENCE the shape it answered instead of copying it — change a version in place and every response that points at it silently changes meaning.                                   | BASE TABLE |
-| [public.form_responses](public.form_responses.md)                               | 9       | One filled-in form. answers holds ONLY the non-sensitive answers; anything the version marks sensitive is in form_response_health, behind clients.notes.health.view. No authenticated INSERT policy exists on purpose: a submission must be validated against its version's field list, Postgres cannot check jsonb shape, so writes go through a server route under the service role and the validator is the enforcement.                              | BASE TABLE |
+| [public.form_responses](public.form_responses.md)                               | 11      | One filled-in form. answers holds ONLY the non-sensitive answers; anything the version marks sensitive is in form_response_health, behind clients.notes.health.view. No authenticated INSERT policy exists on purpose: a submission must be validated against its version's field list, Postgres cannot check jsonb shape, so writes go through a server route under the service role and the validator is the enforcement.                              | BASE TABLE |
 | [public.form_response_health](public.form_response_health.md)                   | 6       | Answers to fields the form version marks sensitive — health history and the like. A SEPARATE TABLE rather than a column on form_responses because RLS is row-level and cannot hide a column: as rows, the database itself refuses them to anyone without clients.notes.health.view, so a route that forgets to filter returns nothing rather than leaking PHI. Same tier as client_notes.kind='health', which is where these are promoted on enrollment. | BASE TABLE |
+| [public.form_links](public.form_links.md)                                       | 11      | A tokenized link to one form version. NO subject means a prospect link (the prospect_intake row is created when they submit, not now — issuing creates nothing, so an unanswered link leaves no phantom prospect in the review queue). client_id set means an existing client's waiver. Single-use: consumed_at is claimed atomically by submit_form_response, never by the route.                                                                       | BASE TABLE |
+| [public.prospect_intake](public.prospect_intake.md)                             | 10      | A person who has submitted an intake form and is not yet a client. TEMPORARY CUSTODY: contact details live here in transit and are purged at 30 days if the prospect never enrols (phase 3 sweep). Deliberately NOT a clients row with status=prospect — clients are members in this business, and status-flagging would force every existing clients query and policy to start filtering. Mirrors staff_invites being separate from staff.              | BASE TABLE |
+| [public.form_submission_attempts](public.form_submission_attempts.md)           | 6       | Rate-limit state for the public submission endpoint, IN THE DATABASE rather than process memory: in-memory counters stop limiting the moment there is a second instance, and a security control that fails green is worse than none. organization_id and token are nullable because an attempt with an unrecognised token belongs to no org and names no real link — recording it is the point.                                                          | BASE TABLE |
 
 ## Stored procedures and functions
 
-| Name                                         | ReturnType     | Arguments                                                                                         | Type     |
-| -------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------- | -------- |
-| public.current_staff_id                      | uuid           |                                                                                                   | FUNCTION |
-| public.current_org_id                        | uuid           |                                                                                                   | FUNCTION |
-| public.has_permission                        | bool           | perm text                                                                                         | FUNCTION |
-| public.prevent_last_super_admin_removal      | trigger        |                                                                                                   | FUNCTION |
-| public.accept_staff_invite                   | uuid           | invite_token uuid, new_user_id uuid, final_display_name text, final_title text DEFAULT NULL::text | FUNCTION |
-| public.count_other_active_super_admins       | int4           | org uuid, excluded_staff uuid                                                                     | FUNCTION |
-| public.prevent_last_super_admin_deactivation | trigger        |                                                                                                   | FUNCTION |
-| public.prevent_system_role_deletion          | trigger        |                                                                                                   | FUNCTION |
-| public.audit_staff_role_change               | trigger        |                                                                                                   | FUNCTION |
-| public.get_my_permissions                    | text           |                                                                                                   | FUNCTION |
-| public.touch_updated_at                      | trigger        |                                                                                                   | FUNCTION |
-| public.gbtreekey4_in                         | gbtreekey4     | cstring                                                                                           | FUNCTION |
-| public.gbtreekey4_out                        | cstring        | gbtreekey4                                                                                        | FUNCTION |
-| public.gbtreekey8_in                         | gbtreekey8     | cstring                                                                                           | FUNCTION |
-| public.gbtreekey8_out                        | cstring        | gbtreekey8                                                                                        | FUNCTION |
-| public.gbtreekey16_in                        | gbtreekey16    | cstring                                                                                           | FUNCTION |
-| public.gbtreekey16_out                       | cstring        | gbtreekey16                                                                                       | FUNCTION |
-| public.gbtreekey32_in                        | gbtreekey32    | cstring                                                                                           | FUNCTION |
-| public.gbtreekey32_out                       | cstring        | gbtreekey32                                                                                       | FUNCTION |
-| public.gbtreekey_var_in                      | gbtreekey_var  | cstring                                                                                           | FUNCTION |
-| public.gbtreekey_var_out                     | cstring        | gbtreekey_var                                                                                     | FUNCTION |
-| public.cash_dist                             | money          | money, money                                                                                      | FUNCTION |
-| public.date_dist                             | int4           | date, date                                                                                        | FUNCTION |
-| public.float4_dist                           | float4         | real, real                                                                                        | FUNCTION |
-| public.float8_dist                           | float8         | double precision, double precision                                                                | FUNCTION |
-| public.int2_dist                             | int2           | smallint, smallint                                                                                | FUNCTION |
-| public.int4_dist                             | int4           | integer, integer                                                                                  | FUNCTION |
-| public.int8_dist                             | int8           | bigint, bigint                                                                                    | FUNCTION |
-| public.interval_dist                         | interval       | interval, interval                                                                                | FUNCTION |
-| public.oid_dist                              | oid            | oid, oid                                                                                          | FUNCTION |
-| public.time_dist                             | interval       | time without time zone, time without time zone                                                    | FUNCTION |
-| public.ts_dist                               | interval       | timestamp without time zone, timestamp without time zone                                          | FUNCTION |
-| public.tstz_dist                             | interval       | timestamp with time zone, timestamp with time zone                                                | FUNCTION |
-| public.gbt_oid_consistent                    | bool           | internal, oid, smallint, oid, internal                                                            | FUNCTION |
-| public.gbt_oid_distance                      | float8         | internal, oid, smallint, oid, internal                                                            | FUNCTION |
-| public.gbt_oid_fetch                         | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_oid_compress                      | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_decompress                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_var_decompress                    | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_var_fetch                         | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_oid_penalty                       | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_oid_picksplit                     | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_oid_union                         | gbtreekey8     | internal, internal                                                                                | FUNCTION |
-| public.gbt_oid_same                          | internal       | gbtreekey8, gbtreekey8, internal                                                                  | FUNCTION |
-| public.gbt_int2_consistent                   | bool           | internal, smallint, smallint, oid, internal                                                       | FUNCTION |
-| public.gbt_int2_distance                     | float8         | internal, smallint, smallint, oid, internal                                                       | FUNCTION |
-| public.gbt_int2_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_int2_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_int2_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_int2_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_int2_union                        | gbtreekey4     | internal, internal                                                                                | FUNCTION |
-| public.gbt_int2_same                         | internal       | gbtreekey4, gbtreekey4, internal                                                                  | FUNCTION |
-| public.gbt_int4_consistent                   | bool           | internal, integer, smallint, oid, internal                                                        | FUNCTION |
-| public.gbt_int4_distance                     | float8         | internal, integer, smallint, oid, internal                                                        | FUNCTION |
-| public.gbt_int4_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_int4_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_int4_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_int4_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_int4_union                        | gbtreekey8     | internal, internal                                                                                | FUNCTION |
-| public.gbt_int4_same                         | internal       | gbtreekey8, gbtreekey8, internal                                                                  | FUNCTION |
-| public.gbt_int8_consistent                   | bool           | internal, bigint, smallint, oid, internal                                                         | FUNCTION |
-| public.gbt_int8_distance                     | float8         | internal, bigint, smallint, oid, internal                                                         | FUNCTION |
-| public.gbt_int8_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_int8_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_int8_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_int8_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_int8_union                        | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_int8_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_float4_consistent                 | bool           | internal, real, smallint, oid, internal                                                           | FUNCTION |
-| public.gbt_float4_distance                   | float8         | internal, real, smallint, oid, internal                                                           | FUNCTION |
-| public.gbt_float4_compress                   | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_float4_fetch                      | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_float4_penalty                    | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_float4_picksplit                  | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_float4_union                      | gbtreekey8     | internal, internal                                                                                | FUNCTION |
-| public.gbt_float4_same                       | internal       | gbtreekey8, gbtreekey8, internal                                                                  | FUNCTION |
-| public.gbt_float8_consistent                 | bool           | internal, double precision, smallint, oid, internal                                               | FUNCTION |
-| public.gbt_float8_distance                   | float8         | internal, double precision, smallint, oid, internal                                               | FUNCTION |
-| public.gbt_float8_compress                   | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_float8_fetch                      | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_float8_penalty                    | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_float8_picksplit                  | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_float8_union                      | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_float8_same                       | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_ts_consistent                     | bool           | internal, timestamp without time zone, smallint, oid, internal                                    | FUNCTION |
-| public.gbt_ts_distance                       | float8         | internal, timestamp without time zone, smallint, oid, internal                                    | FUNCTION |
-| public.gbt_tstz_consistent                   | bool           | internal, timestamp with time zone, smallint, oid, internal                                       | FUNCTION |
-| public.gbt_tstz_distance                     | float8         | internal, timestamp with time zone, smallint, oid, internal                                       | FUNCTION |
-| public.gbt_ts_compress                       | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_tstz_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_ts_fetch                          | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_ts_penalty                        | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_ts_picksplit                      | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_ts_union                          | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_ts_same                           | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_time_consistent                   | bool           | internal, time without time zone, smallint, oid, internal                                         | FUNCTION |
-| public.gbt_time_distance                     | float8         | internal, time without time zone, smallint, oid, internal                                         | FUNCTION |
-| public.gbt_timetz_consistent                 | bool           | internal, time with time zone, smallint, oid, internal                                            | FUNCTION |
-| public.gbt_time_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_timetz_compress                   | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_time_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_time_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_time_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_time_union                        | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_time_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_date_consistent                   | bool           | internal, date, smallint, oid, internal                                                           | FUNCTION |
-| public.gbt_date_distance                     | float8         | internal, date, smallint, oid, internal                                                           | FUNCTION |
-| public.gbt_date_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_date_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_date_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_date_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_date_union                        | gbtreekey8     | internal, internal                                                                                | FUNCTION |
-| public.gbt_date_same                         | internal       | gbtreekey8, gbtreekey8, internal                                                                  | FUNCTION |
-| public.gbt_intv_consistent                   | bool           | internal, interval, smallint, oid, internal                                                       | FUNCTION |
-| public.gbt_intv_distance                     | float8         | internal, interval, smallint, oid, internal                                                       | FUNCTION |
-| public.gbt_intv_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_intv_decompress                   | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_intv_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_intv_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_intv_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_intv_union                        | gbtreekey32    | internal, internal                                                                                | FUNCTION |
-| public.gbt_intv_same                         | internal       | gbtreekey32, gbtreekey32, internal                                                                | FUNCTION |
-| public.gbt_cash_consistent                   | bool           | internal, money, smallint, oid, internal                                                          | FUNCTION |
-| public.gbt_cash_distance                     | float8         | internal, money, smallint, oid, internal                                                          | FUNCTION |
-| public.gbt_cash_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_cash_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_cash_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_cash_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_cash_union                        | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_cash_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_macad_consistent                  | bool           | internal, macaddr, smallint, oid, internal                                                        | FUNCTION |
-| public.gbt_macad_compress                    | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_macad_fetch                       | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_macad_penalty                     | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_macad_picksplit                   | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_macad_union                       | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_macad_same                        | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_text_consistent                   | bool           | internal, text, smallint, oid, internal                                                           | FUNCTION |
-| public.gbt_bpchar_consistent                 | bool           | internal, character, smallint, oid, internal                                                      | FUNCTION |
-| public.gbt_text_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_bpchar_compress                   | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_text_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_text_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_text_union                        | gbtreekey_var  | internal, internal                                                                                | FUNCTION |
-| public.gbt_text_same                         | internal       | gbtreekey_var, gbtreekey_var, internal                                                            | FUNCTION |
-| public.gbt_bytea_consistent                  | bool           | internal, bytea, smallint, oid, internal                                                          | FUNCTION |
-| public.gbt_bytea_compress                    | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_bytea_penalty                     | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_bytea_picksplit                   | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_bytea_union                       | gbtreekey_var  | internal, internal                                                                                | FUNCTION |
-| public.gbt_bytea_same                        | internal       | gbtreekey_var, gbtreekey_var, internal                                                            | FUNCTION |
-| public.gbt_numeric_consistent                | bool           | internal, numeric, smallint, oid, internal                                                        | FUNCTION |
-| public.gbt_numeric_compress                  | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_numeric_penalty                   | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_numeric_picksplit                 | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_numeric_union                     | gbtreekey_var  | internal, internal                                                                                | FUNCTION |
-| public.gbt_numeric_same                      | internal       | gbtreekey_var, gbtreekey_var, internal                                                            | FUNCTION |
-| public.gbt_bit_consistent                    | bool           | internal, bit, smallint, oid, internal                                                            | FUNCTION |
-| public.gbt_bit_compress                      | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_bit_penalty                       | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_bit_picksplit                     | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_bit_union                         | gbtreekey_var  | internal, internal                                                                                | FUNCTION |
-| public.gbt_bit_same                          | internal       | gbtreekey_var, gbtreekey_var, internal                                                            | FUNCTION |
-| public.gbt_inet_consistent                   | bool           | internal, inet, smallint, oid, internal                                                           | FUNCTION |
-| public.gbt_inet_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_inet_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_inet_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_inet_union                        | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_inet_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_uuid_consistent                   | bool           | internal, uuid, smallint, oid, internal                                                           | FUNCTION |
-| public.gbt_uuid_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_uuid_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_uuid_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_uuid_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_uuid_union                        | gbtreekey32    | internal, internal                                                                                | FUNCTION |
-| public.gbt_uuid_same                         | internal       | gbtreekey32, gbtreekey32, internal                                                                | FUNCTION |
-| public.gbt_macad8_consistent                 | bool           | internal, macaddr8, smallint, oid, internal                                                       | FUNCTION |
-| public.gbt_macad8_compress                   | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_macad8_fetch                      | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_macad8_penalty                    | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_macad8_picksplit                  | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_macad8_union                      | gbtreekey16    | internal, internal                                                                                | FUNCTION |
-| public.gbt_macad8_same                       | internal       | gbtreekey16, gbtreekey16, internal                                                                | FUNCTION |
-| public.gbt_enum_consistent                   | bool           | internal, anyenum, smallint, oid, internal                                                        | FUNCTION |
-| public.gbt_enum_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_enum_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_enum_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_enum_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_enum_union                        | gbtreekey8     | internal, internal                                                                                | FUNCTION |
-| public.gbt_enum_same                         | internal       | gbtreekey8, gbtreekey8, internal                                                                  | FUNCTION |
-| public.gbtreekey2_in                         | gbtreekey2     | cstring                                                                                           | FUNCTION |
-| public.gbtreekey2_out                        | cstring        | gbtreekey2                                                                                        | FUNCTION |
-| public.gbt_bool_consistent                   | bool           | internal, boolean, smallint, oid, internal                                                        | FUNCTION |
-| public.gbt_bool_compress                     | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_bool_fetch                        | internal       | internal                                                                                          | FUNCTION |
-| public.gbt_bool_penalty                      | internal       | internal, internal, internal                                                                      | FUNCTION |
-| public.gbt_bool_picksplit                    | internal       | internal, internal                                                                                | FUNCTION |
-| public.gbt_bool_union                        | gbtreekey2     | internal, internal                                                                                | FUNCTION |
-| public.gbt_bool_same                         | internal       | gbtreekey2, gbtreekey2, internal                                                                  | FUNCTION |
-| public.maintain_no_show_count                | trigger        |                                                                                                   | FUNCTION |
-| public.timerange                             | timerange      | time without time zone, time without time zone                                                    | FUNCTION |
-| public.timerange                             | timerange      | time without time zone, time without time zone, text                                              | FUNCTION |
-| public.timemultirange                        | timemultirange |                                                                                                   | FUNCTION |
-| public.timemultirange                        | timemultirange | timerange                                                                                         | FUNCTION |
-| public.timemultirange                        | timemultirange | VARIADIC timerange[]                                                                              | FUNCTION |
-| public.notify_timeoff_decision               | trigger        |                                                                                                   | FUNCTION |
-| public.notify_timeoff_requested              | trigger        |                                                                                                   | FUNCTION |
-| public.guard_staff_self_update               | trigger        |                                                                                                   | FUNCTION |
-| public.apply_gift_card_payment               | trigger        |                                                                                                   | FUNCTION |
-| public.apply_product_sale                    | trigger        |                                                                                                   | FUNCTION |
-| public.is_conversation_participant           | bool           | p_conversation_id uuid                                                                            | FUNCTION |
-| public.find_or_create_dm                     | uuid           | p_other_staff_id uuid                                                                             | FUNCTION |
-| public.create_group_conversation             | uuid           | p_name text, p_staff_ids uuid[]                                                                   | FUNCTION |
-| public.mark_conversation_read                | void           | p_conversation_id uuid                                                                            | FUNCTION |
-| public.message_bumps_conversation            | trigger        |                                                                                                   | FUNCTION |
-| public.notify_message_received               | trigger        |                                                                                                   | FUNCTION |
-| public.leave_conversation                    | void           | p_conversation_id uuid                                                                            | FUNCTION |
+| Name                                         | ReturnType     | Arguments                                                                                                | Type     |
+| -------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------- | -------- |
+| public.current_staff_id                      | uuid           |                                                                                                          | FUNCTION |
+| public.current_org_id                        | uuid           |                                                                                                          | FUNCTION |
+| public.has_permission                        | bool           | perm text                                                                                                | FUNCTION |
+| public.prevent_last_super_admin_removal      | trigger        |                                                                                                          | FUNCTION |
+| public.accept_staff_invite                   | uuid           | invite_token uuid, new_user_id uuid, final_display_name text, final_title text DEFAULT NULL::text        | FUNCTION |
+| public.count_other_active_super_admins       | int4           | org uuid, excluded_staff uuid                                                                            | FUNCTION |
+| public.prevent_last_super_admin_deactivation | trigger        |                                                                                                          | FUNCTION |
+| public.prevent_system_role_deletion          | trigger        |                                                                                                          | FUNCTION |
+| public.audit_staff_role_change               | trigger        |                                                                                                          | FUNCTION |
+| public.get_my_permissions                    | text           |                                                                                                          | FUNCTION |
+| public.touch_updated_at                      | trigger        |                                                                                                          | FUNCTION |
+| public.gbtreekey4_in                         | gbtreekey4     | cstring                                                                                                  | FUNCTION |
+| public.gbtreekey4_out                        | cstring        | gbtreekey4                                                                                               | FUNCTION |
+| public.gbtreekey8_in                         | gbtreekey8     | cstring                                                                                                  | FUNCTION |
+| public.gbtreekey8_out                        | cstring        | gbtreekey8                                                                                               | FUNCTION |
+| public.gbtreekey16_in                        | gbtreekey16    | cstring                                                                                                  | FUNCTION |
+| public.gbtreekey16_out                       | cstring        | gbtreekey16                                                                                              | FUNCTION |
+| public.gbtreekey32_in                        | gbtreekey32    | cstring                                                                                                  | FUNCTION |
+| public.gbtreekey32_out                       | cstring        | gbtreekey32                                                                                              | FUNCTION |
+| public.gbtreekey_var_in                      | gbtreekey_var  | cstring                                                                                                  | FUNCTION |
+| public.gbtreekey_var_out                     | cstring        | gbtreekey_var                                                                                            | FUNCTION |
+| public.cash_dist                             | money          | money, money                                                                                             | FUNCTION |
+| public.date_dist                             | int4           | date, date                                                                                               | FUNCTION |
+| public.float4_dist                           | float4         | real, real                                                                                               | FUNCTION |
+| public.float8_dist                           | float8         | double precision, double precision                                                                       | FUNCTION |
+| public.int2_dist                             | int2           | smallint, smallint                                                                                       | FUNCTION |
+| public.int4_dist                             | int4           | integer, integer                                                                                         | FUNCTION |
+| public.int8_dist                             | int8           | bigint, bigint                                                                                           | FUNCTION |
+| public.interval_dist                         | interval       | interval, interval                                                                                       | FUNCTION |
+| public.oid_dist                              | oid            | oid, oid                                                                                                 | FUNCTION |
+| public.time_dist                             | interval       | time without time zone, time without time zone                                                           | FUNCTION |
+| public.ts_dist                               | interval       | timestamp without time zone, timestamp without time zone                                                 | FUNCTION |
+| public.tstz_dist                             | interval       | timestamp with time zone, timestamp with time zone                                                       | FUNCTION |
+| public.gbt_oid_consistent                    | bool           | internal, oid, smallint, oid, internal                                                                   | FUNCTION |
+| public.gbt_oid_distance                      | float8         | internal, oid, smallint, oid, internal                                                                   | FUNCTION |
+| public.gbt_oid_fetch                         | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_oid_compress                      | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_decompress                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_var_decompress                    | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_var_fetch                         | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_oid_penalty                       | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_oid_picksplit                     | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_oid_union                         | gbtreekey8     | internal, internal                                                                                       | FUNCTION |
+| public.gbt_oid_same                          | internal       | gbtreekey8, gbtreekey8, internal                                                                         | FUNCTION |
+| public.gbt_int2_consistent                   | bool           | internal, smallint, smallint, oid, internal                                                              | FUNCTION |
+| public.gbt_int2_distance                     | float8         | internal, smallint, smallint, oid, internal                                                              | FUNCTION |
+| public.gbt_int2_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_int2_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_int2_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_int2_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_int2_union                        | gbtreekey4     | internal, internal                                                                                       | FUNCTION |
+| public.gbt_int2_same                         | internal       | gbtreekey4, gbtreekey4, internal                                                                         | FUNCTION |
+| public.gbt_int4_consistent                   | bool           | internal, integer, smallint, oid, internal                                                               | FUNCTION |
+| public.gbt_int4_distance                     | float8         | internal, integer, smallint, oid, internal                                                               | FUNCTION |
+| public.gbt_int4_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_int4_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_int4_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_int4_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_int4_union                        | gbtreekey8     | internal, internal                                                                                       | FUNCTION |
+| public.gbt_int4_same                         | internal       | gbtreekey8, gbtreekey8, internal                                                                         | FUNCTION |
+| public.gbt_int8_consistent                   | bool           | internal, bigint, smallint, oid, internal                                                                | FUNCTION |
+| public.gbt_int8_distance                     | float8         | internal, bigint, smallint, oid, internal                                                                | FUNCTION |
+| public.gbt_int8_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_int8_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_int8_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_int8_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_int8_union                        | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_int8_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_float4_consistent                 | bool           | internal, real, smallint, oid, internal                                                                  | FUNCTION |
+| public.gbt_float4_distance                   | float8         | internal, real, smallint, oid, internal                                                                  | FUNCTION |
+| public.gbt_float4_compress                   | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_float4_fetch                      | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_float4_penalty                    | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_float4_picksplit                  | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_float4_union                      | gbtreekey8     | internal, internal                                                                                       | FUNCTION |
+| public.gbt_float4_same                       | internal       | gbtreekey8, gbtreekey8, internal                                                                         | FUNCTION |
+| public.gbt_float8_consistent                 | bool           | internal, double precision, smallint, oid, internal                                                      | FUNCTION |
+| public.gbt_float8_distance                   | float8         | internal, double precision, smallint, oid, internal                                                      | FUNCTION |
+| public.gbt_float8_compress                   | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_float8_fetch                      | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_float8_penalty                    | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_float8_picksplit                  | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_float8_union                      | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_float8_same                       | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_ts_consistent                     | bool           | internal, timestamp without time zone, smallint, oid, internal                                           | FUNCTION |
+| public.gbt_ts_distance                       | float8         | internal, timestamp without time zone, smallint, oid, internal                                           | FUNCTION |
+| public.gbt_tstz_consistent                   | bool           | internal, timestamp with time zone, smallint, oid, internal                                              | FUNCTION |
+| public.gbt_tstz_distance                     | float8         | internal, timestamp with time zone, smallint, oid, internal                                              | FUNCTION |
+| public.gbt_ts_compress                       | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_tstz_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_ts_fetch                          | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_ts_penalty                        | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_ts_picksplit                      | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_ts_union                          | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_ts_same                           | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_time_consistent                   | bool           | internal, time without time zone, smallint, oid, internal                                                | FUNCTION |
+| public.gbt_time_distance                     | float8         | internal, time without time zone, smallint, oid, internal                                                | FUNCTION |
+| public.gbt_timetz_consistent                 | bool           | internal, time with time zone, smallint, oid, internal                                                   | FUNCTION |
+| public.gbt_time_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_timetz_compress                   | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_time_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_time_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_time_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_time_union                        | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_time_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_date_consistent                   | bool           | internal, date, smallint, oid, internal                                                                  | FUNCTION |
+| public.gbt_date_distance                     | float8         | internal, date, smallint, oid, internal                                                                  | FUNCTION |
+| public.gbt_date_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_date_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_date_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_date_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_date_union                        | gbtreekey8     | internal, internal                                                                                       | FUNCTION |
+| public.gbt_date_same                         | internal       | gbtreekey8, gbtreekey8, internal                                                                         | FUNCTION |
+| public.gbt_intv_consistent                   | bool           | internal, interval, smallint, oid, internal                                                              | FUNCTION |
+| public.gbt_intv_distance                     | float8         | internal, interval, smallint, oid, internal                                                              | FUNCTION |
+| public.gbt_intv_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_intv_decompress                   | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_intv_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_intv_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_intv_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_intv_union                        | gbtreekey32    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_intv_same                         | internal       | gbtreekey32, gbtreekey32, internal                                                                       | FUNCTION |
+| public.gbt_cash_consistent                   | bool           | internal, money, smallint, oid, internal                                                                 | FUNCTION |
+| public.gbt_cash_distance                     | float8         | internal, money, smallint, oid, internal                                                                 | FUNCTION |
+| public.gbt_cash_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_cash_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_cash_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_cash_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_cash_union                        | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_cash_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_macad_consistent                  | bool           | internal, macaddr, smallint, oid, internal                                                               | FUNCTION |
+| public.gbt_macad_compress                    | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_macad_fetch                       | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_macad_penalty                     | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_macad_picksplit                   | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_macad_union                       | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_macad_same                        | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_text_consistent                   | bool           | internal, text, smallint, oid, internal                                                                  | FUNCTION |
+| public.gbt_bpchar_consistent                 | bool           | internal, character, smallint, oid, internal                                                             | FUNCTION |
+| public.gbt_text_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_bpchar_compress                   | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_text_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_text_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_text_union                        | gbtreekey_var  | internal, internal                                                                                       | FUNCTION |
+| public.gbt_text_same                         | internal       | gbtreekey_var, gbtreekey_var, internal                                                                   | FUNCTION |
+| public.gbt_bytea_consistent                  | bool           | internal, bytea, smallint, oid, internal                                                                 | FUNCTION |
+| public.gbt_bytea_compress                    | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_bytea_penalty                     | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_bytea_picksplit                   | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_bytea_union                       | gbtreekey_var  | internal, internal                                                                                       | FUNCTION |
+| public.gbt_bytea_same                        | internal       | gbtreekey_var, gbtreekey_var, internal                                                                   | FUNCTION |
+| public.gbt_numeric_consistent                | bool           | internal, numeric, smallint, oid, internal                                                               | FUNCTION |
+| public.gbt_numeric_compress                  | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_numeric_penalty                   | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_numeric_picksplit                 | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_numeric_union                     | gbtreekey_var  | internal, internal                                                                                       | FUNCTION |
+| public.gbt_numeric_same                      | internal       | gbtreekey_var, gbtreekey_var, internal                                                                   | FUNCTION |
+| public.gbt_bit_consistent                    | bool           | internal, bit, smallint, oid, internal                                                                   | FUNCTION |
+| public.gbt_bit_compress                      | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_bit_penalty                       | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_bit_picksplit                     | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_bit_union                         | gbtreekey_var  | internal, internal                                                                                       | FUNCTION |
+| public.gbt_bit_same                          | internal       | gbtreekey_var, gbtreekey_var, internal                                                                   | FUNCTION |
+| public.gbt_inet_consistent                   | bool           | internal, inet, smallint, oid, internal                                                                  | FUNCTION |
+| public.gbt_inet_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_inet_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_inet_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_inet_union                        | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_inet_same                         | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_uuid_consistent                   | bool           | internal, uuid, smallint, oid, internal                                                                  | FUNCTION |
+| public.gbt_uuid_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_uuid_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_uuid_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_uuid_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_uuid_union                        | gbtreekey32    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_uuid_same                         | internal       | gbtreekey32, gbtreekey32, internal                                                                       | FUNCTION |
+| public.gbt_macad8_consistent                 | bool           | internal, macaddr8, smallint, oid, internal                                                              | FUNCTION |
+| public.gbt_macad8_compress                   | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_macad8_fetch                      | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_macad8_penalty                    | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_macad8_picksplit                  | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_macad8_union                      | gbtreekey16    | internal, internal                                                                                       | FUNCTION |
+| public.gbt_macad8_same                       | internal       | gbtreekey16, gbtreekey16, internal                                                                       | FUNCTION |
+| public.gbt_enum_consistent                   | bool           | internal, anyenum, smallint, oid, internal                                                               | FUNCTION |
+| public.gbt_enum_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_enum_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_enum_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_enum_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_enum_union                        | gbtreekey8     | internal, internal                                                                                       | FUNCTION |
+| public.gbt_enum_same                         | internal       | gbtreekey8, gbtreekey8, internal                                                                         | FUNCTION |
+| public.gbtreekey2_in                         | gbtreekey2     | cstring                                                                                                  | FUNCTION |
+| public.gbtreekey2_out                        | cstring        | gbtreekey2                                                                                               | FUNCTION |
+| public.gbt_bool_consistent                   | bool           | internal, boolean, smallint, oid, internal                                                               | FUNCTION |
+| public.gbt_bool_compress                     | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_bool_fetch                        | internal       | internal                                                                                                 | FUNCTION |
+| public.gbt_bool_penalty                      | internal       | internal, internal, internal                                                                             | FUNCTION |
+| public.gbt_bool_picksplit                    | internal       | internal, internal                                                                                       | FUNCTION |
+| public.gbt_bool_union                        | gbtreekey2     | internal, internal                                                                                       | FUNCTION |
+| public.gbt_bool_same                         | internal       | gbtreekey2, gbtreekey2, internal                                                                         | FUNCTION |
+| public.maintain_no_show_count                | trigger        |                                                                                                          | FUNCTION |
+| public.timerange                             | timerange      | time without time zone, time without time zone                                                           | FUNCTION |
+| public.timerange                             | timerange      | time without time zone, time without time zone, text                                                     | FUNCTION |
+| public.timemultirange                        | timemultirange |                                                                                                          | FUNCTION |
+| public.timemultirange                        | timemultirange | timerange                                                                                                | FUNCTION |
+| public.timemultirange                        | timemultirange | VARIADIC timerange[]                                                                                     | FUNCTION |
+| public.notify_timeoff_decision               | trigger        |                                                                                                          | FUNCTION |
+| public.notify_timeoff_requested              | trigger        |                                                                                                          | FUNCTION |
+| public.guard_staff_self_update               | trigger        |                                                                                                          | FUNCTION |
+| public.apply_gift_card_payment               | trigger        |                                                                                                          | FUNCTION |
+| public.apply_product_sale                    | trigger        |                                                                                                          | FUNCTION |
+| public.is_conversation_participant           | bool           | p_conversation_id uuid                                                                                   | FUNCTION |
+| public.find_or_create_dm                     | uuid           | p_other_staff_id uuid                                                                                    | FUNCTION |
+| public.create_group_conversation             | uuid           | p_name text, p_staff_ids uuid[]                                                                          | FUNCTION |
+| public.mark_conversation_read                | void           | p_conversation_id uuid                                                                                   | FUNCTION |
+| public.message_bumps_conversation            | trigger        |                                                                                                          | FUNCTION |
+| public.notify_message_received               | trigger        |                                                                                                          | FUNCTION |
+| public.leave_conversation                    | void           | p_conversation_id uuid                                                                                   | FUNCTION |
+| public.submit_form_response                  | uuid           | p_token uuid, p_answers jsonb, p_health jsonb, p_consent_text text, p_consented boolean, p_contact jsonb | FUNCTION |
 
 ## Enums
 

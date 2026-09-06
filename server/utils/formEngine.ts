@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, TablesInsert } from "~~/shared/types/database";
 import {
   parseFields,
+  assertProspectContactFields,
   FormShapeError,
+  PROSPECT_INTAKE_FORM_KEY,
   type FormField,
 } from "~~/shared/forms/fields";
 
@@ -72,6 +74,20 @@ function readVersion(row: {
     consentText: row.consent_text,
     publishedAt: row.published_at,
   };
+}
+
+/**
+ * Field rules that depend on WHICH form this is.
+ *
+ * Enforced at publish, so a prospect form that could not produce a
+ * prospect is refused while an author is looking at the error — rather
+ * than at 2am, when a stranger has already filled it in and the submit
+ * path finds no name to promote.
+ */
+function assertFieldsForKey(formKey: string, fields: FormField[]): void {
+  if (formKey === PROSPECT_INTAKE_FORM_KEY) {
+    assertProspectContactFields(fields);
+  }
 }
 
 /** Every definition in the caller's org, each with its newest version. */
@@ -153,6 +169,7 @@ export async function createDefinition(
   input: CreateDefinitionInput,
 ): Promise<FormDefinitionSummary> {
   const fields = parseFields(input.fields);
+  assertFieldsForKey(input.key, fields);
 
   const definitionRow: Omit<TablesInsert<"form_definitions">, "organization_id"> = {
     key: input.key,
@@ -202,10 +219,12 @@ export async function createDefinition(
 export async function publishVersion(
   db: Db,
   definitionId: string,
+  formKey: string,
   fieldsInput: unknown,
   consentText: string | null,
 ): Promise<PublishedVersion> {
   const fields = parseFields(fieldsInput);
+  assertFieldsForKey(formKey, fields);
 
   const { data: latest, error: latestError } = await db
     .from("form_versions")

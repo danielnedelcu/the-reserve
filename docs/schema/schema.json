@@ -4766,6 +4766,18 @@
           "type": "timestamp with time zone",
           "nullable": false,
           "default": "now()"
+        },
+        {
+          "name": "prospect_intake_id",
+          "type": "uuid",
+          "nullable": true,
+          "comment": "The subject when the person had no client record. Cascades: purging a prospect takes their answers with them, which is what the 30-day retention promise means."
+        },
+        {
+          "name": "form_link_id",
+          "type": "uuid",
+          "nullable": true,
+          "comment": "Which issued link produced this response. Audit trail, not authorization — the link is consumed by then. Nulls on delete so a tidied link cannot orphan a response."
         }
       ],
       "indexes": [
@@ -4793,19 +4805,29 @@
           "columns": [
             "form_version_id"
           ]
+        },
+        {
+          "name": "form_responses_prospect",
+          "def": "CREATE INDEX form_responses_prospect ON public.form_responses USING btree (prospect_intake_id, submitted_at DESC) WHERE (prospect_intake_id IS NOT NULL)",
+          "table": "public.form_responses",
+          "columns": [
+            "prospect_intake_id",
+            "submitted_at"
+          ]
         }
       ],
       "constraints": [
         {
           "name": "form_responses_subject",
           "type": "CHECK",
-          "def": "CHECK ((client_id IS NOT NULL))",
+          "def": "CHECK ((num_nonnulls(client_id, prospect_intake_id) = 1))",
           "table": "public.form_responses",
           "referenced_table": "",
           "columns": [
-            "client_id"
+            "client_id",
+            "prospect_intake_id"
           ],
-          "comment": "Phase 1: the only subject is a client. Phase 2 drops and re-adds this as \"exactly one of client_id / prospect_intake_id\". Named so that migration can find it."
+          "comment": "Exactly one subject: a client (waiver) or a prospect (intake), never both and never neither."
         },
         {
           "name": "form_responses_organization_id_fkey",
@@ -4853,6 +4875,32 @@
           "table": "public.form_responses",
           "referenced_table": "",
           "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_responses_form_link_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (form_link_id) REFERENCES form_links(id) ON DELETE SET NULL",
+          "table": "public.form_responses",
+          "referenced_table": "public.form_links",
+          "columns": [
+            "form_link_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_responses_prospect_intake_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (prospect_intake_id) REFERENCES prospect_intake(id) ON DELETE CASCADE",
+          "table": "public.form_responses",
+          "referenced_table": "public.prospect_intake",
+          "columns": [
+            "prospect_intake_id"
+          ],
+          "referenced_columns": [
             "id"
           ]
         }
@@ -4949,6 +4997,411 @@
           "columns": [
             "form_response_id",
             "field_key"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.form_links",
+      "type": "BASE TABLE",
+      "comment": "A tokenized link to one form version. NO subject means a prospect link (the prospect_intake row is created when they submit, not now — issuing creates nothing, so an unanswered link leaves no phantom prospect in the review queue). client_id set means an existing client's waiver. Single-use: consumed_at is claimed atomically by submit_form_response, never by the route.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "form_version_id",
+          "type": "uuid",
+          "nullable": false,
+          "comment": "FROZEN AT ISSUE. The link points at the exact version the recipient will answer, so publishing a new version between sending and submitting cannot change their questions or the sensitive flags their answers are split against."
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "token",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "comment": "The only authorization the public submission path has. Unguessable (gen_random_uuid), single-use, expiring. There is deliberately no RLS policy exposing this table to anon — token lookup happens in a server route under the service role, the staff_invites pattern."
+        },
+        {
+          "name": "delivery_email",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "issued_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "(now() + '14 days'::interval)"
+        },
+        {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "nullable": true,
+          "comment": "Set by the atomic claim inside submit_form_response. A route-side check followed by an insert would be a race; this column moves in the same transaction as the response it authorises."
+        },
+        {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "form_links_pkey",
+          "def": "CREATE UNIQUE INDEX form_links_pkey ON public.form_links USING btree (id)",
+          "table": "public.form_links",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_links_token_key",
+          "def": "CREATE UNIQUE INDEX form_links_token_key ON public.form_links USING btree (token)",
+          "table": "public.form_links",
+          "columns": [
+            "token"
+          ]
+        },
+        {
+          "name": "form_links_org_recent",
+          "def": "CREATE INDEX form_links_org_recent ON public.form_links USING btree (organization_id, created_at DESC)",
+          "table": "public.form_links",
+          "columns": [
+            "organization_id",
+            "created_at"
+          ]
+        },
+        {
+          "name": "form_links_open",
+          "def": "CREATE INDEX form_links_open ON public.form_links USING btree (organization_id, expires_at) WHERE ((consumed_at IS NULL) AND (revoked_at IS NULL))",
+          "table": "public.form_links",
+          "columns": [
+            "organization_id",
+            "expires_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "form_links_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.form_links",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_links_issued_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (issued_by) REFERENCES staff(id)",
+          "table": "public.form_links",
+          "referenced_table": "public.staff",
+          "columns": [
+            "issued_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_links_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE",
+          "table": "public.form_links",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_links_form_version_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (form_version_id) REFERENCES form_versions(id) ON DELETE RESTRICT",
+          "table": "public.form_links",
+          "referenced_table": "public.form_versions",
+          "columns": [
+            "form_version_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_links_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.form_links",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_links_token_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (token)",
+          "table": "public.form_links",
+          "referenced_table": "",
+          "columns": [
+            "token"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.prospect_intake",
+      "type": "BASE TABLE",
+      "comment": "A person who has submitted an intake form and is not yet a client. TEMPORARY CUSTODY: contact details live here in transit and are purged at 30 days if the prospect never enrols (phase 3 sweep). Deliberately NOT a clients row with status=prospect — clients are members in this business, and status-flagging would force every existing clients query and policy to start filtering. Mirrors staff_invites being separate from staff.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "first_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "last_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false,
+          "comment": "Promoted from the submission's reserved email field, not typed by staff — the person's own answer is the source of truth for details that become their client record."
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'submitted'::text",
+          "comment": "submitted -\u003e under_review -\u003e approved. approved creates NOTHING usable: enrollment (tier + card on file) is the gate to clienthood and is owner-blocked on §3. Transitions and the review UI land in phase 3; this column exists so a submission has somewhere to start."
+        },
+        {
+          "name": "submitted_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "prospect_intake_pkey",
+          "def": "CREATE UNIQUE INDEX prospect_intake_pkey ON public.prospect_intake USING btree (id)",
+          "table": "public.prospect_intake",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "prospect_intake_pending",
+          "def": "CREATE INDEX prospect_intake_pending ON public.prospect_intake USING btree (organization_id, submitted_at DESC) WHERE (status = ANY (ARRAY['submitted'::text, 'under_review'::text]))",
+          "table": "public.prospect_intake",
+          "columns": [
+            "organization_id",
+            "submitted_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "prospect_intake_status_check",
+          "type": "CHECK",
+          "def": "CHECK ((status = ANY (ARRAY['submitted'::text, 'under_review'::text, 'approved'::text, 'rejected'::text])))",
+          "table": "public.prospect_intake",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "prospect_intake_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.prospect_intake",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "prospect_intake_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.prospect_intake",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_prospect_intake_touch",
+          "def": "CREATE TRIGGER trg_prospect_intake_touch BEFORE UPDATE ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        }
+      ]
+    },
+    {
+      "name": "public.form_submission_attempts",
+      "type": "BASE TABLE",
+      "comment": "Rate-limit state for the public submission endpoint, IN THE DATABASE rather than process memory: in-memory counters stop limiting the moment there is a second instance, and a security control that fails green is worse than none. organization_id and token are nullable because an attempt with an unrecognised token belongs to no org and names no real link — recording it is the point.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "nullable": false
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "token",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "ip_hash",
+          "type": "text",
+          "nullable": false,
+          "comment": "HMAC-SHA256 of the client IP under a server-only secret (FORM_IP_PEPPER), never a plain hash: the IPv4 space is 4 billion values, so an unsalted digest is precomputable and therefore plaintext-equivalent — unacceptable for visitor records on a health-intake page. The keyed hash keeps the only property rate limiting needs, that the same IP yields the same value inside this system, without being reversible by anyone who obtains the table. Rows are still purged by the 30-day sweep. If the secret is absent the submission route REFUSES to serve rather than falling back to a weaker hash: a security control that silently degrades is the failure mode this project names by convention."
+        },
+        {
+          "name": "outcome",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "form_submission_attempts_pkey",
+          "def": "CREATE UNIQUE INDEX form_submission_attempts_pkey ON public.form_submission_attempts USING btree (id)",
+          "table": "public.form_submission_attempts",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_submission_attempts_token",
+          "def": "CREATE INDEX form_submission_attempts_token ON public.form_submission_attempts USING btree (token, created_at DESC) WHERE (token IS NOT NULL)",
+          "table": "public.form_submission_attempts",
+          "columns": [
+            "token",
+            "created_at"
+          ]
+        },
+        {
+          "name": "form_submission_attempts_ip",
+          "def": "CREATE INDEX form_submission_attempts_ip ON public.form_submission_attempts USING btree (ip_hash, created_at DESC)",
+          "table": "public.form_submission_attempts",
+          "columns": [
+            "ip_hash",
+            "created_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "form_submission_attempts_outcome_check",
+          "type": "CHECK",
+          "def": "CHECK ((outcome = ANY (ARRAY['accepted'::text, 'rejected'::text])))",
+          "table": "public.form_submission_attempts",
+          "referenced_table": "",
+          "columns": [
+            "outcome"
+          ]
+        },
+        {
+          "name": "form_submission_attempts_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.form_submission_attempts",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_submission_attempts_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.form_submission_attempts",
+          "referenced_table": "",
+          "columns": [
+            "id"
           ]
         }
       ]
@@ -5931,6 +6384,32 @@
       "def": "FOREIGN KEY (form_version_id) REFERENCES form_versions(id) ON DELETE RESTRICT"
     },
     {
+      "table": "public.form_responses",
+      "columns": [
+        "form_link_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.form_links",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (form_link_id) REFERENCES form_links(id) ON DELETE SET NULL"
+    },
+    {
+      "table": "public.form_responses",
+      "columns": [
+        "prospect_intake_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.prospect_intake",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (prospect_intake_id) REFERENCES prospect_intake(id) ON DELETE CASCADE"
+    },
+    {
       "table": "public.form_response_health",
       "columns": [
         "form_response_id"
@@ -5942,6 +6421,84 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (form_response_id) REFERENCES form_responses(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.form_links",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.form_links",
+      "columns": [
+        "issued_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (issued_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.form_links",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.form_links",
+      "columns": [
+        "form_version_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.form_versions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (form_version_id) REFERENCES form_versions(id) ON DELETE RESTRICT"
+    },
+    {
+      "table": "public.prospect_intake",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.form_submission_attempts",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
     }
   ],
   "functions": [
@@ -7245,6 +7802,12 @@
       "name": "public.leave_conversation",
       "return_type": "void",
       "arguments": "p_conversation_id uuid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.submit_form_response",
+      "return_type": "uuid",
+      "arguments": "p_token uuid, p_answers jsonb, p_health jsonb, p_consent_text text, p_consented boolean, p_contact jsonb",
       "type": "FUNCTION"
     }
   ],

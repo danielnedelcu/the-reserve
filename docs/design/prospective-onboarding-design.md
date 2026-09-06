@@ -371,6 +371,121 @@ familiar mistake — it passes while the destructive half goes unchecked.
 The middle row is the one with no database backstop, so it is where the
 tests go.
 
+## Delivery and public submission — locked decisions (phase 2)
+
+Status: DECIDED 2026-09-06. The phase containing the app's first
+unauthenticated write, landing PHI-adjacent data.
+
+**5. One `form_links` issuance table, subject optional.** A link carries
+its token, a FROZEN `form_version_id`, expiry, consumption, revocation,
+who issued it, and the delivery address. No subject means a prospect
+link; `client_id` set means an existing client's waiver. Same "one store,
+nullable subject" shape as the unified response store, for the same
+reason: a waiver link for an existing client has no prospect row to hang
+a token on, so per-subject issuance would force a second mechanism and
+reintroduce the duplication phase 1 removed.
+
+Two consequences follow. `prospect_intake` is created AT SUBMIT, from the
+answers — issuing a link creates nothing, so there are no phantom
+prospects in the review queue or the purge for people who never answered,
+and the state machine keeps its word that a prospect begins at
+`submitted`. And `form_links` is the natural home for the atomic
+single-use claim.
+
+**6. The version is frozen at issue time, not resolved at submit.** The
+link stores `form_version_id`, not the definition. Publishing a new
+version between issuing a link and someone answering it must not change
+the questions they see or the flags their answers are split against —
+that is decision 2's immutability applied to the moment of delivery.
+
+**7. Single-use is an ATOMIC CLAIM in the database, not a check in the
+route.** Consumption is a conditional update — `set consumed_at = now()
+where token = ... and consumed_at is null and revoked_at is null and
+expires_at > now()` — inside a `security definer` function that also
+writes the response and its health rows, so claim and write are one
+transaction. Reading the link and then inserting would be a race two
+simultaneous submits both win. This mirrors `accept_staff_invite()`,
+which re-validates atomically for the same reason.
+
+The function is `revoke execute ... from public, anon, authenticated`:
+service-role only. That is what makes the security claim literal — anon
+holds no privilege anywhere on this path, no insert policy and no
+function grant, so "a direct anon insert fails" is a property of the
+grants rather than an accident of routing.
+
+**8. Contact details promote from reserved field keys.** The engine
+reserves `first_name`, `last_name`, `email`, `phone`; a prospect-intake
+form must define them, validated when the version is published, and the
+submit path copies them into `prospect_intake`'s columns while leaving
+them in `answers`.
+
+Rejected: a `contact_role` on the field descriptor, because it would
+extend the field contract that decision 2 froze — old versions would lack
+it, putting a per-version compatibility seam through the exact structure
+whose value is that it never changes — and the flexibility it buys has no
+use case, since there is one right email field, while adding a
+uniqueness-rule bug class that exists only because the flexibility does.
+Also rejected: staff typing contact at issue time, which drifts from what
+the person actually entered. Their own answer is the source of truth for
+details that become their client record.
+
+**9. Rate limiting in the database; captcha DEFERRED.** Per-token and
+per-IP limits recorded in `form_submission_attempts` and enforced in the
+route. No captcha in v1.
+
+The reasoning is what makes it defensible rather than lazy. Links are
+staff-issued and not publicly discoverable, so the threat is not a bot
+finding a public form — it is a leaked link, and a per-token limit caps
+that hard on a token that is single-use anyway. Against that, a captcha
+costs the two things this page can least afford: it lands on the
+prospect's FIRST touch, where the accessibility rule bites hardest (older,
+low-vision, less tech-fluent people should not have to fight a widget),
+and it adds an external dependency that can fail in a flow that has to
+work at the front desk.
+
+REVISIT IF: there is evidence of link-leak abuse, or links ever become
+publicly reachable (a self-serve "request to join" page would do it).
+Either changes the threat model this deferral rests on.
+
+State lives in the database, not process memory, because in-memory
+counters silently stop limiting the moment there is a second instance —
+a security control that fails green. There is no deployment-platform
+config in the repo, so single-instance cannot be assumed.
+
+**[AS-BUILT] What the verification caught.** The end-to-end harness found
+a real divergence the database-layer checks could not see: the route
+decided "this is a prospect link" as `client_id is null AND the definition
+key is prospect_intake`, while the function decided it as `client_id is
+null` alone, per decision 5. A subject-less link on any other form
+therefore sent no contact into a NOT NULL column — a 500 at submit time,
+for a stranger who had already filled the form in.
+
+The route was wrong; the decision is what it says. Two consequences kept:
+the route now derives contact for ANY subject-less link, and the ISSUE
+route refuses to mint a subject-less link for a version lacking contact
+fields, so an unsubmittable link cannot exist. The lesson worth carrying
+is the shape of the bug — two places independently deciding the same
+question, agreeing on the common case and diverging on the edge — not the
+null violation.
+
+### What phase 2 must PROVE, not assume
+
+Every failure here is silent, so each boundary is verified in both
+directions rather than exercised on the happy path:
+
+| Boundary | Proof |
+| --- | --- |
+| Single-use | second submit with the same token is refused |
+| Expiry | a link past `expires_at` is refused |
+| No anon write path | the token route succeeds AND a direct anon insert into each response table fails |
+| Shape validation | malformed input rejected; unknown keys rejected, never dropped |
+| Sensitivity split | a sensitive answer is present in `form_response_health` AND absent from `form_responses.answers` |
+| Rate limit | the limit actually limits, and per-token state survives across requests (proving it is DB-backed, not per-process) |
+
+The two that would leak PHI are the anon-write and split rows. They are
+asserted on ABSENCE, which is the only way to catch them: a test that
+only checks the happy path passes while the hole is open.
+
 ## The review UI (buildable now, §6)
 
 Three screens' worth of behaviour, all of it a shape the app already has:

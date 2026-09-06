@@ -83,6 +83,13 @@ QUEUED (in order):
 
 - Rotate Resend API key and DB password (exposed in chat during dev;
   Supabase service key already rotated after the push-protection catch)
+- FORM_IP_PEPPER must be set in the production environment, and it is a
+  DIFFERENT value per environment. It keys the HMAC over visitor IPs on
+  the public intake form, so rotating it re-anonymises history: existing
+  form_submission_attempts rows stop matching new hashes, which resets
+  rate-limit counters rather than corrupting anything. Absent, the public
+  submission route refuses to serve — fail-closed on purpose, so a missing
+  secret shows up as an outage, not as silently weaker hashing.
 - Production Stripe webhook endpoint registration (dashboard) — the CLI
   whsec\_ is dev-only; prod gets its own signing secret
 - Live Stripe keys swap + a small real-money verification pass

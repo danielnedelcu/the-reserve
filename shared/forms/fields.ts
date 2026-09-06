@@ -158,20 +158,29 @@ export function parseFields(raw: unknown): FormField[] {
   });
 }
 
+/**
+ * Everything coerceValue can emit — and therefore everything that reaches
+ * a jsonb column. Narrower than `unknown` on purpose: these values are
+ * written straight into jsonb, and a value type that is structurally JSON
+ * removes the need to cast at the insert, which would switch off checking
+ * at the one boundary where a wrong shape reaches storage.
+ */
+export type AnswerValue = string | boolean | string[];
+
 /** One sensitive answer, bound for form_response_health. */
-export interface HealthAnswer {
+export type HealthAnswer = {
   fieldKey: string;
   /** Snapshot of the question, because the version can be superseded. */
   label: string;
-  answer: unknown;
-}
+  answer: AnswerValue;
+};
 
-export interface ValidatedAnswers {
+export type ValidatedAnswers = {
   /** Non-sensitive answers, for form_responses.answers. */
-  answers: Record<string, unknown>;
+  answers: Record<string, AnswerValue>;
   /** Sensitive answers, for form_response_health — one row each. */
   health: HealthAnswer[];
-}
+};
 
 /**
  * Validates a submission against its version's fields and SPLITS it by
@@ -195,7 +204,7 @@ export function validateAnswers(
     }
   }
 
-  const answers: Record<string, unknown> = {};
+  const answers: Record<string, AnswerValue> = {};
   const health: HealthAnswer[] = [];
 
   for (const field of fields) {
@@ -225,7 +234,7 @@ export function validateAnswers(
 }
 
 /** Type-checks one answer and normalises it. Throws on a mismatch. */
-function coerceValue(field: FormField, value: unknown): unknown {
+function coerceValue(field: FormField, value: unknown): AnswerValue {
   const bad = (expected: string): never => {
     throw new FormShapeError(
       `"${field.label}" expects ${expected}.`,
@@ -287,4 +296,99 @@ function coerceValue(field: FormField, value: unknown): unknown {
       return [...new Set(value)];
     }
   }
+}
+
+/**
+ * Reserved contact keys.
+ *
+ * A prospect's details reach prospect_intake by promotion from their own
+ * answers — their answer is the source of truth for facts that become
+ * their client record, rather than something staff retype. The mapping is
+ * by fixed key rather than a role on the descriptor: adding a role would
+ * extend the field contract that decision 2 froze, putting a per-version
+ * compatibility seam through the one structure whose value is that it
+ * never changes.
+ */
+export const CONTACT_FIELD_KEYS = ["first_name", "last_name", "email", "phone"] as const;
+
+/** The definition key whose forms must carry the contact fields. */
+export const PROSPECT_INTAKE_FORM_KEY = "prospect_intake";
+
+/**
+ * Enforced when a prospect-intake version is PUBLISHED, so a form that
+ * cannot produce a prospect is rejected while someone is looking at it,
+ * rather than at 2am when a stranger submits it.
+ */
+export function assertProspectContactFields(fields: FormField[]): void {
+  const byKey = new Map(fields.map((f) => [f.key, f]));
+
+  for (const key of ["first_name", "last_name", "email"] as const) {
+    const field = byKey.get(key);
+    if (!field) {
+      throw new FormShapeError(
+        `A ${PROSPECT_INTAKE_FORM_KEY} form must include a "${key}" field — it becomes the prospect's record.`,
+        key,
+      );
+    }
+    if (!field.required) {
+      throw new FormShapeError(`"${key}" must be required on a prospect form.`, key);
+    }
+  }
+
+  // Contact fields are promoted into prospect_intake's own columns, which
+  // carry no health gating. Marking one sensitive would route it to the
+  // gated health rows instead, so the promotion would find nothing and
+  // the prospect would arrive nameless — while the answer sat in a table
+  // meant for something else entirely.
+  for (const key of CONTACT_FIELD_KEYS) {
+    const field = byKey.get(key);
+    if (field?.sensitive) {
+      throw new FormShapeError(
+        `"${key}" is a contact field and cannot be marked sensitive — it is promoted to the prospect record, not to health rows.`,
+        key,
+      );
+    }
+  }
+
+  const email = byKey.get("email");
+  if (email && email.type !== "email") {
+    throw new FormShapeError(`"email" must be of type email.`, "email");
+  }
+}
+
+/**
+ * The contact details a submission promotes into prospect_intake.
+ * A type alias, like FormField, so it is structurally JSON for the jsonb
+ * parameter it is passed as.
+ */
+export type ProspectContact = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+}
+
+/**
+ * Pulls the reserved contact answers out of a validated answer set.
+ *
+ * Reads from `answers` (never from the health bucket): contact fields are
+ * non-sensitive by the publish-time rule above, so anything claiming to be
+ * contact data in the health bucket is a definition that should not have
+ * been publishable.
+ */
+export function contactFromAnswers(answers: Record<string, AnswerValue>): ProspectContact {
+  const text = (key: string): string => {
+    const value = answers[key];
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new FormShapeError(`Missing contact field "${key}".`, key);
+    }
+    return value.trim();
+  };
+  const phone = answers.phone;
+  return {
+    first_name: text("first_name"),
+    last_name: text("last_name"),
+    email: text("email"),
+    phone: typeof phone === "string" && phone.trim() !== "" ? phone.trim() : null,
+  };
 }
