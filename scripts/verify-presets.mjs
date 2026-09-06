@@ -25,6 +25,9 @@ const g = (k) => {
 };
 
 const { PRESET_SQL } = await import(`${PROJECT}/server/utils/askPresets.ts`);
+const { ROUTE_PRESETS, ORG_PRESETS } = await import(
+  `${PROJECT}/shared/ask/presets.ts`
+);
 const { coerceRows } = await import(`${PROJECT}/server/utils/askConnection.ts`);
 const { planColumns, columnLabel, formatCell } = await import(
   `${PROJECT}/shared/ask/format.ts`
@@ -103,7 +106,48 @@ console.log(
   bogus.ok ? `      bogus sub also runs (RLS should yield nothing for it)` : `      bogus sub: ${bogus.err}`,
 );
 
-// --- (b) do the presets actually run? ---------------------------------
+let pairingFailures = 0;
+
+// --- (b) do the two halves of a preset still pair? ---------------------
+//
+// A preset is two objects in two places: a chip in shared/ask/presets.ts
+// that the browser renders, and a hand-written query in PRESET_SQL that
+// the server runs. They are joined only by a matching id, and NOTHING
+// enforced that until this check existed — an id added on one side alone
+// produced no error anywhere. A chip with no SQL silently falls through
+// to the LLM, so a question that was meant to be free, instant and
+// exact quietly becomes billed, slower and only probably right. Nobody
+// would notice from the outside; the answer still appears.
+//
+// This is the second tier of the two-paths convention in CLAUDE.md: the
+// browser cannot hold SQL, so the two halves genuinely cannot share an
+// implementation — which makes the seam between them the thing to test.
+console.log("\n=== preset id pairing (chips <-> PRESET_SQL) ===");
+const chipIds = new Set([
+  ...ROUTE_PRESETS.flatMap((entry) => entry.presets.map((p) => p.id)),
+  ...ORG_PRESETS.map((p) => p.id),
+]);
+const sqlIds = new Set(Object.keys(PRESET_SQL));
+const chipsWithoutSql = [...chipIds].filter((id) => !sqlIds.has(id));
+const sqlWithoutChips = [...sqlIds].filter((id) => !chipIds.has(id));
+
+if (chipsWithoutSql.length) {
+  pairingFailures += chipsWithoutSql.length;
+  for (const id of chipsWithoutSql) {
+    console.log(`FAIL  ${id.padEnd(38)} chip has NO PRESET_SQL — falls through to the LLM`);
+  }
+}
+if (sqlWithoutChips.length) {
+  // Not dangerous, but it means someone wrote a query nobody can reach.
+  for (const id of sqlWithoutChips) {
+    console.log(`WARN  ${id.padEnd(38)} PRESET_SQL with no chip — unreachable`);
+  }
+}
+if (!chipsWithoutSql.length && !sqlWithoutChips.length) {
+  console.log(`PASS  all ${chipIds.size} chips pair with a PRESET_SQL query`);
+}
+
+// --- (c) do the presets actually run? ---------------------------------
 console.log("\n=== PRESET_SQL execution ===");
 let pass = 0;
 const ids = Object.keys(PRESET_SQL);
@@ -132,3 +176,12 @@ for (const id of ids) {
   }
 }
 console.log(`\n${pass}/${ids.length} presets executed successfully`);
+
+// Exit non-zero on any failure. This script previously printed FAIL and
+// exited 0, so `npm run verify:presets` could never fail a pipeline and a
+// broken preset looked identical to a working one in CI.
+const failures = pairingFailures + (ids.length - pass);
+if (failures) {
+  console.log(`\n${failures} failure(s) — see FAIL lines above`);
+  process.exit(1);
+}
