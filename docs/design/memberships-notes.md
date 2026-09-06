@@ -73,7 +73,11 @@ onboarding builds through `approved` and stubs `active`.
     exceptions," then a client who is not a member is a contradiction and
     the direct-add path has to change shape or go. Raised by the
     onboarding design — see "Two doors to clienthood" in
-    prospective-onboarding-design.md.
+    prospective-onboarding-design.md. NARROWED 2026-09-06: onboarding
+    decided approval and enrollment happen in person only, so there is no
+    REMOTE path to clienthood to worry about. What is left is the desk
+    itself — walk-ins who arrive having submitted no form, plus the Q9/Q11
+    guest and comp cases.
 
 ## Engineering decisions provisionally ratified (pending no surprises above)
 

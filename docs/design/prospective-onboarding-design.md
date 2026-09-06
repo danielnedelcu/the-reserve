@@ -46,7 +46,7 @@ flowchart TB
     SUB -->|"staff opens it"| REV
     REV -->|"Approve — a record decision.<br/>NOT a 'create user' button"| APP
     APP ==>|"THE SEAM — v1 stubs past here"| ENR
-    ENR -->|"a) auto on enrollment, or<br/>b) at the front desk on arrival.<br/>Timing, not schema — don't foreclose"| ACT
+    ENR -->|"DECIDED: at the desk, in person.<br/>Schema still allows auto-on-payment;<br/>the club does not use it"| ACT
 
     SUB -.->|"abandoned"| PURGE
     REV -.-> PURGE
@@ -74,6 +74,11 @@ The heavy arrow is THE SEAM: everything above it ships in v1, everything
 below it waits for §3. Dashed arrows are the 30-day retention purge —
 every state before `enrolled` can end there.
 
+Read the right-hand half with the in-person-only decision below in mind:
+approve, enroll and activate are three transitions that all fire in a
+single moment at the front desk. The diagram spaces them out because the
+SCHEMA keeps them apart, not because the prospect experiences three steps.
+
 Key semantics, from the answers given:
 
 - **approved ≠ member.** Approval is "this person is welcome." It creates
@@ -87,6 +92,43 @@ Key semantics, from the answers given:
 - **Approval and account creation are separate events.** The client
   record is created at `enrolled`/`active`, not at `approved` — so an
   approved-but-never-paid prospect never pollutes the clients table.
+
+**Decision: approval and enrollment happen in person — and only in
+person.** The intended prospect experience, end to end:
+
+> fill the form (remotely or on-site) → show up → approved and enrolled
+> at the desk, on the spot.
+
+There is NO remote approval step. Nobody is approved by a staff member at
+a laptop and told to come in later. The prospect submits, hears nothing,
+arrives, and becomes a member in one conversation.
+
+What this does to the state machine: the last three transitions —
+approve, enroll, activate — all fire in one in-person moment. The STATES
+still exist and still happen in order; what collapses is the staff-facing
+experience of them, from three screens across days into one interaction
+at the desk. Keep them distinct in schema — they are separately
+auditable, and THE SEAM cuts between them — and do NOT collapse them in
+data merely because they are collapsed in time.
+
+Consequences, written down so they are not later mistaken for gaps:
+
+- **There is no "approved, awaiting visit" notification.** Not deferred,
+  not a v2 nicety — there is nothing to notify about, because approval
+  does not happen while the prospect is away.
+- **The submit-then-silence gap is INTENDED.** A prospect who submits a
+  form and hears nothing has not fallen through a crack. The silence is
+  the product: a members-only club that decides in person is behaving
+  like an exclusive club, not like a signup funnel that owes an instant
+  confirmation. Anyone meeting this flow later will read the gap as a
+  defect and try to close it with an email — it is a decision, and this
+  paragraph is here to stop that.
+- **The review UI's Approve button gets pressed with the prospect
+  standing there.** Same screens as designed below, different moment: the
+  pending list is a desk tool, not an inbox worked between appointments.
+- **Not foreclosed, because it is a different thing:** a plain submission
+  RECEIPT ("we have your form") is not an approval notification and does
+  not leak a decision. If one is ever wanted, it does not reopen this.
 
 ## Where the data lives — PII before there's an account
 
@@ -307,12 +349,31 @@ Shapes it could take, listed to show the range rather than to pick one:
 - It stays as a grandfathering / data-entry tool behind a high
   permission, explicitly outside the normal flow.
 
+**Narrowed by the in-person-only decision.** That decision closes the
+frightening version of this question. If nobody can be approved or
+enrolled remotely, there is no remote path to clienthood at all — no
+self-serve back door, no way to become a member without standing in the
+building. The direct "Add client" button is then a DESK affordance being
+used by staff who are face to face with the person, not a bypass someone
+could drive from outside.
+
+What is left is a smaller, in-building question:
+
+- **Walk-ins with no prior form** — does the desk start them in the same
+  flow (fill it on a staff device, then approve and enroll), or is there
+  a shortcut, and if so what does the shortcut skip?
+- **Guests, comps, and grandfathered arrangements** — owner Q9 and Q11.
+
+So read Q12 in that narrowed form: not "is there a remote back door"
+(closed by the in-person decision), but "what does the desk do for
+someone who arrives having submitted nothing."
+
 Recorded as owner question 12 in memberships-notes.md. It is
 owner-blocked because it turns on Q8 (how someone becomes a member) and
 especially Q10 (is there anyone who enters without a membership) — Q10 is
-what decides whether an exception can exist at all. Do not
-resolve it by building — a v1 that quietly leaves both doors open ships
-the contradiction into production, where the clients table stops being a
+what decides whether an exception can exist at all. Do not resolve it by
+building — a v1 that quietly leaves both doors open ships the
+contradiction into production, where the clients table stops being a
 reliable answer to "who is a member."
 
 ## Open questions for the eventual build/design continuation
@@ -320,10 +381,11 @@ reliable answer to "who is a member."
 - Purge mechanism: pg_cron vs nightly job? (Either; pg_cron if available.)
 - Captcha/abuse strategy for the public endpoint — which provider, or a
   simpler rate-limit-only v1?
-- Is the emailed-link the primary intake path, or do most prospects fill
-  it in-facility on a staff device? (Owner Q8 shapes this — a walk-up
-  members-only club may do intake at the desk, making "email a link" the
-  secondary flow.)
+- Emailed link vs filled in-facility — NARROWED by the in-person-only
+  decision, no longer a fork. Both remain valid ways to collect the FORM,
+  and neither is a path to approval, which is always at the desk. What
+  remains is logistics (do most prospects arrive with it already done?),
+  which changes no schema.
 - One form, or versioned form types (adult vs minor waiver, service-
   specific health questions)? Start with one; the version field leaves
   room.
