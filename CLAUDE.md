@@ -61,6 +61,25 @@
   Known live seam, currently consistent but unasserted: `shared/ask/presets.ts`
   ids must pair with `PRESET_SQL` keys or a preset silently falls through
   to the LLM — 15/15 match today, and nothing checks it.
+- "Built" means a human can complete the flow from the UI. Not that the
+  machinery exists. The failure mode is specific and it passed every gate:
+  schema applied, route written, typecheck 0, unit tests green, boundary
+  harness green — and a real person still could not do the thing, because
+  the human-facing caller was never written. Three in the forms feature
+  alone: no way to CREATE a form (the empty state shipped the gap as a
+  sentence, "created through the API for now"), no way to SEND one (the
+  route minted a link and left delivery to the staff member's own email
+  client), and no way to send a waiver AT ALL (the dialog collected an
+  address but never a client, so every attempt 422'd). Each was
+  "schema + route done, caller never written", and each was described as
+  finished. So: "works end to end" is a claim about the USER'S REACHABLE
+  PATH, not about the code's capability, and it is earned by driving the
+  actual loop — open the page, click the button, receive the email, read
+  the result — with no curl, no service-role script, and no copy-paste
+  step standing in for a missing screen. If a step in the demo is "then a
+  developer runs...", the feature is not built. Corollary: an empty state
+  or a comment admitting the gap is not a mitigation; it is the gap,
+  written down and shipped.
 - Types: npx nuxt typecheck must stay at 0; payloads feeding insert+update
   typed as Omit<TablesInsert<"t">, "organization_id">
 - Every new table: organization_id + org-scoped RLS (see docs/design/multi-tenancy-status.md)
