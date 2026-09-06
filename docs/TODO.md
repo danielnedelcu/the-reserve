@@ -1,6 +1,6 @@
 # The Reserve — live board
 
-Last updated: 2026-08-30. This is the working state of the project — what's
+Last updated: 2026-09-05. This is the working state of the project — what's
 done, what's queued, what's blocked on whom. Update when the board changes.
 
 ## Phase status
@@ -74,30 +74,55 @@ QUEUED (in order):
 - StaffEditSheet Roles section: confirm roles list renders + pre-checks +
   save works (after the description-column fix AND the toggle-set
   migration)
-- Ask: verify the prompt cache is actually hitting — `cache_read_tokens`
-  should be > 0 on the SECOND and later asks of a session. The schema
-  prompt is identical every time and is the bulk of the input, so a
-  persistent zero means something is busting the cached prefix and the
-  bill is roughly 3x what it should be. Check after a handful of real
-  asks, before the cost normalises as "just what it costs":
+- Ask: verify the prompt cache is actually hitting. There are TWO cached
+  prefixes now, not one — the system block (the schema, byte-identical on
+  every ask) and the last prior-turn message (the conversation so far).
+  Both have to hold, and the older baseline below could only see one of
+  them. Check after a handful of real asks, before the cost normalises as
+  "just what it costs":
 
-      select created_at, input_tokens, cache_read_tokens, cost_micros
+      select created_at, thread_id, input_tokens, cache_read_tokens,
+             cache_write_tokens, cost_micros
         from ask_queries where model is not null
        order by created_at desc limit 10;
 
-  A zero on the first ask of a cold window is expected; zeros all the way
-  down are the bug. Likeliest causes: the system prompt being rebuilt
-  per-request, `cache_control` dropped, or anything volatile creeping in
-  ahead of the breakpoint.
+  BASELINE 2026-09-05 (post-threading). What healthy looks like:
 
-  BASELINE 2026-09-05, two sequential asks, cache confirmed working:
+      first ask, cold window   cache_read=0             cache_write≈3218
+      first ask of a thread    cache_read≈3218          cache_write=0
+      follow-up, turn 2        cache_read≈3218          cache_write≈50–250
+      follow-up, turn 3+       cache_read≈3400–3700+    cache_write≈50–250
+
+  Read it as a shape, not a number. cache_read GROWS with thread depth —
+  schema plus every prior turn — and cache_write COLLAPSES to the size of
+  the one new turn once the schema has been written. A deep thread reads
+  well past 3700; that is the system working, not drift.
+
+  The failure the old baseline would have called healthy: a follow-up
+  (same thread_id, not the first row for it) reading ~3218 and nothing
+  more. That is the schema cache hitting while the conversation prefix
+  misses — context caching is broken, every turn resends its predecessors
+  at full rate, and thread cost goes O(n²) in depth. Against the old
+  schema-only figure of 3218 that reads as a perfect hit, which is exactly
+  why this entry was rewritten. Judge cache_read against the thread's
+  depth, never against a fixed number.
+
+  The other failures:
+
+  - Zeros all the way down — nothing is caching, bill roughly 4.6x.
+    Likeliest causes: the system prompt rebuilt per request, cache_control
+    dropped, or something volatile creeping in ahead of a breakpoint.
+  - A zero on the first ask of a cold window is expected, not a bug.
+  - A thread past CONTEXT_DEPTH (20) legitimately loses the conversation
+    prefix: the window slides, the oldest turn drops off, and the prefix
+    changes every turn. Verified, not assumed — check depth before
+    calling it a bug.
+
+  SUPERSEDED baseline, pre-threading (single breakpoint, schema only), kept
+  because it is what the numbers above are measured against:
 
       ask 1 (cold): in=225 out=78 cache_read=0    cache_write=3218  $0.0232
       ask 2 (warm): in=225 out=89 cache_read=3218 cache_write=0     $0.0050
-
-  So a warm ask is ~4.6x cheaper than a cold one, and the schema prompt is
-  the 3218 tokens doing the work. Compare against this when re-checking:
-  a warm ask drifting back toward $0.023 means the prefix broke.
 
 ## Blocked on the owner
 
