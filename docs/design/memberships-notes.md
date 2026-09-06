@@ -22,6 +22,22 @@ Implications to design around:
   lapsed member is standing at the desk?
 - Gift cards create a tension to resolve: can a non-member redeem one?
 
+## The other half of the front door
+
+Prospective-member onboarding (`docs/design/prospective-onboarding-design.md`,
+designed 2026-09-06) is the other half of this feature. The split:
+
+- **Onboarding owns submitted → approved** — the form engine, tokenized
+  link, public submission, staff review. Buildable now; not blocked here.
+- **Memberships owns enrolled → active** — tiers and paid enrollment, the
+  moment a prospect becomes a paying member. Blocked on the answers below.
+
+They share **question 8** (how someone becomes a member). Its answer sets
+whether intake is an application reviewed ahead of time or a form filled
+at the desk during same-day signup — which decides whether the emailed
+link is onboarding's primary path or its secondary one. Until it lands,
+onboarding builds through `approved` and stubs `active`.
+
 ## Questions for the owner
 
 1. What is the monthly fee actually buying? Facility access (club model)?

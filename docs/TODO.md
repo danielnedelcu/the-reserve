@@ -1,6 +1,6 @@
 # The Reserve — live board
 
-Last updated: 2026-09-05. This is the working state of the project — what's
+Last updated: 2026-09-06. This is the working state of the project — what's
 done, what's queued, what's blocked on whom. Update when the board changes.
 
 ## Phase status
@@ -17,9 +17,30 @@ QUEUED (in order):
 1. Memberships (§3) — BLOCKED on owner answers (see memberships-notes.md).
    Stripe Subscriptions on the 4b rails; unlocks the dashboard Members card.
    KEY CONSTRAINT: The Reserve is a MEMBERS-ONLY facility — membership is
-   the gate to the business, not an upsell.
-2. Intake forms (§6) — design draft exists; closes the booking route's
-   requires_intake TODO. Matters more in a members-only club (waivers).
+   the gate to the business, not an upsell. Owns the enrolled → active half
+   of the front door; item 2 owns the half before it, and Q8 is shared.
+2. Prospective-member onboarding + intake forms (§6) — the members-only
+   FRONT DOOR. Designed 2026-09-06, prospective-onboarding-design.md (this
+   supersedes "design draft exists" — there is a design). It splits across
+   two phases, and the split is the point:
+
+   - §6 FORM ENGINE — BUILDABLE NOW, no owner input needed: form
+     definitions + versioning, response storage, prospect_intake table,
+     tokenized link delivery, the public token-gated submission endpoint,
+     the staff review UI, 30-day retention purge. The same engine serves
+     existing-client waivers and closes the booking route's
+     requires_intake TODO — building it for prospects does not defer §6's
+     original scope, it delivers it.
+   - ENROLL → ACTIVATE — OWNER-BLOCKED, moves with §3: what a paid
+     membership grants, tiers, the moment a prospect becomes a member.
+     Shares owner question 8 with memberships.
+
+   THE SEAM: build through `approved`; stub `active` as "create a client
+   with no membership" so the pipeline is end-to-end testable, then
+   replace the stub when §3 lands. Do NOT build enrollment on guesses
+   about tiers. Riskiest piece is the unauthenticated submit endpoint —
+   the design doc flags it for the same verify-the-assumption rigor Ask
+   got.
 3. Cancellation-fee engine — its enabler (consented card on file) is live.
 4. Marketing (§8).
 5. UI polish sprint — after feature phases (see ui-polish.md).

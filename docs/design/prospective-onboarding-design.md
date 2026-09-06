@@ -1,0 +1,215 @@
+# Prospective-member onboarding — design
+
+Status: DESIGN, not built. Partly owner-blocked (see the matrix at the end).
+Written in the design room 2026-09-06. Produces the plan; no SQL yet.
+
+## What this is (and the naming correction)
+
+A prospect — not yet a client — receives a unique link, fills an intake
+form, and a staff member reviews it and decides whether they may join.
+The Reserve is members-only, so this is the **front door to the business**,
+not a waiver bolted onto an existing account.
+
+That places this feature across two roadmap items, and the split is the
+first thing to get right:
+
+- **§6 intake forms = the FORM ENGINE.** Form definitions (fields,
+  required-ness, waiver text, versioning), response storage, tokenized
+  delivery, submission. Reusable: it serves BOTH this prospect pipeline
+  AND the original §6 case (an existing client signing a waiver before a
+  booking). Mostly UNBLOCKED.
+- **§3 memberships = the APPROVAL→ENROLL→ACTIVATE pipeline.** What
+  approval grants, what a paid membership grants, tiers, and the moment a
+  prospect becomes a paying member. Partly OWNER-BLOCKED (it depends on
+  how someone becomes a member — owner question 8 in
+  memberships-notes.md).
+
+Build the engine; design the pipeline against it; gate the owner-blocked
+transitions until §3's answers land.
+
+## The state machine (the core correction to the a/b question)
+
+The original sketch offered "auto-create account on approval" vs "wait
+till they're in the facility." Those aren't a fork to commit to in schema
+— they're WHEN the last transition fires. Model it as stages, and a/b
+becomes a timing choice, not a data-model choice:
+
+    submitted → under_review → approved → enrolled → active
+                     │              │
+                  (staff picks up)  │
+                                (staff decision: welcome to join)
+                                               │
+                                    (pays: tier + card on file — §3)
+                                                        │
+                                             (account usable; can book/enter)
+
+Key semantics, from the answers given:
+
+- **approved ≠ member.** Approval is "this person is welcome." It creates
+  nothing usable yet. A members-only, PAID-membership facility means the
+  real gate is `enrolled` — tier chosen, card on file (the 4b machinery),
+  money flowing. Someone approved but not enrolled cannot book or enter.
+- **a/b is the enrolled→active timing.** Auto-activate on enrollment (the
+  pre-approved VIP who paid online) OR activate at the front desk when
+  they show — both reachable without schema change, because activation is
+  a transition, not a table shape. Don't foreclose either.
+- **Approval and account creation are separate events.** The client
+  record is created at `enrolled`/`active`, not at `approved` — so an
+  approved-but-never-paid prospect never pollutes the clients table.
+
+## Where the data lives — PII before there's an account
+
+The prospect's data does NOT go in `clients`. Two reasons: a prospect
+isn't a client (the members-only invariant says clients are members), and
+status-flagging clients with `status='prospect'` would force every
+existing clients query and RLS policy to start filtering — eroding the
+clean boundary. This mirrors the existing pattern: `staff_invites` is a
+separate table from `staff`, not a `staff` row with `pending=true`.
+
+**Model: a dedicated `prospect_intake` table = TEMPORARY CUSTODY.**
+
+- Contact fields (name, email, phone) as columns; the rest of the form as
+  a `responses` jsonb, plus the form-version answered and the token.
+- RLS: reads gated behind a review permission (e.g. `intake.review`),
+  org-scoped. No authenticated insert policy — submission is public and
+  token-gated (see the security surface below), written by a server route
+  under the service role. Append-only-ish: staff annotate status, never
+  edit the prospect's answers.
+- On `enrolled`/`active`: the relevant fields are PROMOTED into the
+  permanent homes — contact into `clients`, and crucially **health
+  answers become `client_notes` with kind='health'**, which already has
+  the sensitivity tier (`clients.notes.health.view`) and audit-on-read
+  (the route that logs `health_note.viewed`). So the PHI's permanent home
+  is machinery you already built; `prospect_intake` only holds it in
+  transit.
+- After promotion, the prospect row's raw PII is purged (the durable copy
+  now lives in the client record it became).
+
+**Retention: 30 days.** Rows that never reach `enrolled` (abandoned or
+rejected) are purged after 30 days. Mechanism options for the design
+session to pick: a `pg_cron` scheduled sweep, or a nightly job — either
+deletes `where status in ('submitted','under_review','approved') and
+created_at < now() - interval '30 days'`. The retention window is stated
+on the table comment so it reads as policy, not an accident.
+
+**Health data specifically.** A wellness facility's intake likely
+collects health history — PHI-adjacent, and here it's collected BEFORE an
+account exists. Design consequences: (1) it lives in `prospect_intake`
+for at most 30 days in transit, then moves to the audited `client_notes`
+health tier or is purged; (2) the review UI showing a prospect's health
+answers sits behind the same permission discipline as health notes, not
+general `intake.review`.
+
+**Decision: approval is a non-health decision.** Health and personal
+history are collected to KNOW the member — what a provider should be
+aware of before laying hands on them — NOT as a criterion for letting
+them join. Nothing in the health answers decides approval, so reading
+them is not part of approving. Settled, not a lean:
+
+- **The review/approval UI shows contact and non-sensitive fields only.**
+  Health answers are not rendered on the approval screen at all — not
+  collapsed, not redacted-with-a-reveal. Absent.
+- **Health answers stay behind `clients.notes.health.view`** — the tier
+  they permanently live in after promotion, applied while they are still
+  in transit. A reviewer holding `intake.review` and nothing else can
+  take a prospect from submitted to approved and never see them.
+- **Approval and health-visibility are fully decoupled**, in both
+  directions. Approval rights grant no health access; health access is
+  not a route to approving. Neither permission implies the other.
+
+The alternative is what makes this worth writing down. Putting health
+answers on the approval screen would make every reviewer a health-note
+reader BY CONSTRUCTION — silently widening PHI access to whoever happens
+to staff the front desk, and doing it through a screen nobody would think
+to audit as a health surface. It would also make admission look
+health-conditioned, which is not what this facility does. Keeping them
+apart leaves the audited health tier as the only way anyone reads that
+data, prospect or client.
+
+## The public-submission security surface (genuinely new)
+
+Every write surface so far has been authenticated. This one is not — a
+prospect has no account. That is a new class of endpoint and needs care:
+
+- **Token-gated.** The unique link carries a single-use, expiring token
+  (reuse the `staff_invites` token pattern — tokenized link, expiry,
+  consumed on submit). No token, no submission.
+- **Unauthenticated but not open.** The submit route accepts anon, but
+  writes via service role to `prospect_intake` — no anon RLS insert
+  policy exists. The token is the authorization.
+- **Rate-limited + abuse-guarded.** A public endpoint invites spam; needs
+  a rate limit and probably a captcha or equivalent, since the token
+  alone doesn't stop a leaked-link flood. Flag for the build.
+- **Input-bounded.** Field lengths capped, `responses` shape validated
+  against the form definition server-side — never trust the submitted
+  shape.
+
+This surface is the riskiest part of the feature and deserves the same
+"verify the assumption" rigor the ask feature got — an unauthenticated
+write to a table holding PHI-adjacent data is exactly where a silent hole
+would hurt most.
+
+## The engine, reusable (§6 proper)
+
+The form definition + versioned responses is the piece worth building
+well because it serves two callers:
+
+- Prospect onboarding (this doc).
+- Existing-client waivers (§6's original scope — the booking route's
+  `requires_intake` TODO).
+
+Form definitions carry: fields, required-ness, waiver/consent text, and a
+VERSION — so a waiver's wording change snapshots what each person actually
+agreed to (same discipline as card-consent policy_text and price
+snapshots). A response records which form version it answered.
+
+## Owner-blocked vs buildable
+
+BUILDABLE NOW (no owner input needed):
+
+- The form engine: definitions, versioning, response storage.
+- `prospect_intake` table + tokenized link delivery (reuse invite flow).
+- The public token-gated submission endpoint (with its security surface).
+- States submitted → under_review → approved, and the staff review UI.
+- 30-day retention purge.
+- The health-answers → client_notes promotion mechanism.
+
+OWNER-BLOCKED (needs memberships-notes.md answers):
+
+- What `enrolled`/`active` actually does — membership enrollment needs
+  tier definitions (owner Q1–Q4).
+- Whether approval is same-day walk-up vs application review (owner Q8) —
+  changes the review UI's urgency and whether the "email a link" flow is
+  even the primary path or a secondary one.
+- Guest / comp / grandfathered cases (owner Q9, Q11).
+
+THE SEAM: build through `approved`. Stub `active` to simply create a
+client with no membership (so the pipeline is end-to-end testable) until
+§3 lands, then replace the stub with real membership enrollment. Do NOT
+build the enrollment step on guesses about tiers.
+
+## Open questions for the eventual build/design continuation
+
+- Purge mechanism: pg_cron vs nightly job? (Either; pg_cron if available.)
+- Captcha/abuse strategy for the public endpoint — which provider, or a
+  simpler rate-limit-only v1?
+- Is the emailed-link the primary intake path, or do most prospects fill
+  it in-facility on a staff device? (Owner Q8 shapes this — a walk-up
+  members-only club may do intake at the desk, making "email a link" the
+  secondary flow.)
+- One form, or versioned form types (adult vs minor waiver, service-
+  specific health questions)? Start with one; the version field leaves
+  room.
+
+## Relationship to other docs
+
+- memberships-notes.md — the enrollment half of the same front door.
+  This doc owns submitted → approved (the form engine, buildable now);
+  memberships owns enrolled → active (tiers and paid enrollment,
+  owner-blocked). They share owner question 8 — how someone becomes a
+  member — whose answer sets whether intake is an application reviewed
+  ahead of time or a form filled at the desk during same-day signup.
+- The health-note sensitivity tier + audit-on-read is in
+  migration3_booking_contract.md and the rls-patterns reference.
+- Card-on-file consent (4b) is the model for versioned waiver-text
+  snapshots.
