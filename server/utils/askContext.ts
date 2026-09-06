@@ -32,8 +32,21 @@ export interface ContextMessage {
   content: string;
 }
 
-/** How many earlier exchanges a follow-up carries. */
-export const CONTEXT_DEPTH = 3;
+/**
+ * How many earlier exchanges a follow-up carries.
+ *
+ * Cost stopped being the reason for a limit once the context prefix is
+ * cached; relevance is. A thread that wandered from clients to products to
+ * payroll hands the model twenty turns of irrelevant anchoring, and more
+ * context makes answers worse, not just pricier. Twenty is a judgement
+ * call, not a measurement.
+ *
+ * It is also the point where prefix caching stops helping: the window
+ * slides once a thread passes this many turns, so every later turn shifts
+ * the messages and misses the cache. Threads that long are rare; the cost
+ * simply reverts to what it was before caching.
+ */
+export const CONTEXT_DEPTH = 20;
 
 /**
  * Shape prior turns into alternating messages.

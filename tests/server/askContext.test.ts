@@ -99,7 +99,10 @@ describe("buildContextMessages", () => {
     expect(blob).toContain("select count(*) from clients");
   });
 
-  it("keeps the depth constant at the documented 3", () => {
-    expect(CONTEXT_DEPTH).toBe(3);
+  it("keeps the depth constant at the documented 20", () => {
+    // Raised from 3 once the conversation prefix was cached. The number is
+    // now bounded by relevance rather than cost — and by prefix caching,
+    // which stops helping once a thread exceeds it.
+    expect(CONTEXT_DEPTH).toBe(20);
   });
 });

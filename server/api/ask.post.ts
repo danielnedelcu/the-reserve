@@ -87,6 +87,30 @@ interface AskResponse {
   truncated: boolean;
 }
 
+/**
+ * Marks the end of the conversation prefix as cacheable.
+ *
+ * Only the last message needs the breakpoint — caching is prefix-based, so
+ * everything before it is covered. Plain-string content becomes a text
+ * block, which is the only shape that carries cache_control.
+ */
+function cacheLastMessage(context: ContextMessage[]): Anthropic.MessageParam[] {
+  return context.map((message, i) =>
+    i === context.length - 1
+      ? {
+          role: message.role,
+          content: [
+            {
+              type: "text" as const,
+              text: message.content,
+              cache_control: { type: "ephemeral" as const },
+            },
+          ],
+        }
+      : { role: message.role, content: message.content },
+  );
+}
+
 /** Asks Claude for one SELECT. Returns null when the question is unanswerable. */
 async function generateSql(
   question: string,
@@ -142,11 +166,21 @@ async function generateSql(
     ],
     tool_choice: { type: "tool", name: "answer_with_sql" },
     // Context goes in MESSAGES, never in the system block. The system block
-    // carries cache_control and is byte-identical on every ask; folding
-    // prior turns into it would change the cached prefix on every follow-up
-    // and quietly cost ~4.6x per ask (baseline in docs/TODO.md).
+    // carries its own cache_control and is byte-identical on every ask;
+    // folding prior turns into it would change that cached prefix on every
+    // follow-up and quietly cost ~4.6x per ask (baseline in docs/TODO.md).
+    //
+    // The LAST context message carries a second breakpoint, so the
+    // conversation so far is cached too and an append pays full rate only
+    // on the new question. Without it a thread costs O(n^2) in total, since
+    // every turn resends all of its predecessors at full price.
+    //
+    // This holds while the thread is shorter than CONTEXT_DEPTH. Past that
+    // the window slides, the oldest turn drops off, and the prefix changes
+    // every turn — verified, not assumed. Threads that long are rare and
+    // simply revert to uncached cost.
     messages: [
-      ...context,
+      ...cacheLastMessage(context),
       {
         role: "user",
         content: route
@@ -215,6 +249,12 @@ async function loadThreadContext(
     .eq("staff_id", staffId)
     .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
+    // Tiebreaker, for cache stability rather than meaning: prefix caching
+    // needs a byte-identical message list turn to turn, and two asks fired
+    // together (the dock allows it) could share a created_at and come back
+    // in either order. id is arbitrary but stable, which is all that is
+    // required.
+    .order("id", { ascending: false })
     .limit(CONTEXT_DEPTH);
 
   if (!data?.length) return [];
