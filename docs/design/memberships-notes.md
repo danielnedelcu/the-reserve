@@ -64,6 +64,16 @@ onboarding builds through `approved` and stubs `active`.
     "no exceptions" is hard to soften once in schema.
 11. Anything already promised to existing members? Legacy pricing, verbal
     arrangements, comped memberships to grandfather.
+12. Is there any path to becoming a CLIENT that bypasses membership
+    enrollment? Today the clients list has an "Add client" button that
+    creates a client outright — no approval, no intake, no membership, no
+    card on file. Does that door stay open, or does every path to
+    clienthood route through the membership gate (the button becoming
+    "start enrollment")? Turns on Q10: if that answer is truly "no
+    exceptions," then a client who is not a member is a contradiction and
+    the direct-add path has to change shape or go. Raised by the
+    onboarding design — see "Two doors to clienthood" in
+    prospective-onboarding-design.md.
 
 ## Engineering decisions provisionally ratified (pending no surprises above)
 

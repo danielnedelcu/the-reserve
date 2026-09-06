@@ -147,5 +147,6 @@ QUEUED (in order):
 
 ## Blocked on the owner
 
-- Membership tier definitions — the 11-question sheet in
-  memberships-notes.md
+- Membership tier definitions — the 12-question sheet in
+  memberships-notes.md (Q12 added 2026-09-06: does any path to clienthood
+  bypass membership enrollment? Blocks the "Add client" button's fate)

@@ -34,14 +34,45 @@ till they're in the facility." Those aren't a fork to commit to in schema
 — they're WHEN the last transition fires. Model it as stages, and a/b
 becomes a timing choice, not a data-model choice:
 
-    submitted → under_review → approved → enrolled → active
-                     │              │
-                  (staff picks up)  │
-                                (staff decision: welcome to join)
-                                               │
-                                    (pays: tier + card on file — §3)
-                                                        │
-                                             (account usable; can book/enter)
+```mermaid
+flowchart TB
+    SUB["submitted<br/>prospect_intake row written<br/>token consumed<br/>[§6 · buildable now]"]
+    REV["under_review<br/>a staff member picked it up<br/>[§6 · buildable now]"]
+    APP["approved<br/>'this person is welcome'<br/>CREATES NOTHING USABLE<br/>[§6 · buildable now]"]
+    ENR["enrolled<br/>THE PAID-MEMBERSHIP GATE<br/>tier chosen + card on file (4b)<br/>[§3 · owner-blocked]"]
+    ACT["active<br/>client record exists;<br/>can book and enter<br/>[§3 · owner-blocked]"]
+    PURGE["purged at 30 days<br/>never reached enrolled<br/>[§6 · buildable now]"]
+
+    SUB -->|"staff opens it"| REV
+    REV -->|"Approve — a record decision.<br/>NOT a 'create user' button"| APP
+    APP ==>|"THE SEAM — v1 stubs past here"| ENR
+    ENR -->|"a) auto on enrollment, or<br/>b) at the front desk on arrival.<br/>Timing, not schema — don't foreclose"| ACT
+
+    SUB -.->|"abandoned"| PURGE
+    REV -.-> PURGE
+    APP -.->|"approved but never pays"| PURGE
+
+    subgraph LEGEND["Legend — bracket tag on each node says which"]
+        L6["[§6 · buildable now]<br/>no owner input needed"]
+        L3["[§3 · owner-blocked]<br/>needs tier answers (Q1-Q4, Q8)"]
+    end
+
+    classDef now fill:#EEEDFE,stroke:#572e72,color:#2f193b
+    class SUB,REV,APP,PURGE,L6 now
+    classDef blocked fill:#FAECE7,stroke:#993C1D,color:#4A1B0C
+    class ENR,ACT,L3 blocked
+    classDef legendbox fill:#FFFFFF,stroke:#8260a2,color:#2f193b
+    class LEGEND legendbox
+```
+
+Purple is buildable now, terracotta is owner-blocked — the same two
+readings architecture.md gives those colours (ours to enforce vs. not
+ours to decide). The bracket tag on every node says the same thing in
+text, so the diagram survives being read in greyscale.
+
+The heavy arrow is THE SEAM: everything above it ships in v1, everything
+below it waits for §3. Dashed arrows are the 30-day retention purge —
+every state before `enrolled` can end there.
 
 Key semantics, from the answers given:
 
@@ -163,6 +194,59 @@ VERSION — so a waiver's wording change snapshots what each person actually
 agreed to (same discipline as card-consent policy_text and price
 snapshots). A response records which form version it answered.
 
+## The review UI (buildable now, §6)
+
+Three screens' worth of behaviour, all of it a shape the app already has:
+
+1. **A pending list** — prospects awaiting review, newest first, behind
+   `intake.review`. Contact fields and submitted-at only (see the
+   health-gating decision above: the list is not a health surface).
+2. **A detail view** — one prospect's full submission, the non-sensitive
+   fields rendered against the form version they answered, so a wording
+   change later doesn't silently re-caption an old answer.
+3. **An action** — the decision, taken on the detail view.
+
+This is the staff-invite pattern pointed at a different table: a list of
+pending things, each opening to detail, each carrying an act affordance
+(`app/pages/staff/index.vue` for the pending list + act idiom,
+`app/pages/staff/[id].vue` for list → detail). Nothing here needs a new
+interaction model; it needs `prospect_intake` in place of `staff_invites`
+and a review permission in place of `staff.invite`.
+
+**THE CRITICAL SEAM: the button says "Approve", not "Create user".**
+
+This is the one thing to get right, because the wrong button is the
+easier button to build and it looks finished. "Create user" would
+collapse three events the state machine above deliberately holds apart:
+
+- **approve** — a record decision. "This person is welcome." Creates
+  nothing. Buildable now.
+- **enroll** — tier chosen, card on file, money moving. THE paid-membership
+  gate. §3, owner-blocked.
+- **activate** — the client account comes into being and can book or enter.
+
+A single "create user" click jumps from the first to the third and skips
+the second. What it produces is a client record for someone who never
+chose a tier and never put a card on file — a member by existence rather
+than by enrollment. That is the members-only invariant leaking through
+the review screen: the exact gate this feature exists to enforce, routed
+around by the feature itself.
+
+**Do NOT build a "create user" button that skips enrollment.** v1 builds
+submitted → under_review → approved and stops there. Account creation and
+enrollment stay stubbed per THE SEAM below, and the stub is replaced —
+not supplemented — when §3 lands.
+
+One honest tension, since the two look alike: THE SEAM's stub also creates
+a client with no membership. The difference is what it is FOR and who can
+reach it. The stub exists so the pipeline is end-to-end testable, is
+reached by traversing the state machine, and is marked in code as
+temporary. A "Create user" button is a standing affordance offered to
+staff on the review screen — it teaches the front desk that approving IS
+admitting, and that habit outlives the stub. Keep the stub unlabelled and
+out of the reviewer's normal path; if it is easier to reason about, gate
+it to non-production until §3 replaces it.
+
 ## Owner-blocked vs buildable
 
 BUILDABLE NOW (no owner input needed):
@@ -182,11 +266,54 @@ OWNER-BLOCKED (needs memberships-notes.md answers):
   changes the review UI's urgency and whether the "email a link" flow is
   even the primary path or a secondary one.
 - Guest / comp / grandfathered cases (owner Q9, Q11).
+- Whether the direct "Add client" button survives at all — the two-doors
+  question below.
 
 THE SEAM: build through `approved`. Stub `active` to simply create a
 client with no membership (so the pipeline is end-to-end testable) until
 §3 lands, then replace the stub with real membership enrollment. Do NOT
 build the enrollment step on guesses about tiers.
+
+## Two doors to clienthood (owner-blocked — needs a §3 answer)
+
+Building this pipeline surfaces a contradiction that predates it. There
+is already a second, unguarded way to become a client: the **"New client"**
+button on the clients list (`app/pages/clients/index.vue`) opens a form
+and writes a client row immediately. No approval, no intake, no
+membership, no card. It is a door around the gate this whole feature
+exists to be.
+
+Both doors cannot stay open as they are. If the members-only invariant is
+real, a client record means a member, and a button that mints one in a
+single form submission contradicts a pipeline that requires review and
+enrollment to do the same thing. The onboarding flow does not create this
+problem — it makes it visible.
+
+The question for the §3 / owner design, NOT resolved here:
+
+**Does the direct "Add client" button survive the members-only model, or
+does every path to clienthood route through the same membership gate?**
+
+Shapes it could take, listed to show the range rather than to pick one:
+
+- "Add client" becomes "Start enrollment" — the front-desk same-day path,
+  landing in the same state machine at a later stage (the walk-up who
+  fills intake on a staff device and pays at the desk). One gate, two
+  entry points.
+- It stays, but only for cases the owner names as legitimately
+  non-membered (Q10's trials, day passes, gift-card recipients, retail
+  pickup) — which requires Q10 to come back as something other than "no
+  exceptions."
+- It stays as a grandfathering / data-entry tool behind a high
+  permission, explicitly outside the normal flow.
+
+Recorded as owner question 12 in memberships-notes.md. It is
+owner-blocked because it turns on Q8 (how someone becomes a member) and
+especially Q10 (is there anyone who enters without a membership) — Q10 is
+what decides whether an exception can exist at all. Do not
+resolve it by building — a v1 that quietly leaves both doors open ships
+the contradiction into production, where the clients table stops being a
+reliable answer to "who is a member."
 
 ## Open questions for the eventual build/design continuation
 
