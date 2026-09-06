@@ -22,6 +22,15 @@
   so a library change can't reintroduce it). Staff identity via
   current_staff_id() RPC; permission RPC param is `perm` (NOT p_key)
 - Dates: never toISOString() for day-granular keys — toLocaleDateString("en-CA")
+- Silent-failure assumptions: when a change depends on something that
+  produces NO error if false — a cache hits, a prefix is stable, a harness
+  actually connected, an optimization fires — make verifying it a build
+  step, and measure the specific signal that would be wrong if it failed.
+  A green suite does not prove an assumption the suite doesn't check.
+  Caught this way, all three passing every gate: a verify harness counting
+  connection failures as PASS; an editor-restored duplicate module (the
+  diff showed a modification where a rename was expected); a sliding-window
+  cache miss that just costs more, quietly, later.
 - Types: npx nuxt typecheck must stay at 0; payloads feeding insert+update
   typed as Omit<TablesInsert<"t">, "organization_id">
 - Every new table: organization_id + org-scoped RLS (see docs/design/multi-tenancy-status.md)
