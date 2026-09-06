@@ -236,6 +236,141 @@ VERSION — so a waiver's wording change snapshots what each person actually
 agreed to (same discipline as card-consent policy_text and price
 snapshots). A response records which form version it answered.
 
+## The form engine — locked schema decisions (phase 1)
+
+Status: DECIDED 2026-09-06, in the design room, before any SQL. Four
+schema-shape questions the sections above left open. Each records the
+deciding principle, not just the pick.
+
+**1. Answers are JSONB; health answers are separate ROWS.** Ordinary
+answers live in `form_responses.answers` jsonb. Answers to fields the
+definition marks `sensitive` are written instead to
+`form_response_health`, one row per answer, with its own RLS requiring
+`clients.notes.health.view`.
+
+The deciding principle is the failure mode, not the ergonomics. RLS is
+row-level: it cannot hide a column. Keeping health answers in a second
+jsonb column on the same row would make the gate a server-side filter
+that every endpoint must remember, and forgetting it leaks PHI with no
+error — the silent-failure shape `CLAUDE.md` names. Splitting by row
+makes the database the gate: a caller without the permission gets missing
+data, which is LOUD, instead of leaked data, which is silent. It also
+mirrors `client_notes.kind='health'` exactly, so enrollment-time
+promotion is row → row into the tier that already has audit-on-read.
+
+Rejected: one row per answer (EAV) with a `sensitive` flag. Fully
+DB-enforced and per-field queryable, but per-field querying is not a
+requirement today and the typing and row-count costs are real. Revisit
+only if Ask ever needs to reach inside answers.
+
+**2. Definitions are identified by key; versions are immutable rows;
+consent text is copied.** `form_definitions` carries identity
+(`organization_id` + `key`, e.g. `prospect_intake`, `service_waiver`).
+`form_versions` carries the answerable shape — `fields` jsonb,
+`consent_text`, `published_at` — and is APPEND-ONLY: no update or delete
+policy exists, and `revoke update, delete` states the intent.
+`form_responses` references the version it answered AND copies
+`consent_text` onto itself.
+
+The deciding principle is that structure and consent have different
+natures. Field structure is reference material: because version rows
+cannot change, a foreign key is exactly as durable as a copy, without
+duplicating the field blob on every response — and it preserves
+provenance, so "which responses answered v3" is a FK query rather than a
+scan. Consent text is the legal artifact: it is copied physically, the
+same discipline as card-consent `policy_text`, because the record of what
+a person agreed to must not depend on a lookup resolving correctly years
+later. The immutability of versions is what makes referencing structure
+safe; the legal weight of consent is what makes copying it necessary.
+
+Rejected: one definition row with a bumped `version` column — editing
+mutates history, so a past response stops being reconstructible, which
+defeats the point of versioning a waiver.
+
+**A consequence of 2 that runs the dangerous way. Publishing a new
+version does NOT remediate a sensitivity mistake in an old one.**
+Sensitivity is a per-field property of the versioned field list, so it
+freezes with the version — which is exactly what makes the split
+trustworthy at submit time: answers are routed against the flags that
+were in force when the person answered, and nobody can retroactively
+change what a past submission meant.
+
+The same immutability cuts the other way on remediation. Answers are
+split ONCE, at write time, into `form_responses.answers` (un-gated) and
+`form_response_health` (behind `clients.notes.health.view`). Marking a
+field sensitive in v2 changes where FUTURE answers land and nothing else.
+Every answer already collected under v1 stays exactly where the v1 flags
+put it — so PHI that should have been gated is sitting in `answers`,
+readable by anyone with `forms.responses.view`, including front desk.
+
+The failure mode is a person, not a bug: someone notices a health
+question was never marked sensitive, publishes a corrected version,
+sees the new field flagged, and believes the problem is fixed. It is not.
+The collected answers are untouched, and the belief that they were
+handled is what stops anyone looking again.
+
+**A sensitivity mistake is repaired by MIGRATING THE EXISTING ROWS** —
+moving those answers out of `form_responses.answers` into
+`form_response_health` with their question labels — and only then
+publishing the corrected version. Publishing alone is the visible half of
+a two-part fix. Whoever builds phase 2 or 3 inherits this: it is already
+true of the schema as shipped, not a future hazard.
+
+**3. Permissions: adopt the existing `forms.*` keys. Mint nothing.**
+`forms.manage` (author definitions), `forms.send` (issue a link),
+`forms.responses.view` (see submissions) were seeded by migration 1 and
+have never been referenced by any route or component. The design sketch
+above proposed `intake.review`; that would be a second family for one
+concept — the `organization.manage` duplication that already cost a
+cleanup migration. [AS-BUILT] `intake.review` is NOT minted; read every
+mention of it above as `forms.responses.view`.
+
+The migration grants all three to `front_desk`, which holds none of them
+today. That grant is required by the in-person decision: review happens
+at the desk, so deferring it would leave phase 3 untestable as its real
+user.
+
+Health gating needs no new work, and this is the part worth noticing:
+`front_desk` does not hold `clients.notes.health.view` and is not being
+granted it. The review screen therefore cannot show health answers —
+enforced by a permission deliberately NOT granted, which is a stronger
+guarantee than a UI that chooses not to render them.
+
+**4. One `form_responses` table, not one per subject.** [AS-BUILT] The
+sections above describe `prospect_intake` carrying its own `responses`
+jsonb. The build unifies instead: a single response store, with a
+nullable `client_id` in phase 1 and `prospect_intake_id` added in phase 2
+when that table exists, the subject check widened then.
+
+The reason for the deviation is phase 1's scope. Once the engine has to
+serve both prospect onboarding and existing-client waivers, per-subject
+stores mean two retention purges, two shape validators and two
+renderers — the duplication this phase exists to remove.
+
+**The cost that deviation creates, and how it gets paid.** Retention is
+now a FILTERED DELETE on a shared table rather than a table-scoped sweep.
+The purge must delete only responses belonging to un-enrolled prospects
+and must NEVER touch a response belonging to a client — a signed waiver
+is a legal record, and a client's is kept for as long as the client is.
+So the phase-3 purge is built with a precise where-clause and TESTED IN
+BOTH DIRECTIONS: that a 31-day-old prospect response is deleted, AND that
+a client waiver of any age survives. Proving only the first is the
+familiar mistake — it passes while the destructive half goes unchecked.
+
+### Who enforces what
+
+| Rule | Enforced by |
+| --- | --- |
+| Org isolation | RLS on every table (`current_org_id()`) |
+| Health answers need the health permission | RLS on `form_response_health` |
+| Versions never change after publish | No update/delete policy + explicit `revoke` |
+| A response's answers match its form | Server route validating against the version's `fields` (Postgres cannot check jsonb shape) |
+| Only validated writes land | No authenticated INSERT policy on responses — writes go through the server route |
+| Consent survives version edits | `consent_text` copied onto the response |
+
+The middle row is the one with no database backstop, so it is where the
+tests go.
+
 ## The review UI (buildable now, §6)
 
 Three screens' worth of behaviour, all of it a shape the app already has:

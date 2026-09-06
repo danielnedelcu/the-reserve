@@ -762,6 +762,178 @@ export type Database = {
           },
         ]
       }
+      form_definitions: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          key: string
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          key: string
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          key?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_response_health: {
+        Row: {
+          answer: Json
+          created_at: string
+          field_key: string
+          form_response_id: string
+          id: string
+          label: string
+        }
+        Insert: {
+          answer: Json
+          created_at?: string
+          field_key: string
+          form_response_id: string
+          id?: string
+          label: string
+        }
+        Update: {
+          answer?: Json
+          created_at?: string
+          field_key?: string
+          form_response_id?: string
+          id?: string
+          label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_response_health_form_response_id_fkey"
+            columns: ["form_response_id"]
+            isOneToOne: false
+            referencedRelation: "form_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_responses: {
+        Row: {
+          answers: Json
+          client_id: string | null
+          consent_text: string | null
+          consented_at: string | null
+          created_at: string
+          form_version_id: string
+          id: string
+          organization_id: string
+          submitted_at: string
+        }
+        Insert: {
+          answers?: Json
+          client_id?: string | null
+          consent_text?: string | null
+          consented_at?: string | null
+          created_at?: string
+          form_version_id: string
+          id?: string
+          organization_id: string
+          submitted_at?: string
+        }
+        Update: {
+          answers?: Json
+          client_id?: string | null
+          consent_text?: string | null
+          consented_at?: string | null
+          created_at?: string
+          form_version_id?: string
+          id?: string
+          organization_id?: string
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_responses_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_responses_form_version_id_fkey"
+            columns: ["form_version_id"]
+            isOneToOne: false
+            referencedRelation: "form_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_responses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_versions: {
+        Row: {
+          consent_text: string | null
+          created_at: string
+          fields: Json
+          form_definition_id: string
+          id: string
+          published_at: string
+          version: number
+        }
+        Insert: {
+          consent_text?: string | null
+          created_at?: string
+          fields: Json
+          form_definition_id: string
+          id?: string
+          published_at?: string
+          version: number
+        }
+        Update: {
+          consent_text?: string | null
+          created_at?: string
+          fields?: Json
+          form_definition_id?: string
+          id?: string
+          published_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_versions_form_definition_id_fkey"
+            columns: ["form_definition_id"]
+            isOneToOne: false
+            referencedRelation: "form_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gift_cards: {
         Row: {
           active: boolean

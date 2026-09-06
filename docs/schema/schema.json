@@ -4485,6 +4485,473 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.form_definitions",
+      "type": "BASE TABLE",
+      "comment": "A form's IDENTITY (org + key), separate from its answerable shape, which lives in versioned form_versions rows. One row per form the business asks people to fill: prospect_intake, service_waiver. Deactivated, never deleted — a definition with responses against it must stay resolvable forever.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "key",
+          "type": "text",
+          "nullable": false,
+          "comment": "Stable machine name the code refers to (prospect_intake, service_waiver). Never renamed: responses reach their definition through it, and a rename would silently re-point them."
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "form_definitions_pkey",
+          "def": "CREATE UNIQUE INDEX form_definitions_pkey ON public.form_definitions USING btree (id)",
+          "table": "public.form_definitions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_definitions_organization_id_key_key",
+          "def": "CREATE UNIQUE INDEX form_definitions_organization_id_key_key ON public.form_definitions USING btree (organization_id, key)",
+          "table": "public.form_definitions",
+          "columns": [
+            "organization_id",
+            "key"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "form_definitions_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.form_definitions",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_definitions_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.form_definitions",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_definitions_organization_id_key_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (organization_id, key)",
+          "table": "public.form_definitions",
+          "referenced_table": "",
+          "columns": [
+            "organization_id",
+            "key"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_form_definitions_touch",
+          "def": "CREATE TRIGGER trg_form_definitions_touch BEFORE UPDATE ON public.form_definitions FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        }
+      ]
+    },
+    {
+      "name": "public.form_versions",
+      "type": "BASE TABLE",
+      "comment": "One immutable published shape of a form. APPEND-ONLY BY DESIGN: no update or delete policy exists, so Postgres denies both, and the revoke below states that intent out loud. Editing a form means inserting a new version. That immutability is what lets a response REFERENCE the shape it answered instead of copying it — change a version in place and every response that points at it silently changes meaning.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "form_definition_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "fields",
+          "type": "jsonb",
+          "nullable": false,
+          "comment": "Ordered array of field descriptors: [{\"key\",\"label\",\"type\",\"required\",\"sensitive\"}]. sensitive=true routes an answer to form_response_health instead of form_responses.answers — it is the switch that decides whether an answer needs clients.notes.health.view to read. Postgres cannot validate this shape; the server route that accepts submissions is the only enforcement, which is why it is the tested one."
+        },
+        {
+          "name": "consent_text",
+          "type": "text",
+          "nullable": true,
+          "comment": "The waiver/consent copy shown with THIS version. Copied onto each response at submit (form_responses.consent_text) — the reference here is provenance; the copy there is the legal record."
+        },
+        {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "form_versions_pkey",
+          "def": "CREATE UNIQUE INDEX form_versions_pkey ON public.form_versions USING btree (id)",
+          "table": "public.form_versions",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_versions_form_definition_id_version_key",
+          "def": "CREATE UNIQUE INDEX form_versions_form_definition_id_version_key ON public.form_versions USING btree (form_definition_id, version)",
+          "table": "public.form_versions",
+          "columns": [
+            "form_definition_id",
+            "version"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "form_versions_version_check",
+          "type": "CHECK",
+          "def": "CHECK ((version \u003e 0))",
+          "table": "public.form_versions",
+          "referenced_table": "",
+          "columns": [
+            "version"
+          ]
+        },
+        {
+          "name": "form_versions_form_definition_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (form_definition_id) REFERENCES form_definitions(id) ON DELETE RESTRICT",
+          "table": "public.form_versions",
+          "referenced_table": "public.form_definitions",
+          "columns": [
+            "form_definition_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_versions_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.form_versions",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_versions_form_definition_id_version_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (form_definition_id, version)",
+          "table": "public.form_versions",
+          "referenced_table": "",
+          "columns": [
+            "form_definition_id",
+            "version"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.form_responses",
+      "type": "BASE TABLE",
+      "comment": "One filled-in form. answers holds ONLY the non-sensitive answers; anything the version marks sensitive is in form_response_health, behind clients.notes.health.view. No authenticated INSERT policy exists on purpose: a submission must be validated against its version's field list, Postgres cannot check jsonb shape, so writes go through a server route under the service role and the validator is the enforcement.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "form_version_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": true,
+          "comment": "The subject, when an existing client fills a waiver. Nullable because phase 2 adds prospect_intake_id for people who have no client record yet, and widens form_responses_subject to \"exactly one subject\". Until then the check requires a client."
+        },
+        {
+          "name": "answers",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "'{}'::jsonb"
+        },
+        {
+          "name": "consent_text",
+          "type": "text",
+          "nullable": true,
+          "comment": "Physical snapshot of the consent copy this person actually agreed to, readable without joining the version. Same discipline as the card-consent policy_text snapshot: the legal record must not depend on a lookup years later."
+        },
+        {
+          "name": "consented_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "submitted_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "form_responses_pkey",
+          "def": "CREATE UNIQUE INDEX form_responses_pkey ON public.form_responses USING btree (id)",
+          "table": "public.form_responses",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_responses_client",
+          "def": "CREATE INDEX form_responses_client ON public.form_responses USING btree (client_id, submitted_at DESC) WHERE (client_id IS NOT NULL)",
+          "table": "public.form_responses",
+          "columns": [
+            "client_id",
+            "submitted_at"
+          ]
+        },
+        {
+          "name": "form_responses_version",
+          "def": "CREATE INDEX form_responses_version ON public.form_responses USING btree (form_version_id)",
+          "table": "public.form_responses",
+          "columns": [
+            "form_version_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "form_responses_subject",
+          "type": "CHECK",
+          "def": "CHECK ((client_id IS NOT NULL))",
+          "table": "public.form_responses",
+          "referenced_table": "",
+          "columns": [
+            "client_id"
+          ],
+          "comment": "Phase 1: the only subject is a client. Phase 2 drops and re-adds this as \"exactly one of client_id / prospect_intake_id\". Named so that migration can find it."
+        },
+        {
+          "name": "form_responses_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.form_responses",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_responses_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE",
+          "table": "public.form_responses",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_responses_form_version_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (form_version_id) REFERENCES form_versions(id) ON DELETE RESTRICT",
+          "table": "public.form_responses",
+          "referenced_table": "public.form_versions",
+          "columns": [
+            "form_version_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_responses_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.form_responses",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.form_response_health",
+      "type": "BASE TABLE",
+      "comment": "Answers to fields the form version marks sensitive — health history and the like. A SEPARATE TABLE rather than a column on form_responses because RLS is row-level and cannot hide a column: as rows, the database itself refuses them to anyone without clients.notes.health.view, so a route that forgets to filter returns nothing rather than leaking PHI. Same tier as client_notes.kind='health', which is where these are promoted on enrollment.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "form_response_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "field_key",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "nullable": false,
+          "comment": "The question as it was asked, snapshotted. An answer of \"yes\" is meaningless without the question, and the version's field list can be superseded by a later publish."
+        },
+        {
+          "name": "answer",
+          "type": "jsonb",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "form_response_health_pkey",
+          "def": "CREATE UNIQUE INDEX form_response_health_pkey ON public.form_response_health USING btree (id)",
+          "table": "public.form_response_health",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_response_health_form_response_id_field_key_key",
+          "def": "CREATE UNIQUE INDEX form_response_health_form_response_id_field_key_key ON public.form_response_health USING btree (form_response_id, field_key)",
+          "table": "public.form_response_health",
+          "columns": [
+            "form_response_id",
+            "field_key"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "form_response_health_form_response_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (form_response_id) REFERENCES form_responses(id) ON DELETE CASCADE",
+          "table": "public.form_response_health",
+          "referenced_table": "public.form_responses",
+          "columns": [
+            "form_response_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_response_health_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.form_response_health",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "form_response_health_form_response_id_field_key_key",
+          "type": "UNIQUE",
+          "def": "UNIQUE (form_response_id, field_key)",
+          "table": "public.form_response_health",
+          "referenced_table": "",
+          "columns": [
+            "form_response_id",
+            "field_key"
+          ]
+        }
+      ]
     }
   ],
   "relations": [
@@ -5397,6 +5864,84 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.form_definitions",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.form_versions",
+      "columns": [
+        "form_definition_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.form_definitions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (form_definition_id) REFERENCES form_definitions(id) ON DELETE RESTRICT"
+    },
+    {
+      "table": "public.form_responses",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.form_responses",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.form_responses",
+      "columns": [
+        "form_version_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.form_versions",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (form_version_id) REFERENCES form_versions(id) ON DELETE RESTRICT"
+    },
+    {
+      "table": "public.form_response_health",
+      "columns": [
+        "form_response_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.form_responses",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (form_response_id) REFERENCES form_responses(id) ON DELETE CASCADE"
     }
   ],
   "functions": [
