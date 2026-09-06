@@ -575,13 +575,12 @@ read-only text-to-SQL through the SELECT-only role.
 
 ### Scaling context beyond 3 turns
 
-Not owed work. At `CONTEXT_DEPTH = 3` the cost is fractions of a cent and
-the audit gap is small, so none of this is urgent — this is the package to
-do **the day someone wants deeper threads**, written down so it does not
-have to be re-derived. Analysed 2026-09-05.
+**BUILT 2026-09-05** — items 2 and 3 shipped together (caching without a
+depth raise optimises a cost nobody feels; a depth raise without caching is
+the O(n^2) below). `CONTEXT_DEPTH` is now 20. Item 1
+(`resolved_question`) and item 4 (relevance ranking) remain open.
 
-The naive move is to raise the constant. That works and degrades in a
-specific way, so in the order worth doing them:
+Original analysis follows, with what the build actually found:
 
 **1. Log a resolved question.** Add `resolved_question` to the existing
 `answer_with_sql` tool — same call, no extra cost, just another field —
@@ -599,29 +598,58 @@ the goal is not preventing every miss but guaranteeing a miss looks like
 one. Smallest item here and the only one with a real gap behind it; do it
 first, independent of the rest.
 
-**2. Cache the conversation prefix.** Today `cache_control` sits on the
-system block only, so carried turns are billed at full input rate every
-time and a thread costs roughly O(n²) in total. A second breakpoint on the
-last context message should fix that: context is rebuilt from
-`ask_queries` in `created_at` order, so each turn's message list is a
-prefix of the next, and appending should hit cache for everything before
-the new tail.
+**2. Cache the conversation prefix.** ✅ **DONE.** A second `cache_control`
+breakpoint now sits on the last context message; the system block keeps its
+own. Measured across a four-turn thread:
 
-**Verify that assumption before relying on it.** Prefix caching demands an
-exact byte match, and the reconstruction has several places it could vary
-without anyone noticing: anything interpolated per-request, ordering that
-is not fully deterministic when two rows share a `created_at`, or the
-preset-label lookup returning something different than it did last turn. A
-silent miss is worse than not trying — you pay full rate *and* burn a
-cache-write on the second breakpoint. Measure it the way the original
-cache was measured: `cache_read_tokens` should climb to include the
-context prefix from turn 3 onward, not just the 3218-token schema. The
-baseline to compare against is in `docs/TODO.md`.
+| turn | input (full rate) | cache_read | cache_write | cost |
+| --- | --- | --- | --- | --- |
+| 1 | 225 | 0 | 3407 | $0.0249 |
+| 2 | 44 | 3407 | 256 | $0.0055 |
+| 3 | 46 | 3663 | 57 | $0.0044 |
+| 4 | 46 | 3720 | 58 | $0.0051 |
 
-**3. Then raise the cap — to something generous, not to infinity.** Once
-caching lands, cost stops being the reason for a limit, but a limit should
-survive anyway for a different reason: **more context makes answers worse,
-not just pricier.** A thread that wandered from clients to products to
+`cache_read` climbing 3407 → 3663 → 3720, above the 3218-token schema
+baseline, is the conversation prefix being cached rather than just the
+schema. `input_tokens` staying ~45 regardless of depth is the O(n^2)
+removed: turn 4 carries three predecessors and pays full rate for none.
+
+[AS-BUILT] **The prefix claim below was wrong past the cap, and the
+verification caught it before anything depended on it.**
+`loadThreadContext` orders newest-first and limits — that is a SLIDING
+WINDOW, not a growing prefix. Below `CONTEXT_DEPTH` each turn's message
+list is genuinely a prefix of the next and caching holds. Once a thread
+exceeds it the oldest turn drops off, every message shifts, and the cache
+misses on every subsequent turn. Measured: at depth 3 the prefix breaks at
+turn 4; at depth 20, turn 21. Threads that long are rare, and the cost
+simply reverts to pre-caching levels, so this is a documented limit rather
+than a defect — but it would otherwise have surfaced as an unexplained
+cost increase on long threads.
+
+[AS-BUILT] Ordering needed a tiebreaker. Prefix caching wants a
+byte-identical message list, and the dock permits concurrent asks, so two
+rows could share a `created_at` and come back in either order. The query
+now orders by `id` as well — arbitrary but stable, which is all caching
+requires. No rows share a timestamp today; the fix removes the class.
+
+The original reasoning, kept because it is the thing to re-check if this
+is ever revisited: context is rebuilt from `ask_queries` in `created_at`
+order, so each turn's message list is a prefix of the next, and appending
+hits cache for everything before the new tail.
+
+**Verify that assumption before relying on it.** — and doing so is what
+found the sliding-window limit above. Checked: the output is deterministic
+for identical input, nothing is interpolated per request, and ordering is
+now stable. Still true of any future change here: a silent miss is worse
+than not trying, because you pay full rate *and* burn a cache-write on the
+second breakpoint. Re-measure the same way if this code is touched —
+`cache_read_tokens` above 3218 is the signal.
+
+**3. Then raise the cap — to something generous, not to infinity.**
+✅ **DONE — 3 → 20.** Once caching lands, cost stops being the reason for a
+limit, but a limit survives anyway for two reasons: **more context makes
+answers worse, not just pricier**, and 20 is now also where prefix caching
+stops helping. A thread that wandered from clients to products to
 payroll hands the model twenty turns of irrelevant anchoring to latch
 onto. Twenty is as good a guess as any; the number is not worth agonising
 over, the cap existing is.
