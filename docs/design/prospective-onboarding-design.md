@@ -468,6 +468,51 @@ is the shape of the bug — two places independently deciding the same
 question, agreeing on the common case and diverging on the edge — not the
 null violation.
 
+**10. Two retention windows, because two purposes. Purged by pg_cron.**
+
+`prospect_intake` and its answers: **30 days**. That window is a privacy
+and retention decision about a person's submitted information — how long
+the business keeps what someone told it before they became a member.
+
+`form_submission_attempts`: **24 hours**. That is not retention of anyone's
+information; it is rate-limit bookkeeping, and it only has to outlive the
+enforcement window it feeds. That window is 60 minutes, so a day gives 24
+windows of headroom to look at an abuse pattern, and anything beyond it
+retains telemetry past every operational use it has. Keeping hashed
+records of everyone who touched a health-intake form for a month would be
+more exposure than the security purpose can justify — peppered or not.
+
+The principle, worth stating because the two windows will look
+inconsistent to someone who does not know why: **retain security
+telemetry for exactly as long as the security function needs it, then
+purge.** Retention windows follow purpose, not a house default.
+
+MECHANISM: `pg_cron`, not an external nightly job. The deciding factor is
+which failure is silent. An external scheduler that stops firing leaves
+PHI sitting past its retention window while everything looks healthy — a
+compliance control that fails green, with no error anywhere. pg_cron
+keeps the purge in the same place as the data it purges and the same
+place as the rate-limit state (which lives in Postgres for the same
+reason: there is no deployment-platform config in this repo, so no
+external moving part can be assumed to exist, let alone to keep running).
+
+AVAILABILITY, CHECKED 2026-09-06: `pg_cron` 1.6.4 is available on this
+instance but NOT installed — `pg_available_extensions` lists it,
+`installed_version` is empty, and there is no `cron` schema. Enabling it
+is a step phase 3 has to take deliberately (dashboard, or `create
+extension` in the migration if the migration role is permitted), not an
+assumption to build on.
+
+THE PART THAT MUST NOT BE ASSUMED: pg_cron reduces the failure surface,
+it does not remove it. A job can be unscheduled, error every run, or
+never have been created, and every one of those looks exactly like a
+quiet system. So the purge needs a canary, in the shape this project uses
+for anything that fails silently: assert the OUTCOME, not the mechanism —
+no `form_submission_attempts` row older than 24 hours, and no
+purge-eligible `prospect_intake` row older than 30 days. That check
+belongs in `verify:forms`, where a broken retention control becomes a
+failing verification instead of a clean-looking database.
+
 ### What phase 2 must PROVE, not assume
 
 Every failure here is silent, so each boundary is verified in both

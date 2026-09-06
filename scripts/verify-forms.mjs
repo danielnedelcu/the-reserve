@@ -327,6 +327,124 @@ async function main() {
     await admin.from("form_submission_attempts").delete().eq("token", probeToken);
   }
 
+  // ── 7. retention: both directions ──────────────────────────────────
+  // The purge is dangerous in two opposite ways. Under-deleting leaves
+  // PHI past its retention window; over-deleting destroys a client's
+  // signed waiver, which is a legal record. Both are proved, because
+  // proving only the first is the familiar mistake.
+  console.log("\nretention purge (destructive in two directions)");
+
+  const { data: anyClient } = await admin.from("clients").select("id").limit(1).single();
+
+  const stale = await admin
+    .from("prospect_intake")
+    .insert({
+      organization_id: ctx.orgId,
+      first_name: "Stale",
+      last_name: "Prospect",
+      email: `stale-${randomUUID().slice(0, 8)}@example.test`,
+      submitted_at: new Date(Date.now() - 31 * 86_400_000).toISOString(),
+    })
+    .select("id")
+    .single();
+
+  const staleResponse = await admin
+    .from("form_responses")
+    .insert({
+      organization_id: ctx.orgId,
+      form_version_id: ctx.versionId,
+      prospect_intake_id: stale.data.id,
+      answers: { first_name: "Stale" },
+    })
+    .select("id")
+    .single();
+  await admin.from("form_response_health").insert({
+    form_response_id: staleResponse.data.id,
+    field_key: "conditions",
+    label: "Conditions",
+    answer: "PHI that must not outlive its retention window",
+  });
+
+  // A client's waiver, far older than any window. Must survive.
+  const waiver = await admin
+    .from("form_responses")
+    .insert({
+      organization_id: ctx.orgId,
+      form_version_id: ctx.versionId,
+      client_id: anyClient.id,
+      answers: { first_name: "Member" },
+      consent_text: "I agree",
+      consented_at: new Date(Date.now() - 900 * 86_400_000).toISOString(),
+      submitted_at: new Date(Date.now() - 900 * 86_400_000).toISOString(),
+    })
+    .select("id")
+    .single();
+  made.responses.push(waiver.data.id);
+
+  const { error: purgeError } = await admin.rpc("purge_prospect_intake");
+  check("purge_prospect_intake runs", !purgeError, purgeError?.message);
+
+  const staleGone = await admin.from("prospect_intake").select("id").eq("id", stale.data.id).maybeSingle();
+  check("a 31-day-old prospect IS purged", !staleGone.data);
+  const staleAnswers = await admin.from("form_responses").select("id").eq("id", staleResponse.data.id).maybeSingle();
+  check("their answers go with them (cascade)", !staleAnswers.data);
+  const staleHealth = await admin.from("form_response_health").select("id").eq("form_response_id", staleResponse.data.id);
+  check("their health rows go with them (cascade)", (staleHealth.data ?? []).length === 0);
+
+  const waiverStill = await admin.from("form_responses").select("id").eq("id", waiver.data.id).maybeSingle();
+  check("a CLIENT WAIVER of any age SURVIVES — the destructive direction",
+    !!waiverStill.data, "A LEGAL RECORD WAS DELETED");
+
+  // Telemetry, seeded one row at a time: a bulk insert normalises keys
+  // across rows, so a row omitting created_at would send an explicit null
+  // and fail the batch — which once made this very check pass vacuously.
+  const oldTag = `verify-old-${randomUUID()}`;
+  const seeded = await admin
+    .from("form_submission_attempts")
+    .insert({
+      ip_hash: oldTag,
+      outcome: "rejected",
+      organization_id: ctx.orgId,
+      created_at: new Date(Date.now() - 25 * 3_600_000).toISOString(),
+    })
+    .select("created_at")
+    .single();
+
+  // THE PRECONDITION. Without a genuinely old row present, "nothing old
+  // remains" is true of an empty table and proves nothing.
+  const seededIsOld =
+    !seeded.error && new Date(seeded.data.created_at) < new Date(Date.now() - 86_400_000);
+  check("a >24h telemetry row exists BEFORE purging (else the next check is vacuous)",
+    seededIsOld, seeded.error?.message ?? `seeded at ${seeded.data?.created_at}`);
+
+  await admin.rpc("purge_form_submission_attempts");
+  const oldGone = await admin.from("form_submission_attempts").select("id").eq("ip_hash", oldTag).maybeSingle();
+  check("the >24h telemetry row IS purged", !oldGone.data);
+
+  // ── 8. the retention canary ────────────────────────────────────────
+  // pg_cron reduces the silent-failure surface; it does not remove it. A
+  // job can be unscheduled, error every run, or never have been created,
+  // and all three look like a quiet system. The app's own roles cannot
+  // even read cron.job, so the only reachable signal is the OUTCOME.
+  console.log("\nretention canary (is the schedule actually running?)");
+
+  const { count: staleTelemetry } = await admin
+    .from("form_submission_attempts")
+    .select("id", { count: "exact", head: true })
+    .lt("created_at", new Date(Date.now() - 26 * 3_600_000).toISOString());
+  check("no telemetry older than the 24h window is lying around",
+    (staleTelemetry ?? 0) === 0,
+    `${staleTelemetry} row(s) past retention — the hourly purge may not be running`);
+
+  const { count: staleProspects } = await admin
+    .from("prospect_intake")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["submitted", "under_review", "approved", "rejected"])
+    .lt("submitted_at", new Date(Date.now() - 31 * 86_400_000).toISOString());
+  check("no un-enrolled prospect is older than the 30-day window",
+    (staleProspects ?? 0) === 0,
+    `${staleProspects} row(s) past retention — the nightly purge may not be running`);
+
   // ── teardown ───────────────────────────────────────────────────────
   for (const id of made.responses) await admin.from("form_responses").delete().eq("id", id);
   for (const id of made.prospects) await admin.from("prospect_intake").delete().eq("id", id);

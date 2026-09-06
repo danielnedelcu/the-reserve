@@ -18,6 +18,8 @@ A person who has submitted an intake form and is not yet a client. TEMPORARY CUS
 | submitted_at    | timestamp with time zone | now()             | false    |                                                   |                                                 |                                                                                                                                                                                                                                                                            |
 | created_at      | timestamp with time zone | now()             | false    |                                                   |                                                 |                                                                                                                                                                                                                                                                            |
 | updated_at      | timestamp with time zone | now()             | false    |                                                   |                                                 |                                                                                                                                                                                                                                                                            |
+| reviewed_by     | uuid                     |                   | true     |                                                   | [public.staff](public.staff.md)                 | The staff member who moved this prospect out of submitted. Set by the review route from current_staff_id(), never from the client.                                                                                                                                         |
+| reviewed_at     | timestamp with time zone |                   | true     |                                                   |                                                 | When the decision was recorded. With reviewed_by this is the audit trail for an approval — approval creates nothing usable, so this row is the only evidence it happened.                                                                                                  |
 
 ## Constraints
 
@@ -25,6 +27,7 @@ A person who has submitted an intake form and is not yet a client. TEMPORARY CUS
 | ------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------- |
 | prospect_intake_status_check         | CHECK       | CHECK ((status = ANY (ARRAY['submitted'::text, 'under_review'::text, 'approved'::text, 'rejected'::text]))) |
 | prospect_intake_organization_id_fkey | FOREIGN KEY | FOREIGN KEY (organization_id) REFERENCES organizations(id)                                                  |
+| prospect_intake_reviewed_by_fkey     | FOREIGN KEY | FOREIGN KEY (reviewed_by) REFERENCES staff(id)                                                              |
 | prospect_intake_pkey                 | PRIMARY KEY | PRIMARY KEY (id)                                                                                            |
 
 ## Indexes

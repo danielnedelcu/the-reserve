@@ -1402,6 +1402,8 @@ export type Database = {
           last_name: string
           organization_id: string
           phone: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           status: string
           submitted_at: string
           updated_at: string
@@ -1414,6 +1416,8 @@ export type Database = {
           last_name: string
           organization_id: string
           phone?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
           submitted_at?: string
           updated_at?: string
@@ -1426,6 +1430,8 @@ export type Database = {
           last_name?: string
           organization_id?: string
           phone?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
           submitted_at?: string
           updated_at?: string
@@ -1436,6 +1442,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prospect_intake_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]
@@ -2172,6 +2185,8 @@ export type Database = {
         Args: { p_conversation_id: string }
         Returns: undefined
       }
+      purge_form_submission_attempts: { Args: never; Returns: number }
+      purge_prospect_intake: { Args: never; Returns: number }
       submit_form_response: {
         Args: {
           p_answers: Json

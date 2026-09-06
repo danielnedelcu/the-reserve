@@ -1064,51 +1064,59 @@
 <!-- public.prospect_intake -->
 <g id="node21" class="node">
 <title>public.prospect_intake</title>
-<polygon fill="#efefef" stroke="none" points="27457.84,-926 27457.84,-972 30105.45,-972 30105.45,-926 27457.84,-926"/>
-<polygon fill="none" stroke="black" points="27457.84,-926 27457.84,-972 30105.45,-972 30105.45,-926 27457.84,-926"/>
-<text text-anchor="start" x="28637.67" y="-949.8" font-family="Arial Bold" font-size="18.00">public.prospect_intake</text>
-<text text-anchor="start" x="28801.12" y="-949.8" font-family="Arial" font-size="14.00">    </text>
-<text text-anchor="start" x="28832.24" y="-949.8" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
-<text text-anchor="start" x="27464.84" y="-935.4" font-family="Arial" font-size="14.00" fill="#333333">A person who has submitted an intake form and is not yet a client. TEMPORARY CUSTODY: contact details live here in transit and are purged at 30 days if the prospect never enrols (phase 3 sweep). Deliberately NOT a clients row with status=prospect — clients are members in this business, and status&#45;flagging would force every existing clients query and policy to start filtering. Mirrors staff_invites being separate from staff.</text>
+<polygon fill="#efefef" stroke="none" points="27457.84,-956.8 27457.84,-1002.8 30105.45,-1002.8 30105.45,-956.8 27457.84,-956.8"/>
+<polygon fill="none" stroke="black" points="27457.84,-956.8 27457.84,-1002.8 30105.45,-1002.8 30105.45,-956.8 27457.84,-956.8"/>
+<text text-anchor="start" x="28637.67" y="-980.6" font-family="Arial Bold" font-size="18.00">public.prospect_intake</text>
+<text text-anchor="start" x="28801.12" y="-980.6" font-family="Arial" font-size="14.00">    </text>
+<text text-anchor="start" x="28832.24" y="-980.6" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
+<text text-anchor="start" x="27464.84" y="-966.2" font-family="Arial" font-size="14.00" fill="#333333">A person who has submitted an intake form and is not yet a client. TEMPORARY CUSTODY: contact details live here in transit and are purged at 30 days if the prospect never enrols (phase 3 sweep). Deliberately NOT a clients row with status=prospect — clients are members in this business, and status&#45;flagging would force every existing clients query and policy to start filtering. Mirrors staff_invites being separate from staff.</text>
+<polygon fill="none" stroke="black" points="27457.84,-926 27457.84,-956.8 30105.45,-956.8 30105.45,-926 27457.84,-926"/>
+<text text-anchor="start" x="27464.84" y="-938.2" font-family="Arial" font-size="14.00">id </text>
+<text text-anchor="start" x="27479.62" y="-938.2" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
 <polygon fill="none" stroke="black" points="27457.84,-895.2 27457.84,-926 30105.45,-926 30105.45,-895.2 27457.84,-895.2"/>
-<text text-anchor="start" x="27464.84" y="-907.4" font-family="Arial" font-size="14.00">id </text>
-<text text-anchor="start" x="27479.62" y="-907.4" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<text text-anchor="start" x="27464.84" y="-907.4" font-family="Arial" font-size="14.00">organization_id </text>
+<text text-anchor="start" x="27563.68" y="-907.4" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
 <polygon fill="none" stroke="black" points="27457.84,-864.4 27457.84,-895.2 30105.45,-895.2 30105.45,-864.4 27457.84,-864.4"/>
-<text text-anchor="start" x="27464.84" y="-876.6" font-family="Arial" font-size="14.00">organization_id </text>
-<text text-anchor="start" x="27563.68" y="-876.6" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<text text-anchor="start" x="27464.84" y="-876.6" font-family="Arial" font-size="14.00">first_name </text>
+<text text-anchor="start" x="27534.08" y="-876.6" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
 <polygon fill="none" stroke="black" points="27457.84,-833.6 27457.84,-864.4 30105.45,-864.4 30105.45,-833.6 27457.84,-833.6"/>
-<text text-anchor="start" x="27464.84" y="-845.8" font-family="Arial" font-size="14.00">first_name </text>
-<text text-anchor="start" x="27534.08" y="-845.8" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<text text-anchor="start" x="27464.84" y="-845.8" font-family="Arial" font-size="14.00">last_name </text>
+<text text-anchor="start" x="27533.32" y="-845.8" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
 <polygon fill="none" stroke="black" points="27457.84,-802.8 27457.84,-833.6 30105.45,-833.6 30105.45,-802.8 27457.84,-802.8"/>
-<text text-anchor="start" x="27464.84" y="-815" font-family="Arial" font-size="14.00">last_name </text>
-<text text-anchor="start" x="27533.32" y="-815" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<text text-anchor="start" x="27464.84" y="-815" font-family="Arial" font-size="14.00">email </text>
+<text text-anchor="start" x="27502.18" y="-815" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<text text-anchor="start" x="27532.53" y="-815" font-family="Arial" font-size="14.00"> Promoted from the submission&#39;s reserved email field, not typed by staff — the person&#39;s own answer is the source of truth for details that become their client record.</text>
 <polygon fill="none" stroke="black" points="27457.84,-772 27457.84,-802.8 30105.45,-802.8 30105.45,-772 27457.84,-772"/>
-<text text-anchor="start" x="27464.84" y="-784.2" font-family="Arial" font-size="14.00">email </text>
-<text text-anchor="start" x="27502.18" y="-784.2" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
-<text text-anchor="start" x="27532.53" y="-784.2" font-family="Arial" font-size="14.00"> Promoted from the submission&#39;s reserved email field, not typed by staff — the person&#39;s own answer is the source of truth for details that become their client record.</text>
+<text text-anchor="start" x="27464.84" y="-784.2" font-family="Arial" font-size="14.00">phone </text>
+<text text-anchor="start" x="27507.66" y="-784.2" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
 <polygon fill="none" stroke="black" points="27457.84,-741.2 27457.84,-772 30105.45,-772 30105.45,-741.2 27457.84,-741.2"/>
-<text text-anchor="start" x="27464.84" y="-753.4" font-family="Arial" font-size="14.00">phone </text>
-<text text-anchor="start" x="27507.66" y="-753.4" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<text text-anchor="start" x="27464.84" y="-753.4" font-family="Arial" font-size="14.00">status </text>
+<text text-anchor="start" x="27506.08" y="-753.4" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<text text-anchor="start" x="27536.42" y="-753.4" font-family="Arial" font-size="14.00"> submitted &#45;&gt; under_review &#45;&gt; approved. approved creates NOTHING usable: enrollment (tier + card on file) is the gate to clienthood and is owner&#45;blocked on §3. Transitions and the review UI land in phase 3; this column exists so a submission has somewhere to start.</text>
 <polygon fill="none" stroke="black" points="27457.84,-710.4 27457.84,-741.2 30105.45,-741.2 30105.45,-710.4 27457.84,-710.4"/>
-<text text-anchor="start" x="27464.84" y="-722.6" font-family="Arial" font-size="14.00">status </text>
-<text text-anchor="start" x="27506.08" y="-722.6" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
-<text text-anchor="start" x="27536.42" y="-722.6" font-family="Arial" font-size="14.00"> submitted &#45;&gt; under_review &#45;&gt; approved. approved creates NOTHING usable: enrollment (tier + card on file) is the gate to clienthood and is owner&#45;blocked on §3. Transitions and the review UI land in phase 3; this column exists so a submission has somewhere to start.</text>
+<text text-anchor="start" x="27464.84" y="-722.6" font-family="Arial" font-size="14.00">submitted_at </text>
+<text text-anchor="start" x="27548.88" y="-722.6" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
 <polygon fill="none" stroke="black" points="27457.84,-679.6 27457.84,-710.4 30105.45,-710.4 30105.45,-679.6 27457.84,-679.6"/>
-<text text-anchor="start" x="27464.84" y="-691.8" font-family="Arial" font-size="14.00">submitted_at </text>
-<text text-anchor="start" x="27548.88" y="-691.8" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
+<text text-anchor="start" x="27464.84" y="-691.8" font-family="Arial" font-size="14.00">created_at </text>
+<text text-anchor="start" x="27534.88" y="-691.8" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
 <polygon fill="none" stroke="black" points="27457.84,-648.8 27457.84,-679.6 30105.45,-679.6 30105.45,-648.8 27457.84,-648.8"/>
-<text text-anchor="start" x="27464.84" y="-661" font-family="Arial" font-size="14.00">created_at </text>
-<text text-anchor="start" x="27534.88" y="-661" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
+<text text-anchor="start" x="27464.84" y="-661" font-family="Arial" font-size="14.00">updated_at </text>
+<text text-anchor="start" x="27538.79" y="-661" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
 <polygon fill="none" stroke="black" points="27457.84,-618 27457.84,-648.8 30105.45,-648.8 30105.45,-618 27457.84,-618"/>
-<text text-anchor="start" x="27464.84" y="-630.2" font-family="Arial" font-size="14.00">updated_at </text>
-<text text-anchor="start" x="27538.79" y="-630.2" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
+<text text-anchor="start" x="27464.84" y="-630.2" font-family="Arial" font-size="14.00">reviewed_by </text>
+<text text-anchor="start" x="27547.33" y="-630.2" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<text text-anchor="start" x="27581.57" y="-630.2" font-family="Arial" font-size="14.00"> The staff member who moved this prospect out of submitted. Set by the review route from current_staff_id(), never from the client.</text>
+<polygon fill="none" stroke="black" points="27457.84,-587.2 27457.84,-618 30105.45,-618 30105.45,-587.2 27457.84,-587.2"/>
+<text text-anchor="start" x="27464.84" y="-599.4" font-family="Arial" font-size="14.00">reviewed_at </text>
+<text text-anchor="start" x="27544.22" y="-599.4" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
+<text text-anchor="start" x="27709.94" y="-599.4" font-family="Arial" font-size="14.00"> When the decision was recorded. With reviewed_by this is the audit trail for an approval — approval creates nothing usable, so this row is the only evidence it happened.</text>
 </g>
 <!-- public.prospect_intake&#45;&gt;public.organizations -->
 <g id="edge20" class="edge">
 <title>public.prospect_intake:organization_id&#45;&gt;public.organizations:id</title>
-<path fill="none" stroke="black" d="M27446.74,-878.62C27343.08,-852.7 27493.57,-409.26 27405.64,-328.4 27323.6,-252.95 11467.22,-184.8 11355.76,-184.8"/>
-<polygon fill="black" stroke="black" points="27446.57,-878.6 27455.98,-884.23 27451.87,-879.22 27456.17,-879.72 27456.17,-879.72 27456.17,-879.72 27451.87,-879.22 27457.03,-875.29 27446.57,-878.6"/>
-<text text-anchor="start" x="27156.4" y="-889.8" font-family="Arial" font-size="10.00">FOREIGN KEY (organization_id) REFERENCES organizations(id)</text>
+<path fill="none" stroke="black" d="M27446.52,-909.43C27336.6,-882.94 27498.32,-414.05 27405.64,-328.4 27323.79,-252.75 11467.22,-184.8 11355.76,-184.8"/>
+<polygon fill="black" stroke="black" points="27446.57,-909.44 27456,-915.03 27451.87,-910.04 27456.17,-910.52 27456.17,-910.52 27456.17,-910.52 27451.87,-910.04 27457.01,-906.09 27446.57,-909.44"/>
+<text text-anchor="start" x="27156.4" y="-920.6" font-family="Arial" font-size="10.00">FOREIGN KEY (organization_id) REFERENCES organizations(id)</text>
 </g>
 <!-- public.form_submission_attempts -->
 <g id="node22" class="node">

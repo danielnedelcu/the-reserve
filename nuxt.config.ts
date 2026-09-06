@@ -91,7 +91,17 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: "/login",
       callback: "/confirm",
-      exclude: ["/invite/**", "/forgot-password", "/reset-password"],
+      // /join/** is the public intake page: reached by a tokenized link
+      // by people with no account at all, so the token is the whole
+      // authorization. It sits under its own prefix rather than beside
+      // the authoring screens at /forms — an exemption on a prefix that
+      // also holds staff pages would silently exempt the next one added.
+      exclude: [
+        "/invite/**",
+        "/join/**",
+        "/forgot-password",
+        "/reset-password",
+      ],
     },
     clientOptions: {
       auth: {

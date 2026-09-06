@@ -52,6 +52,18 @@ const navSections = computed<NavSection[]>(() =>
           show: can("clients.view"),
         },
         {
+          title: "New members",
+          to: "/intake",
+          icon: "lucide:user-round-plus",
+          show: can("forms.responses.view"),
+        },
+        {
+          title: "Forms",
+          to: "/forms",
+          icon: "lucide:clipboard-list",
+          show: can("forms.manage"),
+        },
+        {
           title: "Staff",
           to: "/staff",
           icon: "lucide:users",

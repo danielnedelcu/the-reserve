@@ -5241,6 +5241,18 @@
           "type": "timestamp with time zone",
           "nullable": false,
           "default": "now()"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "nullable": true,
+          "comment": "The staff member who moved this prospect out of submitted. Set by the review route from current_staff_id(), never from the client."
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "nullable": true,
+          "comment": "When the decision was recorded. With reviewed_by this is the audit trail for an approval — approval creates nothing usable, so this row is the only evidence it happened."
         }
       ],
       "indexes": [
@@ -5281,6 +5293,19 @@
           "referenced_table": "public.organizations",
           "columns": [
             "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "prospect_intake_reviewed_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (reviewed_by) REFERENCES staff(id)",
+          "table": "public.prospect_intake",
+          "referenced_table": "public.staff",
+          "columns": [
+            "reviewed_by"
           ],
           "referenced_columns": [
             "id"
@@ -6486,6 +6511,19 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.prospect_intake",
+      "columns": [
+        "reviewed_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (reviewed_by) REFERENCES staff(id)"
     },
     {
       "table": "public.form_submission_attempts",
@@ -7808,6 +7846,18 @@
       "name": "public.submit_form_response",
       "return_type": "uuid",
       "arguments": "p_token uuid, p_answers jsonb, p_health jsonb, p_consent_text text, p_consented boolean, p_contact jsonb",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.purge_form_submission_attempts",
+      "return_type": "int4",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.purge_prospect_intake",
+      "return_type": "int4",
+      "arguments": "",
       "type": "FUNCTION"
     }
   ],

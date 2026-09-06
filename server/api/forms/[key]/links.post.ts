@@ -97,7 +97,7 @@ export default defineEventHandler(async (event) => {
     expiresAt: data.expires_at,
     // The path the recipient opens. Delivery (email) is the caller's job;
     // this route mints the link, it does not send it.
-    path: `/forms/${data.token}`,
+    path: `/join/${data.token}`,
     formKey: key,
     version: definition.currentVersion.version,
   };
