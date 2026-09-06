@@ -30,6 +30,11 @@ export interface AskRequest {
 
 export interface AskResult {
   source: "preset" | "llm";
+  /**
+   * The question with thread references spelled out, when the model had to
+   * resolve any. Shown as "interpreting as: …" so a misreading is visible.
+   */
+  resolvedQuestion: string | null;
   /** Null for presets — the SQL affordance is for generated queries. */
   sql: string | null;
   columns: string[];

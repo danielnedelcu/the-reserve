@@ -213,6 +213,7 @@ export type Database = {
           output_tokens: number | null
           preset_id: string | null
           question: string | null
+          resolved_question: string | null
           row_count: number | null
           source: string
           staff_id: string
@@ -233,6 +234,7 @@ export type Database = {
           output_tokens?: number | null
           preset_id?: string | null
           question?: string | null
+          resolved_question?: string | null
           row_count?: number | null
           source: string
           staff_id: string
@@ -253,6 +255,7 @@ export type Database = {
           output_tokens?: number | null
           preset_id?: string | null
           question?: string | null
+          resolved_question?: string | null
           row_count?: number | null
           source?: string
           staff_id?: string

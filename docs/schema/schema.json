@@ -4372,6 +4372,12 @@
           "type": "uuid",
           "nullable": true,
           "comment": "Groups the asks of one dock session, bounded by the \"New thread\" control. Null on rows written before threading existed, and on any ask made outside a thread. A refined question (\"and who used it?\") is only interpretable alongside the rows sharing its thread_id — note that generated_sql on each row stays self-contained, so an ANSWER is always auditable on its own; it is the question TEXT that needs its predecessors."
+        },
+        {
+          "name": "resolved_question",
+          "type": "text",
+          "nullable": true,
+          "comment": "The question with its references resolved against the thread — \"and who used it?\" recorded as \"which clients redeemed gift cards in the last 2 months?\". Equal to question on a first turn, where there is nothing to resolve. Null on the preset path (no model ran) and on rows written before this column existed. Read THIS when auditing an answer or mining the log; `question` keeps what was literally typed, which is what the admin will recognise."
         }
       ],
       "indexes": [

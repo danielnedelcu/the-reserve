@@ -146,6 +146,19 @@ const cell = (
   row: Record<string, unknown>,
 ) => cellValue(column, row, entry.plan ?? undefined);
 
+/**
+ * The resolved question, but only when it differs from what was typed.
+ * Compared loosely — case and trailing punctuation shifting is the model
+ * tidying, not reinterpreting, and flagging that would train people to
+ * ignore the line that matters.
+ */
+function interpretation(entry: AskEntry): string | null {
+  const resolved = entry.result?.resolvedQuestion?.trim();
+  if (!resolved) return null;
+  const normalise = (t: string) => t.toLowerCase().replace(/[\s?.!]+$/g, "").trim();
+  return normalise(resolved) === normalise(entry.label) ? null : resolved;
+}
+
 /** Caption plus the table as TSV — the shape that pastes into an email. */
 async function copyEntry(entry: AskEntry) {
   const result = entry.result;
@@ -217,6 +230,19 @@ async function copyEntry(entry: AskEntry) {
         <li v-for="entry in entries" :key="entry.id" class="grid gap-2">
           <!-- The question -->
           <p class="text-sm font-medium">{{ entry.label }}</p>
+
+          <!--
+            Only when the model had to resolve a reference. Echoing an
+            unchanged question back is noise; showing a changed one is the
+            point — a wrong interpretation becomes visible instead of
+            silently producing a confident answer to the wrong question.
+          -->
+          <p
+            v-if="interpretation(entry)"
+            class="text-muted-foreground -mt-1 text-xs italic"
+          >
+            interpreting as: {{ interpretation(entry) }}
+          </p>
 
           <!-- Pending -->
           <div

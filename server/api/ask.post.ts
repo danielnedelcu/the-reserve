@@ -80,6 +80,12 @@ interface AskBody {
 
 interface AskResponse {
   source: "preset" | "llm";
+  /**
+   * The question with thread references resolved, when that differs from
+   * what was typed. Surfaced as "interpreting as: …" so a wrong reading is
+   * visible rather than silent.
+   */
+  resolvedQuestion: string | null;
   sql: string | null;
   columns: string[];
   rows: Record<string, unknown>[];
@@ -116,7 +122,12 @@ async function generateSql(
   question: string,
   route: string | undefined,
   context: ContextMessage[],
-): Promise<{ sql: string | null; reason: string | null; usage: AskUsage }> {
+): Promise<{
+  sql: string | null;
+  reason: string | null;
+  resolvedQuestion: string | null;
+  usage: AskUsage;
+}> {
   const apiKey = useRuntimeConfig().anthropicApiKey;
   if (!apiKey) {
     throw createError({
@@ -157,8 +168,13 @@ async function generateSql(
               description:
                 "When sql is null, one short sentence on what is missing. Otherwise null.",
             },
+            resolved_question: {
+              type: "string",
+              description:
+                "The question restated so it stands on its own, with anything referring back to an earlier turn spelled out. 'and who used it?' after a question about gift-card redemptions becomes 'which clients redeemed gift cards in the last 2 months?'. If nothing refers back, return the question VERBATIM — do not tidy, rephrase, or clarify it. This field is shown to the admin when it differs from what they typed, so an unnecessary change reads as a misunderstanding.",
+            },
           },
-          required: ["sql", "reason"],
+          required: ["sql", "reason", "resolved_question"],
           additionalProperties: false,
         },
         strict: true,
@@ -205,7 +221,11 @@ async function generateSql(
     });
   }
 
-  const input = toolUse.input as { sql?: string | null; reason?: string | null };
+  const input = toolUse.input as {
+    sql?: string | null;
+    reason?: string | null;
+    resolved_question?: string | null;
+  };
 
   // Recorded even when the model declines: a decline still costs money, and
   // a spike in declines is exactly the kind of thing the meter should show.
@@ -219,6 +239,13 @@ async function generateSql(
   return {
     sql: input.sql ?? null,
     reason: input.reason ?? null,
+    // With no prior turns there was nothing to resolve, so the question is
+    // its own resolution — enforced here rather than asked for in the
+    // prompt. Told to "repeat it unchanged", the model paraphrases anyway
+    // ("used" -> "redeemed" on a first-turn question), which would put an
+    // "interpreting as: ..." line under questions nobody reinterpreted and
+    // train people to ignore the one that matters.
+    resolvedQuestion: context.length ? input.resolved_question?.trim() || question : question,
     usage: { model: ASK_MODEL, ...counts, costMicros: priceInMicros(counts) },
   };
 }
@@ -319,6 +346,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
 
   let sql: string | null;
   let unanswerableReason: string | null = null;
+  let resolvedQuestion: string | null = null;
   let usage: AskUsage | null = null;
 
   if (presetId) {
@@ -332,6 +360,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
     const generated = await generateSql(question!, body.route, context);
     sql = generated.sql;
     unanswerableReason = generated.reason;
+    resolvedQuestion = generated.resolvedQuestion;
     usage = generated.usage;
   }
 
@@ -345,6 +374,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
       source,
       presetId: presetId ?? null,
       question: question ?? null,
+      resolvedQuestion,
       sql: null,
       rowCount: null,
       durationMs: Date.now() - startedAt,
@@ -353,6 +383,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
     });
     return {
       source,
+      resolvedQuestion,
       sql: null,
       columns: [],
       rows: [],
@@ -377,6 +408,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
       source,
       presetId: presetId ?? null,
       question: question ?? null,
+      resolvedQuestion,
       sql,
       rowCount: null,
       durationMs: Date.now() - startedAt,
@@ -405,6 +437,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
     source,
     presetId: presetId ?? null,
     question: question ?? null,
+    resolvedQuestion,
     sql,
     rowCount: rows.length,
     durationMs,
@@ -414,6 +447,7 @@ export default defineEventHandler(async (event): Promise<AskResponse> => {
 
   return {
     source,
+    resolvedQuestion,
     // Presets are human-written and reviewed; the affordance is for
     // generated SQL, which is the only kind an admin needs to audit.
     sql: source === "llm" ? sql : null,
@@ -462,6 +496,8 @@ async function logAsk(
     source: "preset" | "llm";
     presetId: string | null;
     question: string | null;
+    /** The question with thread references spelled out; null on presets. */
+    resolvedQuestion: string | null;
     sql: string | null;
     rowCount: number | null;
     durationMs: number;
@@ -480,6 +516,7 @@ async function logAsk(
     source: entry.source,
     preset_id: entry.presetId,
     question: entry.question,
+    resolved_question: entry.resolvedQuestion,
     generated_sql: entry.sql,
     row_count: entry.rowCount,
     duration_ms: entry.durationMs,
