@@ -31,6 +31,36 @@
   connection failures as PASS; an editor-restored duplicate module (the
   diff showed a modification where a rename was expected); a sliding-window
   cache miss that just costs more, quietly, later.
+- Two paths deciding one predicate: derive once, or test the disagreement.
+  This project deliberately enforces rules in Postgres, so the same
+  question routinely gets decided in two languages — a plpgsql function
+  and the TypeScript route calling it — where one shared implementation is
+  impossible. The architecture GENERATES this bug class; it is expected,
+  not incidental, and it always fails the same way: both sides agree on
+  the common case and diverge at an edge, so every ordinary test passes.
+  Two tiers.
+  (1) When they CAN share, derive it once and make divergence
+  unrepresentable. `shared/ask/format.ts` is the model: caption and table
+  each formatted `_cents`, drifted, and a single-cell result read
+  "Avg spend: 4064" in the caption above "$40.64" in the table (42290e5).
+  One contract, and the bug stopped being expressible.
+  (2) When they CANNOT share — one side is a database function — test the
+  edge where they would disagree, never the common case where they agree.
+  Real instances: the submit route decided "prospect link" as
+  client_id-null AND key=prospect_intake while submit_form_response
+  decided it as client_id-null alone, so a subject-less link on any other
+  form sent NULL into a NOT NULL column (23502) — the DB-layer harness was
+  31/31 green while that hole was open, and only an end-to-end test found
+  it. The public form treated `false` as unanswered while the server
+  treated it as the answer "no", silently discarding every explicit No and
+  making a required yes/no question unanswerable. The forms editor locked
+  all four contact keys when the contract required three, quietly making
+  `phone` uneditable. `tests/shared/formValidation.test.ts` is the shape
+  to copy: it asserts the two sides AGREE across deliberately awkward
+  inputs, so drift fails the test regardless of which side is right.
+  Known live seam, currently consistent but unasserted: `shared/ask/presets.ts`
+  ids must pair with `PRESET_SQL` keys or a preset silently falls through
+  to the LLM — 15/15 match today, and nothing checks it.
 - Types: npx nuxt typecheck must stay at 0; payloads feeding insert+update
   typed as Omit<TablesInsert<"t">, "organization_id">
 - Every new table: organization_id + org-scoped RLS (see docs/design/multi-tenancy-status.md)
