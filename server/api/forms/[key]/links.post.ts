@@ -1,5 +1,7 @@
 import { requirePermission } from "../../../utils/requireUser";
 import { getDefinition } from "../../../utils/formEngine";
+import { sendMail } from "../../../utils/mailer";
+import { formLinkEmail } from "../../../utils/emailTemplates";
 import {
   assertProspectContactFields,
   FormShapeError,
@@ -9,8 +11,14 @@ import {
  * POST /api/forms/:key/links
  * Body: { deliveryEmail?, clientId?, expiresInDays? }
  *
- * Issues a tokenized link to the form's CURRENT version. Authenticated,
- * low-novelty — the staff_invites shape pointed at a different table.
+ * Issues a tokenized link to the form's CURRENT version and, when given
+ * an address, EMAILS it. Authenticated, low-novelty — the staff_invites
+ * shape pointed at a different table, delivery included.
+ *
+ * Delivery is best-effort and never fails the issuance: sendMail returns
+ * false rather than throwing, and the link is returned either way. A link
+ * that exists but was not delivered is recoverable (copy it); a send that
+ * took the whole request down with it would lose the link entirely.
  *
  * The version is frozen here, at issue: publishing a new version later
  * must not change the questions this recipient sees, or the sensitive
@@ -54,8 +62,10 @@ export default defineEventHandler(async (event) => {
       if (error instanceof FormShapeError) {
         throw createError({
           statusCode: 422,
-          statusMessage: `"${key}" cannot be sent as a prospect link: ${error.message}`,
-          data: { fieldKey: error.fieldKey ?? null },
+          statusMessage:
+            `"${key}" has no contact questions, so it cannot create a new person. ` +
+            `Send it to an existing client instead. (${error.message})`,
+          data: { fieldKey: error.fieldKey ?? null, needsClient: true },
         });
       }
       throw error;
@@ -91,14 +101,33 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: error.message });
   }
 
+  // Deliver it, if we were told where to. The URL is built from the
+  // request's own origin so a link mailed from staging cannot point at
+  // production, or vice versa.
+  const path = `/join/${data.token}`;
+  let emailed: boolean | null = null;
+
+  if (body?.deliveryEmail) {
+    const origin = getRequestURL(event).origin;
+    const content = formLinkEmail({
+      formUrl: `${origin}${path}`,
+      formName: definition.name,
+      expiresInDays: days,
+    });
+    emailed = await sendMail({ to: body.deliveryEmail, ...content });
+  }
+
   return {
     id: data.id,
     token: data.token,
     expiresAt: data.expires_at,
-    // The path the recipient opens. Delivery (email) is the caller's job;
-    // this route mints the link, it does not send it.
-    path: `/join/${data.token}`,
+    path,
     formKey: key,
     version: definition.currentVersion.version,
+    // null = no address was given, false = we tried and it did not go.
+    // The caller shows the link either way; distinguishing the two is what
+    // lets the UI say "sent" honestly rather than optimistically.
+    emailed,
+    deliveryEmail: body?.deliveryEmail ?? null,
   };
 });

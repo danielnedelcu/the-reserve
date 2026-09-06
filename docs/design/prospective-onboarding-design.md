@@ -513,6 +513,53 @@ purge-eligible `prospect_intake` row older than 30 days. That check
 belongs in `verify:forms`, where a broken retention control becomes a
 failing verification instead of a clean-looking database.
 
+## Waiver health promotion, and the intake gate (phase 3 follow-up)
+
+Status: DECIDED 2026-09-06.
+
+**11. A client's waiver health answers are PROMOTED into client_notes at
+submit, appended, never superseding.** One note per health answer per
+submission, dated and version-stamped.
+
+Two copies exist on purpose, and the reason is the audit, not
+convenience. `form_response_health` is the SUBMISSION RECORD: immutable,
+tied to the exact version answered, part of what the person consented to.
+`client_notes` is the OPERATIONAL copy: where a therapist actually looks
+before a session, and — decisively — the tier whose reads are LOGGED. A
+SELECT cannot fire a trigger, so reads of `form_response_health` can never
+be audited; leaving health data readable only there would create health
+data that is readable-but-unaudited, breaking the invariant that every
+read of health data is recorded. Same source → operational relationship
+as the prospect's promotion at enrollment; it simply happens at submit,
+because the client record already exists.
+
+Append rather than supersede, matching `client_notes`' own model: a
+therapist reading "March: knee injury / June: resolved" is better informed
+than one reading only the latest state.
+
+**12. The `requires_intake` booking gate accepts ANY completed waiver, not
+the current version.**
+
+The failure modes are asymmetric, and that asymmetry decides it. Accepting
+an older version is a minor gap — the client has consented, to slightly
+older wording. Requiring the current version means that republishing to
+fix a TYPO blocks every client in the facility from booking until each one
+re-signs: a facility-wide outage produced by a routine edit. A rule whose
+worst case is an outage caused by normal use is the wrong rule, however
+correct it looks.
+
+**Deferred, and framed as the judgement it actually is: re-consent is a
+MATERIALITY question, not a version-increment question.** Whether a new
+version invalidates prior consent depends on whether the change was
+cosmetic or legal — a typo versus a rewritten liability clause — and no
+amount of version arithmetic can tell those apart. So the eventual design
+is a flag the PUBLISHER sets at publish time ("this change requires
+re-consent"), not an automatic consequence of the version going up. That
+makes it a deliberate act by someone who knows what they changed. It is
+owner-policy-adjacent (who decides materiality, and what the front desk
+does when a member arrives un-re-consented), so it is recorded here and
+not built.
+
 ### What phase 2 must PROVE, not assume
 
 Every failure here is silent, so each boundary is verified in both

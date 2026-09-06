@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { FormField } from "~~/shared/forms/fields";
+import { useForm } from "vee-validate";
+import { toTypedSchema } from "@vee-validate/zod";
+import { isEmptyAnswer, type FormField } from "~~/shared/forms/fields";
+import {
+  buildAnswerSchema,
+  requiredAnswersPresent,
+} from "~~/shared/forms/validation";
 
 /**
  * The public form page — where a prospect fills in their intake, or a
@@ -11,6 +17,11 @@ import type { FormField } from "~~/shared/forms/fields";
  * every requirement stated in words rather than implied by an asterisk or
  * a colour, and errors that say what to do next. Nothing on this page
  * relies on colour alone to carry meaning.
+ *
+ * Validation is Zod, built from the SAME field descriptors and shared
+ * predicates the server validates with (shared/forms/validation.ts). The
+ * server still decides — this only means a person is told what is missing
+ * while they can still fix it, instead of after pressing send.
  */
 definePageMeta({ layout: false });
 
@@ -30,18 +41,25 @@ const { data: form, error: loadError } = await useFetch<PublicForm>(
   `/api/public/forms/${token}`,
 );
 
-const answers = reactive<Record<string, string | boolean | string[]>>({});
+const fields = computed<FormField[]>(() => form.value?.fields ?? []);
+
+const { values, errors, handleSubmit, setFieldError } = useForm({
+  validationSchema: computed(() => toTypedSchema(buildAnswerSchema(fields.value))),
+  // Multiselects need an array to push into; nothing else is pre-answered.
+  // A boolean starting at false would have answered a yes/no question on
+  // the person's behalf, which for a health question is the difference
+  // between saying no and saying nothing.
+  initialValues: Object.fromEntries(
+    (form.value?.fields ?? [])
+      .filter((f) => f.type === "multiselect")
+      .map((f) => [f.key, [] as string[]]),
+  ),
+});
+
 const consented = ref(false);
 const submitting = ref(false);
 const submitted = ref(false);
-const errorMessage = ref("");
-const errorFieldKey = ref<string | null>(null);
-
-// Multiselect answers need an array to push into before anything is picked.
-for (const field of form.value?.fields ?? []) {
-  if (field.type === "multiselect") answers[field.key] = [];
-  else if (field.type === "boolean") answers[field.key] = false;
-}
+const formError = ref("");
 
 const loadErrorMessage = computed(
   () =>
@@ -49,34 +67,35 @@ const loadErrorMessage = computed(
       ?.statusMessage ?? "This link is no longer valid.",
 );
 
-function toggleChoice(key: string, option: string, checked: boolean) {
-  const current = (answers[key] as string[] | undefined) ?? [];
-  answers[key] = checked
-    ? [...current, option]
-    : current.filter((v) => v !== option);
-}
+const consentNeeded = computed(() => !!form.value?.consentText);
 
-async function submit() {
-  errorMessage.value = "";
-  errorFieldKey.value = null;
+/**
+ * Whether the button is live.
+ *
+ * Three conditions, and the first is the one that matters: every required
+ * question actually answered, judged by the SHARED definition of
+ * "answered" — so a required yes/no satisfied with "no" counts, which an
+ * earlier version of this page got wrong.
+ */
+const canSend = computed(
+  () =>
+    requiredAnswersPresent(fields.value, values) &&
+    Object.keys(errors.value).length === 0 &&
+    (!consentNeeded.value || consented.value) &&
+    !submitting.value,
+);
 
-  if (form.value?.consentText && !consented.value) {
-    errorMessage.value = "Please tick the box to agree before sending.";
-    return;
-  }
-
+const submit = handleSubmit(async (validated) => {
+  formError.value = "";
   submitting.value = true;
   try {
-    // Empty answers are dropped rather than sent as "": the server treats
-    // blank as unanswered anyway, and sending them would fail validation
-    // on optional fields that have a type.
+    // Unanswered optional questions are left out entirely rather than sent
+    // as "". isEmptyAnswer is the same test the server applies, so the two
+    // cannot disagree about what counts as an answer — notably `false`,
+    // which is the answer "no" and must survive this filter.
     const payload: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(answers)) {
-      const empty =
-        value === "" ||
-        value === false ||
-        (Array.isArray(value) && value.length === 0);
-      if (!empty) payload[key] = value;
+    for (const [key, value] of Object.entries(validated)) {
+      if (!isEmptyAnswer(value)) payload[key] = value;
     }
 
     await $fetch(`/api/public/forms/${token}/submit`, {
@@ -86,17 +105,23 @@ async function submit() {
     submitted.value = true;
   } catch (e: unknown) {
     const err = e as {
-      statusCode?: number;
       data?: { statusMessage?: string; data?: { fieldKey?: string | null } };
     };
-    errorFieldKey.value = err.data?.data?.fieldKey ?? null;
-    errorMessage.value =
+    const fieldKey = err.data?.data?.fieldKey ?? null;
+    const message =
       err.data?.statusMessage ??
       "Something went wrong sending your answers. Please try again.";
+    // The server names the field it rejected — put its message where that
+    // question is, not in a banner the reader has to match up themselves.
+    if (fieldKey && fields.value.some((f) => f.key === fieldKey)) {
+      setFieldError(fieldKey, message);
+    } else {
+      formError.value = message;
+    }
   } finally {
     submitting.value = false;
   }
-}
+});
 </script>
 
 <template>
@@ -167,110 +192,11 @@ async function submit() {
         </p>
 
         <div class="mt-8 space-y-7">
-          <div v-for="field in form?.fields ?? []" :key="field.key">
-            <label
-              :for="field.key"
-              class="block text-base font-medium text-reserve-ink"
-            >
-              {{ field.label }}
-              <span
-                v-if="field.required"
-                class="ml-1 text-sm font-semibold text-reserve-primary"
-                >(required)</span
-              >
-            </label>
-            <p v-if="field.help" class="mt-1 text-sm text-gray-600">
-              {{ field.help }}
-            </p>
-
-            <UiTextarea
-              v-if="field.type === 'textarea'"
-              :id="field.key"
-              v-model="answers[field.key] as string"
-              :rows="4"
-              class="mt-2 text-base"
-            />
-
-            <div
-              v-else-if="field.type === 'boolean'"
-              class="mt-2 flex items-center gap-3"
-            >
-              <UiCheckbox
-                :id="field.key"
-                v-model="answers[field.key] as boolean"
-                class="size-5"
-              />
-              <label :for="field.key" class="text-base text-gray-700">Yes</label>
-            </div>
-
-            <div v-else-if="field.type === 'select'" class="mt-2">
-              <select
-                :id="field.key"
-                v-model="answers[field.key] as string"
-                class="w-full rounded-lg border border-gray-400 px-3 py-2.5 text-base focus:border-reserve-primary focus:outline-none focus:ring-2 focus:ring-reserve-teal"
-              >
-                <option value="">Please choose…</option>
-                <option v-for="option in field.options" :key="option" :value="option">
-                  {{ option }}
-                </option>
-              </select>
-            </div>
-
-            <fieldset v-else-if="field.type === 'multiselect'" class="mt-2">
-              <legend class="sr-only">{{ field.label }}</legend>
-              <div class="space-y-2.5">
-                <div
-                  v-for="option in field.options"
-                  :key="option"
-                  class="flex items-center gap-3"
-                >
-                  <UiCheckbox
-                    :id="`${field.key}-${option}`"
-                    class="size-5"
-                    :model-value="((answers[field.key] as string[]) ?? []).includes(option)"
-                    @update:model-value="
-                      (checked) => toggleChoice(field.key, option, checked === true)
-                    "
-                  />
-                  <label
-                    :for="`${field.key}-${option}`"
-                    class="text-base text-gray-700"
-                    >{{ option }}</label
-                  >
-                </div>
-              </div>
-            </fieldset>
-
-            <UiInput
-              v-else
-              :id="field.key"
-              v-model="answers[field.key] as string"
-              :type="
-                field.type === 'email'
-                  ? 'email'
-                  : field.type === 'date'
-                    ? 'date'
-                    : field.type === 'phone'
-                      ? 'tel'
-                      : 'text'
-              "
-              class="mt-2 h-11 text-base"
-            />
-
-            <!-- The field the server named, called out in words as well as
-                 position, since a coloured border alone would not read. -->
-            <p
-              v-if="errorFieldKey === field.key"
-              class="mt-2 flex items-start gap-1.5 text-sm font-medium text-reserve-primary"
-            >
-              <Icon
-                name="lucide:triangle-alert"
-                class="mt-0.5 size-4 shrink-0"
-                aria-hidden="true"
-              />
-              <span>{{ errorMessage }}</span>
-            </p>
-          </div>
+          <JoinFormField
+            v-for="field in fields"
+            :key="field.key"
+            :field="field"
+          />
         </div>
 
         <!-- Consent, when this version carries any -->
@@ -290,7 +216,7 @@ async function submit() {
         </div>
 
         <p
-          v-if="errorMessage && !errorFieldKey"
+          v-if="formError"
           class="mt-6 flex items-start gap-2 rounded-lg bg-gray-50 p-4 text-base font-medium text-reserve-ink"
         >
           <Icon
@@ -298,7 +224,7 @@ async function submit() {
             class="mt-0.5 size-5 shrink-0 text-reserve-primary"
             aria-hidden="true"
           />
-          <span>{{ errorMessage }}</span>
+          <span>{{ formError }}</span>
         </p>
 
         <!-- Brand purple rather than the app's neutral primary. Staff
@@ -307,11 +233,26 @@ async function submit() {
              #572e72 clears AA contrast comfortably. -->
         <UiButton
           type="submit"
-          :disabled="submitting"
+          :disabled="!canSend"
           class="mt-8 h-12 w-full bg-reserve-primary text-base text-white hover:bg-reserve-primary/90"
         >
           {{ submitting ? "Sending…" : "Send my answers" }}
         </UiButton>
+
+        <!-- Why the button is off, said plainly. A disabled control with no
+             explanation is the worst version of this pattern: the reader
+             cannot tell whether they missed something or the page broke. -->
+        <p v-if="!canSend && !submitting" class="mt-3 text-center text-sm text-gray-600">
+          <template v-if="!requiredAnswersPresent(fields, values)">
+            Please answer the questions marked required.
+          </template>
+          <template v-else-if="Object.keys(errors).length">
+            Please check the highlighted answers above.
+          </template>
+          <template v-else-if="consentNeeded && !consented">
+            Please tick the box to agree.
+          </template>
+        </p>
 
         <p class="mt-4 text-center text-sm text-gray-600">
           You can only send this form once.

@@ -72,6 +72,41 @@ export class FormShapeError extends Error {
 const KEY_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 
 /**
+ * Shared predicates. Exported so the client-side schema validates with the
+ * SAME expressions the server coerces with, rather than a second copy that
+ * happens to agree — this file is the authority, and anything checking an
+ * answer anywhere should reach for these.
+ */
+export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A real calendar date, not just a well-shaped string (2026-02-31 is not). */
+export function isRealDate(value: string): boolean {
+  if (!DATE_PATTERN.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  return (
+    probe.getUTCFullYear() === y &&
+    probe.getUTCMonth() === m - 1 &&
+    probe.getUTCDate() === d
+  );
+}
+
+/**
+ * Is this answer absent? The single definition of "unanswered", used by
+ * the validator, by the public form before it submits, and by anything
+ * else that needs to ask. false is NOT empty — it is the answer "no".
+ */
+export function isEmptyAnswer(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (typeof value === "string" && value.trim() === "") ||
+    (Array.isArray(value) && value.length === 0)
+  );
+}
+
+/**
  * Validates a form definition's field list. Throws FormShapeError on the
  * first problem — authoring is interactive, so one clear error beats a
  * list nobody reads.
@@ -209,13 +244,8 @@ export function validateAnswers(
 
   for (const field of fields) {
     const value = submitted[field.key];
-    const empty =
-      value === undefined ||
-      value === null ||
-      (typeof value === "string" && value.trim() === "") ||
-      (Array.isArray(value) && value.length === 0);
 
-    if (empty) {
+    if (isEmptyAnswer(value)) {
       if (field.required) {
         throw new FormShapeError(`"${field.label}" is required.`, field.key);
       }
@@ -253,27 +283,17 @@ function coerceValue(field: FormField, value: unknown): AnswerValue {
       const email = value.trim();
       // Deliberately loose: the delivery path is what proves an address,
       // and a strict regex here rejects valid addresses for no gain.
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        return bad("an email address");
-      }
+      if (!EMAIL_PATTERN.test(email)) return bad("an email address");
       return email;
     }
 
     case "date": {
-      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
         return bad("a date as YYYY-MM-DD");
       }
-      // Day-granular and stored as the string: never toISOString() a day
-      // key (CLAUDE.md), and a Date here would reintroduce the timezone.
-      const [y, m, d] = value.split("-").map(Number) as [number, number, number];
-      const probe = new Date(Date.UTC(y, m - 1, d));
-      if (
-        probe.getUTCFullYear() !== y ||
-        probe.getUTCMonth() !== m - 1 ||
-        probe.getUTCDate() !== d
-      ) {
-        return bad("a real calendar date");
-      }
+      // Day-granular and kept as the string: never toISOString() a day key
+      // (CLAUDE.md), and a Date here would reintroduce the timezone.
+      if (!isRealDate(value)) return bad("a real calendar date");
       return value;
     }
 
@@ -326,12 +346,15 @@ export function assertProspectContactFields(fields: FormField[]): void {
     const field = byKey.get(key);
     if (!field) {
       throw new FormShapeError(
-        `A ${PROSPECT_INTAKE_FORM_KEY} form must include a "${key}" field — it becomes the prospect's record.`,
+        `A form that creates a prospect must include a "${key}" field — it becomes their record.`,
         key,
       );
     }
     if (!field.required) {
-      throw new FormShapeError(`"${key}" must be required on a prospect form.`, key);
+      throw new FormShapeError(
+        `"${key}" must be required on a form that creates a prospect.`,
+        key,
+      );
     }
   }
 

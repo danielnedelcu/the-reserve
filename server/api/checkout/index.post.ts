@@ -560,7 +560,7 @@ export default defineEventHandler(async (event) => {
   // 4. audit
   const { error: auditError } = await admin.from("audit_log").insert({
     actor_staff_id: staffId,
-    actor_user_id: user.user.id,
+    actor_user_id: actorUserId(user.user),
     action: "pos.checkout",
     entity_type: "transaction",
     entity_id: txn.id,

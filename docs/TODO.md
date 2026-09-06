@@ -68,16 +68,15 @@ QUEUED (in order):
   availability deletes (opportunistic, when touching those files)
 - Held/parked tickets (resumable carts) — only if the spa asks; lives
   OUTSIDE the ledger
-- audit_log.actor_user_id NULL across health_note.viewed /
-  appointment.booked / pos.checkout — normalize actor id resolution once
-  in requireUser, fix the three remaining call sites
-  (clients/[id]/health-notes.get.ts:40, appointments/index.post.ts:210,
-  checkout/index.post.ts:563; /api/ask was the fourth and is already
-  fixed). Cause: serverSupabaseUser() returns decoded JWT claims, where
-  the id is `sub` — but is TYPED as a User, so `user.id` typechecks and
-  is undefined at runtime. actor_staff_id is populated on every row, so
-  nothing is untraceable. Write-up + fix pattern in
-  docs/design/ask-the-reserve-design.md (Verification, [AS-BUILT]).
+- ~~audit_log.actor_user_id NULL across health_note.viewed /
+  appointment.booked / pos.checkout~~ DONE 2026-09-06. Normalized once as
+  `actorUserId()` in server/utils/requireUser.ts and applied to all four
+  writers (health-notes, appointments, checkout, prospect review).
+  Verified live: health_note.viewed now records a non-null actor_user_id.
+  Found again, not by looking for it — an assertion that reading a
+  promoted health note fires its audit surfaced the NULL on the very row
+  being cited as proof of the audit invariant. Historic rows keep their
+  NULLs; actor_staff_id was always populated, so nothing was untraceable.
 
 ## Pre-launch checklist
 

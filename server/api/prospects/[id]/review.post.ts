@@ -1,5 +1,5 @@
 import { serverSupabaseServiceRole } from "#supabase/server";
-import { requirePermission } from "../../../utils/requireUser";
+import { requirePermission, actorUserId } from "../../../utils/requireUser";
 
 /**
  * POST /api/prospects/:id/review
@@ -65,15 +65,10 @@ export default defineEventHandler(async (event) => {
 
   if (error) throw createError({ statusCode: 500, statusMessage: error.message });
 
-  // `user` is DECODED JWT CLAIMS typed as a User: the auth id is the `sub`
-  // claim, and `user.id` typechecks while being undefined at runtime. Both
-  // accepted so a library change cannot reintroduce the NULL actor bug.
-  const identity = user as unknown as { sub?: string; id?: string };
-
   const admin = serverSupabaseServiceRole(event);
   await admin.from("audit_log").insert({
     actor_staff_id: staffId,
-    actor_user_id: identity.sub ?? identity.id ?? null,
+    actor_user_id: actorUserId(user),
     action: `prospect.${status}`,
     entity_type: "prospect_intake",
     entity_id: id,

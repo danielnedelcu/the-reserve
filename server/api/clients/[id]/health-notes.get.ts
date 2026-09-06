@@ -1,5 +1,5 @@
 import { serverSupabaseServiceRole } from "#supabase/server";
-import { requirePermission } from "../../../utils/requireUser";
+import { requirePermission, actorUserId } from "../../../utils/requireUser";
 
 /**
  * GET /api/clients/:id/health-notes
@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   const admin = serverSupabaseServiceRole(event);
   await admin.from("audit_log").insert({
     actor_staff_id: staffId,
-    actor_user_id: user.id,
+    actor_user_id: actorUserId(user),
     action: "health_note.viewed",
     entity_type: "client",
     entity_id: clientId,

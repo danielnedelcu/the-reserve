@@ -1,5 +1,5 @@
 import { serverSupabaseServiceRole } from "#supabase/server";
-import { requirePermission } from "../../utils/requireUser";
+import { requirePermission, actorUserId } from "../../utils/requireUser";
 
 /**
  * POST /api/appointments
@@ -74,8 +74,43 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // TODO(intake): once intake forms exist, block booking here when
-  // service.requires_intake and the client has no completed intake.
+  // --- Intake gate ------------------------------------------------------------
+  // Services flagged requires_intake need a completed waiver on file.
+  //
+  // ANY version counts, deliberately. Requiring the currently-published
+  // version would mean that republishing a form to fix a typo blocks every
+  // client in the facility from booking until each one re-signs — a
+  // facility-wide outage caused by a routine edit. Accepting an older
+  // version is a much smaller gap than that, and the asymmetry is what
+  // decides it. Whether a NEW version should invalidate prior consent is a
+  // materiality judgement (typo vs rewritten liability clause), so the
+  // planned design is a flag the publisher sets, not an automatic
+  // consequence of the version number moving. See decision 12 in
+  // docs/design/prospective-onboarding-design.md.
+  if (service.requires_intake) {
+    // Checked under the SERVICE ROLE on purpose. This is a yes/no gate, not
+    // a data read, and form_responses requires forms.responses.view — which
+    // providers do not hold. Asking through the caller's own client would
+    // return zero rows for a provider and block a booking that should be
+    // allowed: a permission gap silently reappearing as a business rule.
+    const admin = serverSupabaseServiceRole(event);
+    const { count, error: intakeError } = await admin
+      .from("form_responses")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", body.clientId);
+
+    if (intakeError) {
+      throw createError({ statusCode: 500, statusMessage: intakeError.message });
+    }
+    if (!count) {
+      throw createError({
+        statusCode: 422,
+        statusMessage:
+          "This service needs a signed consent form first. Send the client the treatment consent form, then book once they have completed it.",
+        data: { needsIntake: true, clientId: body.clientId },
+      });
+    }
+  }
 
   const duration =
     qualification.duration_override_min ?? service.duration_minutes;
@@ -207,7 +242,7 @@ export default defineEventHandler(async (event) => {
   const admin = serverSupabaseServiceRole(event);
   await admin.from("audit_log").insert({
     actor_staff_id: staffIdSelf,
-    actor_user_id: user.id,
+    actor_user_id: actorUserId(user),
     action: "appointment.booked",
     entity_type: "appointment",
     entity_id: appointment.id,

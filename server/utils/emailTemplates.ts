@@ -65,6 +65,36 @@ export function staffInviteEmail(options: {
   };
 }
 
+export function formLinkEmail(options: {
+  formUrl: string;
+  formName: string;
+  organizationName?: string;
+  expiresInDays: number;
+}): { subject: string; html: string } {
+  // Plain language on purpose: this reaches people who are not members
+  // yet, often older and not confident with forms. Short sentences, one
+  // instruction, no jargon, and the link is a large tappable button.
+  return {
+    subject: `${options.formName} — ${options.organizationName ?? "The Reserve"}`,
+    html: shell(`
+        <p style="margin:0 0 16px;">Hello,</p>
+        <p style="margin:0 0 16px;">
+          Before your visit, we would like you to fill in a short form. It
+          takes a couple of minutes.
+        </p>
+        ${button(options.formUrl, "OPEN THE FORM")}
+        <p style="margin:0 0 16px;font-size:13px;">
+          If the button does not work, copy this address into your browser:<br />
+          <span style="word-break:break-all;">${options.formUrl}</span>
+        </p>
+        <p style="margin:0;font-size:12px;color:${COLORS.soft};">
+          This link works once and expires in ${options.expiresInDays} days.
+          If you have any trouble, call us and we will help.
+        </p>
+      `),
+  };
+}
+
 export function bookingConfirmationEmail(options: {
   clientFirstName: string;
   serviceName: string;

@@ -86,6 +86,64 @@ const { data: generalNotes, refresh: refreshGeneral } = await useAsyncData(
   },
 );
 
+/**
+ * Forms this client has completed — the PROVENANCE view.
+ *
+ * Deliberately shows the non-health answers, the version answered and the
+ * consent record, and NOT the health content. The health answers from a
+ * waiver are promoted into health notes at submit, which is where a
+ * therapist reads them and where reads are audited. Rendering them here
+ * too would create a second, unaudited way to read the same sentences.
+ *
+ * Requires forms.responses.view, which providers do not hold — so this
+ * section simply does not appear for them, while the health notes above
+ * (which they can see) carry the part that matters clinically.
+ */
+interface SubmittedForm {
+  id: string;
+  submitted_at: string;
+  consent_text: string | null;
+  consented_at: string | null;
+  answers: Record<string, unknown>;
+  form_versions: {
+    version: number;
+    fields: { key: string; label: string; sensitive: boolean }[];
+    form_definitions: { name: string };
+  };
+}
+
+const canSeeForms = computed(() => can("forms.responses.view"));
+
+const { data: submittedForms } = await useAsyncData(
+  `client-forms-${clientId}`,
+  async () => {
+    if (!canSeeForms.value) return [];
+    const { data, error } = await supabase
+      .from("form_responses")
+      .select(
+        "id, submitted_at, consent_text, consented_at, answers, form_versions(version, fields, form_definitions(name))",
+      )
+      .eq("client_id", clientId)
+      .order("submitted_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as unknown as SubmittedForm[];
+  },
+);
+
+/** Non-health answers only, paired with the labels of the version answered. */
+function visibleAnswers(form: SubmittedForm) {
+  return (form.form_versions.fields ?? [])
+    .filter((f) => !f.sensitive)
+    .map((f) => ({ label: f.label, value: form.answers?.[f.key] ?? null }))
+    .filter((a) => a.value !== null && a.value !== undefined && a.value !== "");
+}
+
+function displayAnswer(value: unknown): string {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
 const canSeeHealth = computed(() => can("clients.notes.health.view"));
 
 const { data: healthNotes, refresh: refreshHealth } = await useAsyncData(
@@ -276,6 +334,74 @@ const kindBadge: Record<string, string> = {
       </section>
 
       <!-- Notes -->
+      <!-- Completed forms: provenance, not health content. -->
+      <section v-if="canSeeForms" class="mt-8">
+        <h2 class="font-medium">Completed forms</h2>
+
+        <p
+          v-if="!submittedForms?.length"
+          class="text-muted-foreground mt-2 text-sm"
+        >
+          Nothing on file. Send a form from
+          <NuxtLink to="/forms" class="underline">Forms</NuxtLink>.
+        </p>
+
+        <ul v-else class="mt-3 space-y-3">
+          <li
+            v-for="form in submittedForms"
+            :key="form.id"
+            class="rounded-xl border p-4"
+          >
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <p class="font-medium">
+                {{ form.form_versions.form_definitions.name }}
+              </p>
+              <p class="text-muted-foreground text-xs">
+                version {{ form.form_versions.version }} ·
+                {{ new Date(form.submitted_at).toLocaleDateString("en-CA") }}
+              </p>
+            </div>
+
+            <dl v-if="visibleAnswers(form).length" class="mt-3 space-y-1.5">
+              <div
+                v-for="answer in visibleAnswers(form)"
+                :key="answer.label"
+                class="grid grid-cols-1 gap-0.5 sm:grid-cols-3 sm:gap-3"
+              >
+                <dt class="text-muted-foreground text-sm">{{ answer.label }}</dt>
+                <dd class="text-sm sm:col-span-2">
+                  {{ displayAnswer(answer.value) }}
+                </dd>
+              </div>
+            </dl>
+
+            <p
+              v-if="form.consented_at"
+              class="text-muted-foreground mt-3 flex items-start gap-1.5 text-sm"
+            >
+              <Icon
+                name="lucide:circle-check"
+                class="mt-0.5 size-4 shrink-0"
+                aria-hidden="true"
+              />
+              <span>
+                Agreed on
+                {{ new Date(form.consented_at).toLocaleDateString("en-CA") }}
+                <template v-if="form.consent_text">
+                  — the exact wording they agreed to is stored with this
+                  submission.
+                </template>
+              </span>
+            </p>
+
+            <p class="text-muted-foreground mt-3 text-xs">
+              Health answers from this form are in the health notes below, not
+              here — that is the copy whose reads are recorded.
+            </p>
+          </li>
+        </ul>
+      </section>
+
       <section class="mt-8">
         <h2 class="font-medium">Notes</h2>
 
