@@ -572,3 +572,75 @@ read-only text-to-SQL through the SELECT-only role.
 - Whether preset SQL should live in the database (as views) rather than
   in `server/utils/askPresets.ts`, so the ask role's grants alone define
   what a preset can touch.
+
+### Scaling context beyond 3 turns
+
+Not owed work. At `CONTEXT_DEPTH = 3` the cost is fractions of a cent and
+the audit gap is small, so none of this is urgent — this is the package to
+do **the day someone wants deeper threads**, written down so it does not
+have to be re-derived. Analysed 2026-09-05.
+
+The naive move is to raise the constant. That works and degrades in a
+specific way, so in the order worth doing them:
+
+**1. Log a resolved question.** Add `resolved_question` to the existing
+`answer_with_sql` tool — same call, no extra cost, just another field —
+and store it. This closes the one thing threading knowingly gave up:
+`ask_queries` rows stopped being self-contained, because "and who used
+it?" is uninterpretable alone. Logging the model's resolved form
+("which clients redeemed gift cards in the last 2 months?") makes every
+row stand on its own again, which restores both the audit property and
+the value of mining the log for what people actually ask.
+
+It also earns a transparency affordance: the panel can show
+*"interpreting as: …"*, so a **wrong interpretation is visible rather
+than silent** — the same principle as the columnLabel honesty rule, where
+the goal is not preventing every miss but guaranteeing a miss looks like
+one. Smallest item here and the only one with a real gap behind it; do it
+first, independent of the rest.
+
+**2. Cache the conversation prefix.** Today `cache_control` sits on the
+system block only, so carried turns are billed at full input rate every
+time and a thread costs roughly O(n²) in total. A second breakpoint on the
+last context message should fix that: context is rebuilt from
+`ask_queries` in `created_at` order, so each turn's message list is a
+prefix of the next, and appending should hit cache for everything before
+the new tail.
+
+**Verify that assumption before relying on it.** Prefix caching demands an
+exact byte match, and the reconstruction has several places it could vary
+without anyone noticing: anything interpolated per-request, ordering that
+is not fully deterministic when two rows share a `created_at`, or the
+preset-label lookup returning something different than it did last turn. A
+silent miss is worse than not trying — you pay full rate *and* burn a
+cache-write on the second breakpoint. Measure it the way the original
+cache was measured: `cache_read_tokens` should climb to include the
+context prefix from turn 3 onward, not just the 3218-token schema. The
+baseline to compare against is in `docs/TODO.md`.
+
+**3. Then raise the cap — to something generous, not to infinity.** Once
+caching lands, cost stops being the reason for a limit, but a limit should
+survive anyway for a different reason: **more context makes answers worse,
+not just pricier.** A thread that wandered from clients to products to
+payroll hands the model twenty turns of irrelevant anchoring to latch
+onto. Twenty is as good a guess as any; the number is not worth agonising
+over, the cap existing is.
+
+**4. Later, select by relevance instead of recency.** "Last N" is a proxy
+for "the ones that matter". When pgvector arrives for notes and intake
+responses, the same pipeline can index `ask_queries.question` and context
+becomes the most *related* prior turns rather than the most recent. Nearly
+free once that phase exists; not worth building on its own. Filed as a
+third corpus in `ask-the-reserve-notes.md`.
+
+**Deliberately not: summarising older turns.** It is the standard move and
+the wrong one here — a second model call, a lossy step, and a thing to
+debug, to solve a cost problem that caching solves losslessly.
+Summarisation earns its place when context genuinely cannot fit; this
+context fits easily. Likewise the API's server-side compaction, which is
+built for agent loops accumulating tool results: here the conversation is
+reconstructed from our own database every request, which is a better
+position to be in than one worth trading away.
+
+Nothing here touches the egress invariant — questions and SQL travel,
+result rows never do, at any depth.

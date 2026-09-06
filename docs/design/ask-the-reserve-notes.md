@@ -63,8 +63,15 @@ accumulate. Staff messages are EXCLUDED from any corpus (private comms).
 - `create extension if not exists vector;` via migration (house rules —
   it's schema).
 - embeddings table: id, organization_id (+ RLS), source_type
-  ('client_note','intake_response'), source_id, client_id, content_hash,
-  embedding vector(1536), created_at. HNSW index.
+  ('client_note','intake_response','ask_question'), source_id, client_id,
+  content_hash, embedding vector(1536), created_at. HNSW index.
+  [ADDED 2026-09-05] `ask_queries.question` is a third corpus, and a
+  cheap one: it is already org-scoped, carries no PHI, and needs no new
+  privacy design. Its use is different from the other two — not answering
+  questions from notes, but choosing WHICH prior turns to carry as
+  follow-up context, replacing "the last 3" with "the most related". See
+  the context-scaling note in ask-the-reserve-design.md. Free to add once
+  the pipeline exists; not a reason to build the pipeline.
 - Embedding happens in a SERVER ROUTE on write (triggers cannot make
   external calls — see .claude skill, constraints-and-triggers.md), or a
   small queue/backfill job. Re-embed on edit via content_hash comparison.
