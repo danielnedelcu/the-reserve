@@ -166,6 +166,51 @@ an explicit egress review first.
    is always auditable alone; only the question TEXT needs its predecessors,
    and `thread_id` makes those reachable.
 
+8. **Every ask logs a question that stands on its own.** Built
+   2026-09-05. The `answer_with_sql` tool gained a `resolved_question`
+   field — same call, no extra cost — carrying the question with any
+   reference to an earlier turn spelled out. "and who used it?" is logged
+   as "Which clients redeemed gift cards in the last 2 months?".
+
+   **Why:** decision 7 bought follow-ups at the price of self-contained
+   log rows — a refined question could only be read alongside its
+   predecessors. This buys that back. Auditing an answer and mining the
+   log for what people actually ask both stop depending on thread
+   reconstruction. `question` still keeps what was literally typed, which
+   is what the admin will recognise as theirs; `resolved_question` is the
+   column to read for anything else.
+
+   **It is also shown.** The dock prints "interpreting as: …" whenever the
+   resolution differs from what was typed, so a wrong reading is visible
+   *before* the number under it gets believed. Same principle as the
+   columnLabel honesty rule: the goal is not preventing every misreading,
+   it is guaranteeing a misreading looks like one. It is deliberately NOT
+   shown when nothing was resolved — a line under every question trains
+   people to stop reading it.
+
+   [AS-BUILT] **The model does not repeat verbatim when asked to.** The
+   tool description said, in as many words, that a question needing no
+   resolution should be returned unchanged. On a first-turn question with
+   no context at all, it still paraphrased: *"How many gift cards were
+   **used**…"* came back as *"How many gift cards were **redeemed**…"*.
+   Harmless in itself, but it would have put an "interpreting as: …" line
+   under questions nobody had reinterpreted — precisely the noise that
+   makes the useful case ignorable.
+
+   The fix is structural, not a better-worded prompt: **when no context
+   was sent, the resolution IS the question**, whatever the model returns.
+   The prompt wording was tightened as well, but it now sits on top of a
+   guarantee rather than being the guarantee. The test asserts that
+   property with the observed paraphrase in its comment, so it cannot be
+   "simplified" back into trusting the model.
+
+   This was the **fourth** instance this session of an assumption that
+   fails silently — see the convention in `CLAUDE.md`. It produced no
+   error, passed every gate, and would have shipped as a UI that slowly
+   taught its users to ignore it. What caught it was checking the specific
+   claim ("on a first turn, resolved equals typed") against a live run,
+   rather than trusting that the instruction had been followed.
+
 ## Shape
 
 ```
@@ -575,15 +620,21 @@ read-only text-to-SQL through the SELECT-only role.
 
 ### Scaling context beyond 3 turns
 
-**BUILT 2026-09-05** — items 2 and 3 shipped together (caching without a
-depth raise optimises a cost nobody feels; a depth raise without caching is
-the O(n^2) below). `CONTEXT_DEPTH` is now 20. Item 1
-(`resolved_question`) and item 4 (relevance ranking) remain open.
+**BUILT 2026-09-05** — items 1, 2 and 3 all shipped. Items 2 and 3 went
+together (caching without a depth raise optimises a cost nobody feels; a
+depth raise without caching is the O(n^2) below); `CONTEXT_DEPTH` is now
+20. Item 1 shipped separately and is written up as **decision 8** above,
+because it turned out to be a decision about the audit record rather than
+an optimisation. Only item 4 (relevance ranking) remains open.
 
 Original analysis follows, with what the build actually found:
 
-**1. Log a resolved question.** Add `resolved_question` to the existing
-`answer_with_sql` tool — same call, no extra cost, just another field —
+**1. Log a resolved question.** ✅ **DONE — see decision 8**, including the
+[AS-BUILT] note that the model paraphrases on first turns despite being
+told not to, and that the guarantee is therefore structural rather than
+prompted. Original reasoning below.
+
+Add `resolved_question` to the existing `answer_with_sql` tool — same call, no extra cost, just another field —
 and store it. This closes the one thing threading knowingly gave up:
 `ask_queries` rows stopped being self-contained, because "and who used
 it?" is uninterpretable alone. Logging the model's resolved form
