@@ -144,3 +144,37 @@ this feature shipped three "finished" flows a human could not complete.
 - Nothing conveys meaning by colour alone — pair colour with text or an icon.
 - `npx nuxt typecheck` at 0, and the ritual after adding components or
   composables: `npx nuxt prepare` + restart the TS server.
+
+### Driving reka-ui with real input — two FALSE-RED traps
+
+The traps above are silent failures: the product is broken and everything
+looks green. These two are the inverse, and just as expensive — **the
+product is fine and the test says it is broken**, which sends someone
+debugging a component that works. Both were paid for on 2026-09-07 while
+verifying the answer-type `UiSelect`: a throwaway form acquired an
+unrequested v2 (a "Move up" and a "Publish" fired from misplaced clicks)
+before the causes were found. That it was a throwaway is the only reason
+the live prospect form did not get a rogue version.
+
+1. **Force a paint before a real click that follows a programmatic
+   scroll.** Real (CDP) clicks hit-test against the last PAINTED frame. If
+   the pane is hidden or throttled, `el.scrollTop = …` updates layout —
+   `getBoundingClientRect()` reports the new position — but nothing
+   repaints, and the click lands on whatever was there before the scroll.
+   A screenshot (even at `scale: 0.1`) forces the paint. Symptom: JS says
+   the trigger is at the coordinate, the click opens a different row.
+
+2. **Confirm no listbox is open before clicking a trigger.** reka-ui's
+   dismissable layer treats a click outside an open `SelectContent` as
+   "dismiss", so a trigger click while another row's listbox is still open
+   closes that one and opens nothing. Check
+   `document.querySelectorAll('[role="listbox"][data-state="open"]').length === 0`
+   first. Symptom: `aria-expanded` stays `false` after a click that worked
+   on the previous row.
+
+Two related facts from the same session: synthetic `pointerdown` can open
+a reka-ui layer but leaves its stack inconsistent (body keeps
+`pointer-events: none`; only a reload clears it), so open with REAL input;
+and a `<button role="checkbox">` updates on the next tick, so read its
+state after `await`, not in the same tick as the click. When a real-input
+test fails, rule these out before touching the component.
