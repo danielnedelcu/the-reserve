@@ -463,7 +463,7 @@ function fieldSummary(field: FormField): string {
       </div>
     </div>
 
-    <div v-else class="flex flex-row gap-8 mt-8 space-y-4">
+    <div v-else class="mt-8 flex flex-col gap-4 md:flex-row md:gap-8">
       <div v-for="def in definitions" :key="def.id" class="rounded-xl border">
         <div class="flex flex-wrap items-start justify-between gap-4 p-4">
           <div class="min-w-0">
