@@ -444,19 +444,17 @@ async function toggleActive(service: ServiceRow) {
                 <label class="text-sm font-medium" for="svc-cat"
                   >Category</label
                 >
-                <select
-                  id="svc-cat"
-                  v-model="categoryId"
-                  class="border-input mt-1.5 h-9 w-full rounded-md border bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option
-                    v-for="cat in categories"
-                    :key="cat.id"
-                    :value="cat.id"
-                  >
-                    {{ cat.name }}
-                  </option>
-                </select>
+                <UiSelect v-model="categoryId">
+                  <UiSelectTrigger id="svc-cat" class="mt-1.5" />
+                  <UiSelectContent>
+                    <UiSelectItem
+                      v-for="cat in categories"
+                      :key="cat.id"
+                      :value="cat.id"
+                      :text="cat.name"
+                    />
+                  </UiSelectContent>
+                </UiSelect>
               </div>
               <UiVeeInput
                 label="Price ($)"

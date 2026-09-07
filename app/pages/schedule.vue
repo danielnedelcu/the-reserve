@@ -812,50 +812,49 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
         <div class="grid gap-4">
           <div>
             <label class="text-sm font-medium" for="b-client">Client</label>
-            <select
-              id="b-client"
-              v-model="bClientId"
-              class="border-input mt-1.5 h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-            >
-              <option value="" disabled>Select a client…</option>
-              <option v-for="c in clientOptions" :key="c.id" :value="c.id">
-                {{ c.last_name }}, {{ c.first_name }}
-              </option>
-            </select>
+            <UiSelect v-model="bClientId">
+              <UiSelectTrigger id="b-client" class="mt-1.5" placeholder="Select a client…" />
+              <UiSelectContent>
+                <UiSelectItem v-for="c in clientOptions" :key="c.id" :value="c.id">
+                  {{ c.last_name }}, {{ c.first_name }}
+                </UiSelectItem>
+              </UiSelectContent>
+            </UiSelect>
           </div>
 
           <div>
             <label class="text-sm font-medium" for="b-service">Service</label>
-            <select
-              id="b-service"
-              v-model="bServiceId"
-              class="border-input mt-1.5 h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-            >
-              <option value="" disabled>Select a service…</option>
-              <option v-for="s in serviceOptions" :key="s.id" :value="s.id">
-                {{ s.name }} ({{ s.duration_minutes }} min)
-              </option>
-            </select>
+            <UiSelect v-model="bServiceId">
+              <UiSelectTrigger id="b-service" class="mt-1.5" placeholder="Select a service…" />
+              <UiSelectContent>
+                <UiSelectItem v-for="s in serviceOptions" :key="s.id" :value="s.id">
+                  {{ s.name }} ({{ s.duration_minutes }} min)
+                </UiSelectItem>
+              </UiSelectContent>
+            </UiSelect>
           </div>
 
           <div v-if="bServiceId">
             <label class="text-sm font-medium" for="b-staff">Staff</label>
-            <select
-              id="b-staff"
-              v-model="bStaffId"
-              class="border-input mt-1.5 h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-            >
-              <option value="" disabled>
-                {{
+            <UiSelect v-model="bStaffId">
+              <UiSelectTrigger
+                id="b-staff"
+                class="mt-1.5"
+                :placeholder="
                   qualifiedStaff.length
-                    ? "Select a staff member…"
-                    : "No qualified staff for this service"
-                }}
-              </option>
-              <option v-for="s in qualifiedStaff" :key="s.id" :value="s.id">
-                {{ s.display_name }}
-              </option>
-            </select>
+                    ? 'Select a staff member…'
+                    : 'No qualified staff for this service'
+                "
+              />
+              <UiSelectContent>
+                <UiSelectItem
+                  v-for="s in qualifiedStaff"
+                  :key="s.id"
+                  :value="s.id"
+                  :text="s.display_name"
+                />
+              </UiSelectContent>
+            </UiSelect>
             <p
               v-if="bServiceId && !qualifiedStaff.length"
               class="text-muted-foreground mt-1 text-xs"

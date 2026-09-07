@@ -106,6 +106,24 @@ const hhmm = (t: string) => t.slice(0, 5);
 
 // Add-rule form
 const newDay = ref(2); // Tuesday, arbitrary sensible default
+
+/**
+ * The day select, as UiSelect sees it.
+ *
+ * UiSelect binds STRINGS. availability_rules.day_of_week is an integer and
+ * DAYS[newDay] is an array index, so the number must survive the trip
+ * through the component — a bare v-model would quietly turn 2 into "2",
+ * which displays identically, DAYS["2"] still resolves (array indexing
+ * coerces), and only the insert would object. This bridge is the
+ * TanStackTable page-size pattern: string out to the component, Number()
+ * back, so `newDay` is a number everywhere else in this file.
+ */
+const newDayModel = computed({
+  get: () => String(newDay.value),
+  set: (v: string) => {
+    newDay.value = Number(v);
+  },
+});
 const newStart = ref("09:00");
 const newEnd = ref("17:00");
 const savingRule = ref(false);
@@ -337,15 +355,17 @@ async function onStaffSaved() {
         >
           <div>
             <label class="text-sm font-medium" for="rule-day">Day</label>
-            <select
-              id="rule-day"
-              v-model.number="newDay"
-              class="border-input mt-1.5 block h-9 rounded-md border bg-transparent px-3 text-sm"
-            >
-              <option v-for="(day, index) in DAYS" :key="day" :value="index">
-                {{ day }}
-              </option>
-            </select>
+            <UiSelect v-model="newDayModel">
+              <UiSelectTrigger id="rule-day" class="mt-1.5 w-40" />
+              <UiSelectContent>
+                <UiSelectItem
+                  v-for="(day, index) in DAYS"
+                  :key="day"
+                  :value="String(index)"
+                  :text="day"
+                />
+              </UiSelectContent>
+            </UiSelect>
           </div>
           <div>
             <label class="text-sm font-medium" for="rule-start">From</label>
@@ -433,15 +453,14 @@ async function onStaffSaved() {
           <div class="mt-3 flex flex-wrap items-end gap-3">
             <div>
               <label class="text-sm font-medium" for="ex-kind">Type</label>
-              <select
-                id="ex-kind"
-                v-model="exKind"
-                class="border-input mt-1.5 block h-9 rounded-md border bg-transparent px-3 text-sm"
-              >
-                <option value="time_off">Time off</option>
-                <option value="sick">Sick</option>
-                <option value="extra_shift">Extra shift</option>
-              </select>
+              <UiSelect v-model="exKind">
+                <UiSelectTrigger id="ex-kind" class="mt-1.5 w-40" />
+                <UiSelectContent>
+                  <UiSelectItem value="time_off" text="Time off" />
+                  <UiSelectItem value="sick" text="Sick" />
+                  <UiSelectItem value="extra_shift" text="Extra shift" />
+                </UiSelectContent>
+              </UiSelect>
             </div>
             <div>
               <label class="text-sm font-medium" for="ex-start">From</label>
