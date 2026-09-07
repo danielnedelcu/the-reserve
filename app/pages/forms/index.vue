@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { FIELD_TYPES, CONTACT_FIELD_KEYS, PROSPECT_INTAKE_FORM_KEY } from "~~/shared/forms/fields";
+import {
+  FIELD_TYPES,
+  CONTACT_FIELD_KEYS,
+  PROSPECT_INTAKE_FORM_KEY,
+} from "~~/shared/forms/fields";
 import type { FormField, FormFieldType } from "~~/shared/forms/fields";
 import { FORM_TEMPLATES } from "~~/shared/forms/templates";
 
@@ -45,7 +49,9 @@ const { data, pending, refresh } = await useFetch<{
 }>("/api/forms");
 const definitions = computed(() => data.value?.definitions ?? []);
 
-const existingKeys = computed(() => new Set(definitions.value.map((d) => d.key)));
+const existingKeys = computed(
+  () => new Set(definitions.value.map((d) => d.key)),
+);
 const availableTemplates = computed(() =>
   FORM_TEMPLATES.filter((t) => !existingKeys.value.has(t.key)),
 );
@@ -69,10 +75,16 @@ async function createFromTemplate(templateKey: string) {
       },
     });
     await refresh();
-    toast.success("Form created", "You can change the questions before sending it to anyone.");
+    toast.success(
+      "Form created",
+      "You can change the questions before sending it to anyone.",
+    );
   } catch (e: unknown) {
     const err = e as { data?: { statusMessage?: string } };
-    toast.error("Could not create the form", err.data?.statusMessage ?? "Please try again.");
+    toast.error(
+      "Could not create the form",
+      err.data?.statusMessage ?? "Please try again.",
+    );
   } finally {
     creating.value = null;
   }
@@ -97,7 +109,10 @@ const publishing = ref(false);
  */
 const REQUIRED_CONTACT_KEYS = ["first_name", "last_name", "email"] as const;
 
-function isStructural(def: DefinitionSummary | null, field: FormField): boolean {
+function isStructural(
+  def: DefinitionSummary | null,
+  field: FormField,
+): boolean {
   return (
     def?.key === PROSPECT_INTAKE_FORM_KEY &&
     (REQUIRED_CONTACT_KEYS as readonly string[]).includes(field.key)
@@ -105,7 +120,10 @@ function isStructural(def: DefinitionSummary | null, field: FormField): boolean 
 }
 
 /** Any contact field, including phone: none of them may be sensitive. */
-function isContactField(def: DefinitionSummary | null, field: FormField): boolean {
+function isContactField(
+  def: DefinitionSummary | null,
+  field: FormField,
+): boolean {
   return (
     def?.key === PROSPECT_INTAKE_FORM_KEY &&
     (CONTACT_FIELD_KEYS as readonly string[]).includes(field.key)
@@ -116,7 +134,9 @@ function openEditor(def: DefinitionSummary) {
   editing.value = def;
   // A deep copy: editing a draft must not mutate the list behind it, and
   // abandoning the sheet must leave nothing changed.
-  draftFields.value = JSON.parse(JSON.stringify(def.currentVersion?.fields ?? []));
+  draftFields.value = JSON.parse(
+    JSON.stringify(def.currentVersion?.fields ?? []),
+  );
   draftConsent.value = def.currentVersion?.consentText ?? "";
   editorOpen.value = true;
 }
@@ -180,7 +200,8 @@ function setOptions(field: FormField, text: string) {
     .filter(Boolean);
 }
 
-const needsOptions = (type: FormFieldType) => type === "select" || type === "multiselect";
+const needsOptions = (type: FormFieldType) =>
+  type === "select" || type === "multiselect";
 
 /**
  * Assign an answer type through the select.
@@ -195,7 +216,11 @@ const needsOptions = (type: FormFieldType) => type === "select" || type === "mul
  * looks perfectly fine on screen. This was latent before the conversion.
  */
 function setType(field: FormField, value: unknown) {
-  if (typeof value !== "string" || !(FIELD_TYPES as readonly string[]).includes(value)) return;
+  if (
+    typeof value !== "string" ||
+    !(FIELD_TYPES as readonly string[]).includes(value)
+  )
+    return;
   field.type = value as FormFieldType;
   if (!needsOptions(field.type)) delete field.options;
 }
@@ -206,7 +231,10 @@ async function publish() {
   try {
     await $fetch(`/api/forms/${editing.value.key}/versions`, {
       method: "POST",
-      body: { fields: draftFields.value, consentText: draftConsent.value || null },
+      body: {
+        fields: draftFields.value,
+        consentText: draftConsent.value || null,
+      },
     });
     await refresh();
     editorOpen.value = false;
@@ -216,7 +244,10 @@ async function publish() {
     );
   } catch (e: unknown) {
     const err = e as { data?: { statusMessage?: string } };
-    toast.error("Could not publish", err.data?.statusMessage ?? "Please check the questions.");
+    toast.error(
+      "Could not publish",
+      err.data?.statusMessage ?? "Please check the questions.",
+    );
   } finally {
     publishing.value = false;
   }
@@ -229,7 +260,11 @@ const sendOpen = ref(false);
 const sendingFor = ref<DefinitionSummary | null>(null);
 const recipientEmail = ref("");
 const sending = ref(false);
-const result = ref<{ url: string; emailed: boolean | null; to: string | null } | null>(null);
+const result = ref<{
+  url: string;
+  emailed: boolean | null;
+  to: string | null;
+} | null>(null);
 
 /**
  * Can this form stand up a NEW person, or must it go to someone we
@@ -321,12 +356,20 @@ async function createLink() {
       emailed: res.emailed,
       to: res.deliveryEmail,
     };
-    if (res.emailed) toast.success("Sent", `The form is on its way to ${res.deliveryEmail}.`);
-    else if (res.emailed === false) toast.warning("Link ready, but not emailed", "Send it yourself using the link below.");
+    if (res.emailed)
+      toast.success("Sent", `The form is on its way to ${res.deliveryEmail}.`);
+    else if (res.emailed === false)
+      toast.warning(
+        "Link ready, but not emailed",
+        "Send it yourself using the link below.",
+      );
     else toast.success("Link ready", "Copy it and send it however you like.");
   } catch (e: unknown) {
     const err = e as { data?: { statusMessage?: string } };
-    toast.error("Could not create a link", err.data?.statusMessage ?? "Please try again.");
+    toast.error(
+      "Could not create a link",
+      err.data?.statusMessage ?? "Please try again.",
+    );
   } finally {
     sending.value = false;
   }
@@ -347,7 +390,7 @@ function fieldSummary(field: FormField): string {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-4xl px-4 py-8">
+  <div class="w-full px-4 py-8">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold">Forms</h1>
@@ -356,7 +399,10 @@ function fieldSummary(field: FormField): string {
           in.
         </p>
       </div>
-      <div v-if="definitions.length && availableTemplates.length" class="flex gap-2">
+      <div
+        v-if="definitions.length && availableTemplates.length"
+        class="flex gap-2"
+      >
         <UiButton
           v-for="t in availableTemplates"
           :key="t.key"
@@ -376,7 +422,10 @@ function fieldSummary(field: FormField): string {
     </div>
 
     <!-- Empty: offer the templates rather than a blank page. -->
-    <div v-else-if="!definitions.length" class="mt-8 rounded-xl border border-dashed p-10">
+    <div
+      v-else-if="!definitions.length"
+      class="rounded-xl border border-dashed p-10"
+    >
       <div class="text-center">
         <Icon
           name="lucide:clipboard-list"
@@ -404,7 +453,9 @@ function fieldSummary(field: FormField): string {
             {{ t.fields.length }} questions ·
             {{ t.fields.filter((f) => f.sensitive).length }} health questions
           </p>
-          <span class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium">
+          <span
+            class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium"
+          >
             <Icon name="lucide:plus" class="size-4" aria-hidden="true" />
             {{ creating === t.key ? "Creating…" : "Use this form" }}
           </span>
@@ -412,7 +463,7 @@ function fieldSummary(field: FormField): string {
       </div>
     </div>
 
-    <div v-else class="mt-8 space-y-4">
+    <div v-else class="flex flex-row gap-8 mt-8 space-y-4">
       <div v-for="def in definitions" :key="def.id" class="rounded-xl border">
         <div class="flex flex-wrap items-start justify-between gap-4 p-4">
           <div class="min-w-0">
@@ -420,14 +471,21 @@ function fieldSummary(field: FormField): string {
               <h2 class="font-medium">{{ def.name }}</h2>
               <UiBadge v-if="!def.active" variant="outline">Inactive</UiBadge>
             </div>
-            <p v-if="def.description" class="text-muted-foreground mt-1 text-sm">
+            <p
+              v-if="def.description"
+              class="text-muted-foreground mt-1 text-sm"
+            >
               {{ def.description }}
             </p>
             <p class="text-muted-foreground mt-2 text-sm">
               <template v-if="def.currentVersion">
                 Version {{ def.currentVersion.version }} ·
                 {{ def.currentVersion.fields.length }} questions · published
-                {{ new Date(def.currentVersion.publishedAt).toLocaleDateString("en-CA") }}
+                {{
+                  new Date(def.currentVersion.publishedAt).toLocaleDateString(
+                    "en-CA",
+                  )
+                }}
               </template>
               <template v-else>No published version yet</template>
             </p>
@@ -438,7 +496,11 @@ function fieldSummary(field: FormField): string {
               <Icon name="lucide:pencil" class="mr-1.5 size-4" />
               Questions
             </UiButton>
-            <UiButton size="sm" :disabled="!def.currentVersion" @click="openSend(def)">
+            <UiButton
+              size="sm"
+              :disabled="!def.currentVersion"
+              @click="openSend(def)"
+            >
               <Icon name="lucide:send" class="mr-1.5 size-4" />
               Send this form
             </UiButton>
@@ -459,7 +521,9 @@ function fieldSummary(field: FormField): string {
                 class="size-4"
                 aria-hidden="true"
               />
-              <span class="text-muted-foreground text-xs">{{ fieldSummary(field) }}</span>
+              <span class="text-muted-foreground text-xs">{{
+                fieldSummary(field)
+              }}</span>
             </div>
           </li>
         </ul>
@@ -483,7 +547,9 @@ function fieldSummary(field: FormField): string {
             >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
-                  <UiLabel :for="`label-${index}`" class="text-xs">Question</UiLabel>
+                  <UiLabel :for="`label-${index}`" class="text-xs"
+                    >Question</UiLabel
+                  >
                   <UiInput
                     :id="`label-${index}`"
                     v-model="field.label"
@@ -526,7 +592,9 @@ function fieldSummary(field: FormField): string {
 
               <div class="mt-3 grid gap-3 sm:grid-cols-3">
                 <div>
-                  <UiLabel :for="`type-${index}`" class="text-xs">Answer type</UiLabel>
+                  <UiLabel :for="`type-${index}`" class="text-xs"
+                    >Answer type</UiLabel
+                  >
                   <UiSelect
                     :model-value="field.type"
                     :disabled="isStructural(editing, field)"
@@ -534,7 +602,12 @@ function fieldSummary(field: FormField): string {
                   >
                     <UiSelectTrigger :id="`type-${index}`" class="mt-1" />
                     <UiSelectContent>
-                      <UiSelectItem v-for="t in FIELD_TYPES" :key="t" :value="t" :text="t" />
+                      <UiSelectItem
+                        v-for="t in FIELD_TYPES"
+                        :key="t"
+                        :value="t"
+                        :text="t"
+                      />
                     </UiSelectContent>
                   </UiSelect>
                 </div>
@@ -567,23 +640,41 @@ function fieldSummary(field: FormField): string {
                 />
               </div>
 
-              <p v-if="field.sensitive" class="text-muted-foreground mt-3 text-xs">
-                <Icon name="lucide:shield" class="mr-1 inline size-3.5" aria-hidden="true" />
-                Stored separately from the rest. Needs the health-notes permission
-                to read, and never shows on the approval screen.
+              <p
+                v-if="field.sensitive"
+                class="text-muted-foreground mt-3 text-xs"
+              >
+                <Icon
+                  name="lucide:shield"
+                  class="mr-1 inline size-3.5"
+                  aria-hidden="true"
+                />
+                Stored separately from the rest. Needs the health-notes
+                permission to read, and never shows on the approval screen.
               </p>
-              <p v-if="isStructural(editing, field)" class="text-muted-foreground mt-3 text-xs">
-                <Icon name="lucide:lock" class="mr-1 inline size-3.5" aria-hidden="true" />
-                This answer becomes the person's record, so it stays required and
-                cannot be a health question.
+              <p
+                v-if="isStructural(editing, field)"
+                class="text-muted-foreground mt-3 text-xs"
+              >
+                <Icon
+                  name="lucide:lock"
+                  class="mr-1 inline size-3.5"
+                  aria-hidden="true"
+                />
+                This answer becomes the person's record, so it stays required
+                and cannot be a health question.
               </p>
               <p
                 v-else-if="isContactField(editing, field)"
                 class="text-muted-foreground mt-3 text-xs"
               >
-                <Icon name="lucide:lock" class="mr-1 inline size-3.5" aria-hidden="true" />
-                You can reword or remove this, but it cannot be a health question —
-                it goes into the person's contact details.
+                <Icon
+                  name="lucide:lock"
+                  class="mr-1 inline size-3.5"
+                  aria-hidden="true"
+                />
+                You can reword or remove this, but it cannot be a health
+                question — it goes into the person's contact details.
               </p>
             </div>
 
@@ -596,11 +687,16 @@ function fieldSummary(field: FormField): string {
               <UiLabel for="consent" class="text-xs">
                 What they agree to (leave blank for none)
               </UiLabel>
-              <UiTextarea id="consent" v-model="draftConsent" :rows="5" class="mt-1" />
+              <UiTextarea
+                id="consent"
+                v-model="draftConsent"
+                :rows="5"
+                class="mt-1"
+              />
               <p class="text-muted-foreground mt-1.5 text-xs">
-                Shown above the send button, with a tick box. The exact wording is
-                saved with each answer, so changing it later never rewrites what
-                someone already agreed to.
+                Shown above the send button, with a tick box. The exact wording
+                is saved with each answer, so changing it later never rewrites
+                what someone already agreed to.
               </p>
             </div>
           </div>
@@ -608,8 +704,13 @@ function fieldSummary(field: FormField): string {
 
         <template #footer>
           <UiSheetFooter class="flex-row justify-end gap-2 border-t p-4">
-            <UiButton variant="outline" @click="editorOpen = false">Cancel</UiButton>
-            <UiButton :disabled="publishing || !draftFields.length" @click="publish">
+            <UiButton variant="outline" @click="editorOpen = false"
+              >Cancel</UiButton
+            >
+            <UiButton
+              :disabled="publishing || !draftFields.length"
+              @click="publish"
+            >
               {{ publishing ? "Publishing…" : "Publish new version" }}
             </UiButton>
           </UiSheetFooter>
@@ -645,7 +746,11 @@ function fieldSummary(field: FormField): string {
                   {{ selectedClient.email ?? "No email on file" }}
                 </p>
               </div>
-              <UiButton variant="ghost" size="sm" @click="selectedClient = null">
+              <UiButton
+                variant="ghost"
+                size="sm"
+                @click="selectedClient = null"
+              >
                 Change
               </UiButton>
             </div>
@@ -657,15 +762,22 @@ function fieldSummary(field: FormField): string {
                 class="mt-1.5"
                 @input="searchClients"
               />
-              <ul v-if="clientResults.length" class="mt-2 divide-y rounded-lg border">
+              <ul
+                v-if="clientResults.length"
+                class="mt-2 divide-y rounded-lg border"
+              >
                 <li v-for="c in clientResults" :key="c.id">
                   <button
                     type="button"
                     class="hover:bg-muted/50 w-full px-3 py-2 text-left"
                     @click="chooseClient(c)"
                   >
-                    <span class="text-sm">{{ c.first_name }} {{ c.last_name }}</span>
-                    <span class="text-muted-foreground ml-2 text-xs">{{ c.email }}</span>
+                    <span class="text-sm"
+                      >{{ c.first_name }} {{ c.last_name }}</span
+                    >
+                    <span class="text-muted-foreground ml-2 text-xs">{{
+                      c.email
+                    }}</span>
                   </button>
                 </li>
               </ul>
@@ -706,16 +818,20 @@ function fieldSummary(field: FormField): string {
               aria-hidden="true"
             />
             <span>
-              <template v-if="result.emailed">Emailed to {{ result.to }}.</template>
+              <template v-if="result.emailed"
+                >Emailed to {{ result.to }}.</template
+              >
               <template v-else-if="result.emailed === false">
-                We could not send the email. The link below still works — send it
-                yourself.
+                We could not send the email. The link below still works — send
+                it yourself.
               </template>
               <template v-else>Link ready.</template>
             </span>
           </p>
           <div class="bg-muted/40 flex items-center gap-2 rounded-lg p-3">
-            <code class="min-w-0 flex-1 truncate text-xs">{{ result.url }}</code>
+            <code class="min-w-0 flex-1 truncate text-xs">{{
+              result.url
+            }}</code>
             <UiButton variant="outline" size="sm" @click="copyLink">
               <Icon name="lucide:copy" class="mr-1.5 size-3.5" />
               Copy
@@ -724,11 +840,21 @@ function fieldSummary(field: FormField): string {
         </div>
 
         <UiDialogFooter>
-          <UiButton v-if="result" variant="outline" @click="sendOpen = false">Done</UiButton>
+          <UiButton v-if="result" variant="outline" @click="sendOpen = false"
+            >Done</UiButton
+          >
           <template v-else>
-            <UiButton variant="outline" @click="sendOpen = false">Cancel</UiButton>
+            <UiButton variant="outline" @click="sendOpen = false"
+              >Cancel</UiButton
+            >
             <UiButton :disabled="sending || !canSendLink" @click="createLink">
-              {{ sending ? "Working…" : recipientEmail.trim() ? "Send it" : "Just make a link" }}
+              {{
+                sending
+                  ? "Working…"
+                  : recipientEmail.trim()
+                    ? "Send it"
+                    : "Just make a link"
+              }}
             </UiButton>
           </template>
         </UiDialogFooter>
