@@ -148,13 +148,15 @@ this feature shipped three "finished" flows a human could not complete.
 ### Driving the browser without being fooled
 
 The traps above are silent failures: the product is broken and everything
-looks green. These three are the inverse, and just as expensive — **the
-product is fine and the test says it is broken**, which sends someone
-debugging a component that works. All three were paid for on 2026-09-07
-while verifying the answer-type `UiSelect`: a throwaway form acquired an
-unrequested v2 (a "Move up" and a "Publish" fired from misplaced clicks)
-before the causes were found. That it was a throwaway is the only reason
-the live prospect form did not get a rogue version.
+looks green. The first three here are the inverse, and just as expensive
+— **the product is fine and the test says it is broken**, which sends
+someone debugging a component that works. The fourth is worse than
+either: **the test's safety net is a no-op and the test writes to real
+data.** All were paid for on 2026-09-07 while verifying `UiSelect`
+conversions: a throwaway form acquired an unrequested v2 (a "Move up" and
+a "Publish" fired from misplaced clicks) before the causes were found.
+That it was a throwaway is the only reason the live prospect form did not
+get a rogue version.
 
 1. **Force a paint before a real click that follows a programmatic
    scroll.** Real (CDP) clicks hit-test against the last PAINTED frame. If
@@ -185,9 +187,34 @@ the live prospect form did not get a rogue version.
    being open, `location.pathname`. Symptom: state that was verifiably set
    a moment ago reads as never having existed.
 
+4. **A `window.fetch` override does NOT intercept supabase-js. Your
+   isolation can silently be a no-op.** supabase-js captures its own
+   `fetch` reference when the client is created, so overriding
+   `window.fetch` afterwards catches our own `/api/...` routes (`$fetch`,
+   `useFetch`) and **nothing that goes through `useSupabaseClient()`** —
+   every direct PostgREST read and write sails past it. The danger is not
+   the missed request; it is the false belief. A test that installs an
+   intercept "so the save can't land", then presses Save, has just
+   written to real data while its log shows nothing happened. Proved
+   2026-09-07: an intercept installed before the services edit dialog
+   opened logged zero `/rest/v1/` calls while the page was plainly
+   fetching through supabase-js.
+
+   The rule: to exercise a flow that writes via supabase-js without
+   touching the database, **do not trust an intercept.** Either drive
+   everything up to the write and then **do not press the button**,
+   reading the bound state that the payload is built from (the value
+   `services.vue:196` reads is `categoryId.value` — assert that) and
+   **reading the database back** to confirm zero rows changed; or run the
+   whole flow on a **throwaway record** you created and will delete.
+   Interception is fine for our own routes, and only for them — and even
+   there, verify the intercept caught something before relying on it
+   (`window.__reqs` logging the expected call is the check).
+
 Two related facts from the same session: synthetic `pointerdown` can open
 a reka-ui layer but leaves its stack inconsistent (body keeps
 `pointer-events: none`; only a reload clears it), so open with REAL input;
 and a `<button role="checkbox">` updates on the next tick, so read its
 state after `await`, not in the same tick as the click. When a real-input
-test fails, rule all of the above out before touching the component.
+test fails, rule the first three out before touching the component; when
+a test is "safe", rule the fourth out before pressing anything.

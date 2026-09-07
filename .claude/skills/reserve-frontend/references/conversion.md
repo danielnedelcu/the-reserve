@@ -64,8 +64,10 @@ test, and shows up only when a person uses the control — which is the same
 reason `CLAUDE.md`'s definition-of-done convention exists.
 
 Do it on a **throwaway record**, never live data: driving a sheet with real
-clicks once published a stray version on a test form. And if the driven
-test goes red, read SKILL.md's "Driving the browser without being fooled"
-before concluding the converted component is broken — a stale paint, a
-still-open listbox, or a mid-check page remount each produces exactly
-that picture.
+clicks once published a stray version on a test form. Do not lean on a
+`window.fetch` intercept to keep a supabase-js write off the database — it
+does not see supabase-js at all (SKILL.md, trap 4); press no save, or use
+a throwaway. And if the driven test goes red, read "Driving the browser
+without being fooled" before concluding the converted component is broken
+— a stale paint, a still-open listbox, or a mid-check page remount each
+produces exactly that picture.
