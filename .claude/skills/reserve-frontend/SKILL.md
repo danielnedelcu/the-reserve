@@ -145,13 +145,13 @@ this feature shipped three "finished" flows a human could not complete.
 - `npx nuxt typecheck` at 0, and the ritual after adding components or
   composables: `npx nuxt prepare` + restart the TS server.
 
-### Driving reka-ui with real input — two FALSE-RED traps
+### Driving the browser without being fooled
 
 The traps above are silent failures: the product is broken and everything
-looks green. These two are the inverse, and just as expensive — **the
+looks green. These three are the inverse, and just as expensive — **the
 product is fine and the test says it is broken**, which sends someone
-debugging a component that works. Both were paid for on 2026-09-07 while
-verifying the answer-type `UiSelect`: a throwaway form acquired an
+debugging a component that works. All three were paid for on 2026-09-07
+while verifying the answer-type `UiSelect`: a throwaway form acquired an
 unrequested v2 (a "Move up" and a "Publish" fired from misplaced clicks)
 before the causes were found. That it was a throwaway is the only reason
 the live prospect form did not get a rogue version.
@@ -172,9 +172,22 @@ the live prospect form did not get a rogue version.
    first. Symptom: `aria-expanded` stays `false` after a click that worked
    on the previous row.
 
+3. **Run a browser verification as ONE continuous batch, never
+   stepwise across turns.** The Supabase session refresh can remount the
+   page at any moment — it fired twice mid-verification on 2026-09-07 — and
+   a remount wipes everything held in the page: a `window.fetch` override,
+   an open sheet, a half-edited draft, `creating` state. A stepwise check
+   that does not notice the remount then reads its "result" from a fresh
+   page and concludes the feature is broken (or, worse, that its own setup
+   never happened). Put setup, action and assertion in a single
+   `browser_batch`, and have the assertion also report something that
+   proves it is still the same page — the override marker, the dialog
+   being open, `location.pathname`. Symptom: state that was verifiably set
+   a moment ago reads as never having existed.
+
 Two related facts from the same session: synthetic `pointerdown` can open
 a reka-ui layer but leaves its stack inconsistent (body keeps
 `pointer-events: none`; only a reload clears it), so open with REAL input;
 and a `<button role="checkbox">` updates on the next tick, so read its
 state after `await`, not in the same tick as the click. When a real-input
-test fails, rule these out before touching the component.
+test fails, rule all of the above out before touching the component.

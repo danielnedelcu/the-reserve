@@ -65,6 +65,7 @@ reason `CLAUDE.md`'s definition-of-done convention exists.
 
 Do it on a **throwaway record**, never live data: driving a sheet with real
 clicks once published a stray version on a test form. And if the driven
-test goes red, read SKILL.md's false-RED traps before concluding the
-converted component is broken — a stale paint or a still-open listbox
-produces exactly that picture.
+test goes red, read SKILL.md's "Driving the browser without being fooled"
+before concluding the converted component is broken — a stale paint, a
+still-open listbox, or a mid-check page remount each produces exactly
+that picture.
