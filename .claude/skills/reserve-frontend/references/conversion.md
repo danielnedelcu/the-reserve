@@ -1,0 +1,64 @@
+# Converting a native control to ui-thing
+
+ui-thing is the house default. The native `<select>` and
+`<input type="checkbox">` still in staff pages are **legacy conversion
+targets, not a pattern to copy** — with one intentional exception, the
+public `/join` page (see SKILL.md).
+
+But a working native control is **inconsistent, not broken**. That single
+fact sets the pace: conversion is worth doing carefully and never worth
+rushing, because the downside of a sloppy sweep (a filter that stops
+filtering, a checkbox that stops checking) is worse than the inconsistency
+it removes.
+
+## How to convert
+
+**Either** in reviewed batches **by component type** — all native selects
+together, then all checkboxes — so each batch has ONE behavioural risk and
+the review question is a single sentence: *"does `v-model` still bind, and
+did anything rely on `@change`?"*
+
+**Or** opportunistically, when you are already editing a file for another
+reason.
+
+**Never** as one sweeping churn across working screens. A diff that touches
+twenty files and four component types cannot be reviewed for behaviour, only
+for shape — and behaviour is the entire risk here.
+
+## What to check on each conversion
+
+These are the things that differ. They are reasons to CHECK, not reasons to
+avoid converting.
+
+### Native `<select>` → `UiSelect`
+
+- [ ] One element became four (`UiSelect` / `Trigger` / `Content` / `Item`).
+- [ ] **`@change` no longer fires.** Anything that hung off it must move to
+      `v-model` or a watcher. This is the most common silent breakage.
+- [ ] **The value is a string.** Numeric options need `.toString()` out and
+      `Number()` back (`Ui/TanStackTable.vue:727`).
+- [ ] The `id` your `<label for>` points at now belongs on `UiSelectTrigger`.
+- [ ] The empty/placeholder option is a `placeholder` prop, not an
+      `<option value="">`.
+- [ ] Options carry `value` plus `text` (or a slot) — not element text alone.
+
+### Native checkbox → `UiCheckbox`
+
+- [ ] **Is it bound to an array?** If so, STOP — keep it native. Array
+      `v-model` is a native capability `UiCheckbox` does not replicate.
+- [ ] `.checked` reads are gone; state lives in `data-state` / `aria-checked`.
+- [ ] It no longer participates in implicit form submission.
+- [ ] Anything reading state straight after a programmatic click needs to
+      wait a tick.
+
+### Anything moving into a dialog or sheet
+
+- [ ] Enter no longer submits — add `@keydown.enter.prevent`.
+- [ ] A long body needs `min-h-0 flex-1 overflow-y-auto` in `#content`, or
+      the footer scrolls away.
+
+## After converting
+
+Click it. Every one of these differences survives `typecheck` and every unit
+test, and shows up only when a person uses the control — which is the same
+reason `CLAUDE.md`'s definition-of-done convention exists.
