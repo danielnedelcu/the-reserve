@@ -26,6 +26,15 @@ silent, survive typecheck, and are found by a person clicking.
   Native controls still in staff pages are LEGACY, not a pattern to copy.
   See `references/conversion.md` for how to move them without churn.
 - **lucide icons only** — `<Icon name="lucide:..." />`. No heroicons.
+- **The FILE name and the TAG differ.** Nuxt builds the tag from the path
+  under `app/components/`, so directory segments concatenate in PascalCase:
+  `Ui/TanStackTable.vue` → `<UiTanStackTable>`, `Ui/Vee/Input.vue` →
+  `<UiVeeInput>`, `Ui/Select/Item.vue` → `<UiSelectItem>`,
+  `Ui/List/Title.vue` → `<UiListTitle>`. Grep for the TAG when checking how
+  a component is used and for the FILE when reading how it works — searching
+  for the wrong one returns nothing and reads as "this component does not
+  exist", which is why the TanStack table's name in particular keeps being
+  questioned.
 - **Forms use `UiVeeInput` + `useForm`**, not raw `UiInput` with refs. 53
   `UiVeeInput` uses against 37 raw `UiInput`; the wrapper carries the label,
   the required marker and the error message, and binds by `name` to the
