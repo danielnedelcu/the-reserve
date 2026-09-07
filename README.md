@@ -26,31 +26,17 @@ Deeper reading is in `docs/`; this file is the working reference.
 - [Pinia](https://pinia.vuejs.org) — one store; most state is composables + `useAsyncData`
 - [Vitest](https://vitest.dev) + `@nuxt/test-utils`, [ESLint](https://eslint.org) via `@nuxt/eslint`
 
-## How data gets in and out — the four doors
+## How data gets in and out
 
-Every read and write goes through exactly one of these, and they are numbered
-by how far the caller is trusted. Knowing which door a feature uses tells you
-where its rules are enforced.
+Every read and write goes through one of a handful of **doors**, numbered by
+how far the caller is trusted — from a stranger holding a link, through
+signed-in staff, to SQL nobody on the team wrote. Which door a feature uses
+tells you where its rules are enforced, and in every case the answer is
+Postgres: RLS policies, constraints and triggers, not application code.
 
-| Door | Caller | Path | Used for |
-| --- | --- | --- | --- |
-| 0 | nobody — no account | public browser → token-gated server route | prospect intake, client waivers; the only path from the open internet |
-| 1 | signed-in staff | browser → PostgREST, under RLS | page reads, simple owned writes, realtime subscriptions |
-| 2 | signed-in staff | browser → server route, service role | anything multi-step, priced server-side, or calling an external API — checkout, refunds, Stripe, invites |
-| 3 | an admin's question | server route → `ask_readonly` connection | SQL the system did not write (Ask The Reserve) |
-
-Door 0 is authorized by a **single-use expiring token and nothing else**, and
-is safe because anon holds no database privilege anywhere on the path — no
-insert policy, no function grant. Door 2's tables deliberately have **no
-authenticated insert policies**; the absence is the design, and it is
-commented in the schema. Door 3 runs on a Postgres role whose session user
-*is* the safety boundary: `LOGIN`, `NOINHERIT`, no memberships, `SELECT` on an
-allowlist, read-only transaction, 10-second timeout.
-
-A fifth actor has no caller at all: `pg_cron` runs the retention purges
-inside the database (intake at 30 days, rate-limit telemetry at 24 hours).
-
-Full detail: `docs/architecture.md`.
+**The doors are enumerated in [`docs/architecture.md`](docs/architecture.md)
+and only there.** This file deliberately does not restate them — the table
+used to live here too, and drifted the first time a door was added.
 
 ## Layout
 
@@ -63,7 +49,7 @@ app/                    Nuxt front end
   layouts/  stores/  utils/  assets/css/
 
 server/
-  api/                  route handlers (door 2 and door 3)
+  api/                  route handlers; api/public/** is unauthenticated
   utils/                requireUser, askConnection, formEngine, mailer…
 
 shared/                 code both sides import (NOT auto-imported)
