@@ -20,8 +20,13 @@ const cardColumns = [
 - Give every column an explicit `id`. With `accessorFn` there is no key to
   infer one from, and sorting and pinning both address columns by id.
 - Cell markup goes in a **`#<id>-cell`** slot on the table — note the
-  order, `#code-cell` not `#cell-code` — not in the column definition. That
-  keeps the column list readable as a schema:
+  order, `#code-cell` not `#cell-code` — not in the column definition. The
+  component builds the name from the column id itself
+  (`` :name="`${cell.column.id}-cell`" ``, `Ui/TanStackTable.vue:160`), so
+  the column's `id` IS the slot prefix and a renamed id silently orphans
+  its slot: the column falls back to the raw accessor value rather than
+  erroring. That is also why every column needs an explicit `id`.
+  Keeping markup in slots leaves the column list readable as a schema:
 
 ```vue
 <UiTanStackTable :data="cards" :columns="cardColumns">
@@ -29,7 +34,13 @@ const cardColumns = [
   <template #balance-cell="{ row }">…</template>
 </UiTanStackTable>
 ```
-(`app/components/GiftCardsSection.vue:143-230`)
+(`app/components/GiftCardsSection.vue:143-230`; 19 cell slots across
+products.vue, financials.vue, clients/index.vue and GiftCardsSection.vue
+all follow this shape.)
+
+There is also a **`#footer="{ table }"`** slot for totals rows, scoped to
+the table instance so it can read the current page's rows
+(`app/pages/financials.vue:1117`).
 
 Sticky headers are classes on the header row, not a prop:
 
