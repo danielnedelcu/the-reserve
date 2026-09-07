@@ -394,7 +394,7 @@ function fieldSummary(field: FormField): string {
           v-for="t in FORM_TEMPLATES"
           :key="t.key"
           type="button"
-          class="hover:border-primary/40 rounded-xl border p-4 text-left transition"
+          class="hover:border-primary/40 focus-visible:ring-ring/50 rounded-xl border p-4 text-left transition outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50"
           :disabled="creating === t.key"
           @click="createFromTemplate(t.key)"
         >
