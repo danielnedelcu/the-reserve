@@ -182,6 +182,24 @@ function setOptions(field: FormField, text: string) {
 
 const needsOptions = (type: FormFieldType) => type === "select" || type === "multiselect";
 
+/**
+ * Assign an answer type through the select.
+ *
+ * UiSelect binds `AcceptableValue`, not our FormFieldType union, so this
+ * guards the value at runtime instead of casting it away — a cast would
+ * typecheck and still let a stray string reach `parseFields` at publish.
+ *
+ * It also drops `options` when the new type cannot carry any. parseFields
+ * rejects options on a non-choice field, so leaving them behind after a
+ * select → text change would make a later publish fail for a question that
+ * looks perfectly fine on screen. This was latent before the conversion.
+ */
+function setType(field: FormField, value: unknown) {
+  if (typeof value !== "string" || !(FIELD_TYPES as readonly string[]).includes(value)) return;
+  field.type = value as FormFieldType;
+  if (!needsOptions(field.type)) delete field.options;
+}
+
 async function publish() {
   if (!editing.value) return;
   publishing.value = true;
@@ -509,14 +527,16 @@ function fieldSummary(field: FormField): string {
               <div class="mt-3 grid gap-3 sm:grid-cols-3">
                 <div>
                   <UiLabel :for="`type-${index}`" class="text-xs">Answer type</UiLabel>
-                  <select
-                    :id="`type-${index}`"
-                    v-model="field.type"
+                  <UiSelect
+                    :model-value="field.type"
                     :disabled="isStructural(editing, field)"
-                    class="border-input mt-1 h-9 w-full rounded-md border px-2 text-sm disabled:opacity-50"
+                    @update:model-value="(v) => setType(field, v)"
                   >
-                    <option v-for="t in FIELD_TYPES" :key="t" :value="t">{{ t }}</option>
-                  </select>
+                    <UiSelectTrigger :id="`type-${index}`" class="mt-1" />
+                    <UiSelectContent>
+                      <UiSelectItem v-for="t in FIELD_TYPES" :key="t" :value="t" :text="t" />
+                    </UiSelectContent>
+                  </UiSelect>
                 </div>
                 <label class="flex items-center gap-2 pt-6 text-sm">
                   <UiCheckbox
