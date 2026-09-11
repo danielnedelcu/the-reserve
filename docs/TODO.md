@@ -1,6 +1,6 @@
 # The Reserve — live board
 
-Last updated: 2026-09-06. This is the working state of the project — what's
+Last updated: 2026-09-11. This is the working state of the project — what's
 done, what's queued, what's blocked on whom. Update when the board changes.
 
 ## Phase status
@@ -10,7 +10,80 @@ notifications · settings · theming · email (Resend) · docs pipeline (tbls) �
 §10–11 financials + dashboards · §9 messaging · §7 POS & payments
 (migration 4a: ledger/checkout/refunds/gift cards/tax/receipts/audit —
 gauntlet-verified; migration 4b: Stripe card-on-file with consent, charging,
-refund-to-card, card removal, webhook — mini-gauntlet-verified, test mode).
+refund-to-card, card removal, webhook — mini-gauntlet-verified, test mode) ·
+§6 form engine + prospective onboarding THROUGH `approved` (2026-09-06/07,
+detail below; the enroll → activate tail is QUEUED item 2, not done).
+
+### §6 — what shipped, as the code shows it (2026-09-06 → 07)
+
+Four migrations, all applied to the hosted DB: `form_engine`,
+`form_links_and_public_submission`, `prospect_review_and_retention`,
+`waiver_health_promotion`. Commits 219fa71 · 8b5a8d2 · 08baa4d · 1405867.
+
+- **Engine.** `form_definitions` + immutable `form_versions` (fields jsonb
+  carries `required` and `sensitive`); `form_responses` (non-health) split
+  from `form_response_health` (gated by `clients.notes.health.view`);
+  `prospect_intake` created at submit; `form_links` (single-use token,
+  frozen `form_version_id`); `form_submission_attempts` (HMAC'd IPs,
+  `FORM_IP_PEPPER`, fail-closed). Anon holds no write path anywhere — the
+  submit RPC is service-role only with execute revoked.
+- **Public submission.** `GET/POST /api/public/forms/:token`; page at
+  `/join/:token` (moved off `/forms/**` before shipping so the auth
+  exclude covers public pages only). Zod schema on the client is DERIVED
+  from the shared field contract, and `tests/shared/formValidation.test.ts`
+  asserts it agrees with the server's `validateAnswers` at the edges.
+  Yes/No radios for boolean questions, neither preselected.
+- **Review UI, through `approved`.** `/intake` list + `/intake/:id`;
+  `submitted → under_review → approved | rejected` via
+  `POST /api/prospects/:id/review`. Health answers are never fetched by
+  the detail route — structural, not a permission doing the work.
+  AS-BUILT DEVIATION from the design's seam note: the "stub `active` as
+  create-a-client" was deliberately NOT built (08baa4d). Approve records a
+  decision and creates nothing; there is no activate path at all. The
+  end-to-end testability the stub was for came from the harnesses instead.
+- **Retention.** 30 days for `prospect_intake` (allowlisted statuses, so a
+  future `enrolled` is kept by omission), 24 hours for
+  `form_submission_attempts`; both on pg_cron, scheduled in the migration.
+  `verify:forms` asserts the OUTCOME (nothing past either window), since
+  the app's roles cannot read `cron.job`.
+- **Form builder.** `/forms`: create from seeded templates (`prospect_intake`,
+  `service_waiver`), question editor (add / remove / reorder /
+  edit; keys of already-answered questions are never re-keyed), publish
+  the NEXT version — published versions never change.
+- **Sending.** `POST /api/forms/:key/links` emails the link via Resend
+  (best-effort; a failed send never fails issuance, and the dialog says
+  which happened). Send dialog carries a client picker, so an
+  existing-client waiver is addressable at all — before this every waiver
+  attempt 422'd.
+- **Existing-client waivers.** Health answers promoted into
+  `client_notes(kind=health)` on submit — APPEND, one dated,
+  version-stamped note per answer per submission — so they land in the
+  tier whose reads are audited (`health_note.viewed`, now with a non-null
+  `actor_user_id`). Client page shows "Completed forms" as provenance
+  only, no health content. Multiselect answers promote as a joined string
+  (the element-0 bug was caught and fixed in verification).
+- **`requires_intake` booking gate.** `POST /api/appointments` reads the
+  service flag and, under service role, requires ANY completed waiver in
+  `form_responses` for that client; refuses with `needsIntake: true`
+  otherwise. This was §6's original scope; the "requires_intake TODO" is
+  closed. (Version-exact gating was considered and rejected — see design
+  decision 12.)
+- **Harnesses.** `verify:forms` 40/40 (anon write paths, health split,
+  purge in both directions, retention canary); `e2e:forms` 14/14 (token
+  single-use, rate limit limits, over HTTP). Both in package.json.
+- **UI consistency, first two batches (60f15e3 · 001df8c · c564393).**
+  `forms/index.vue`: answer-type `<select>` → `UiSelect` with a guarded
+  setter, template-card disabled tokens, cards side-by-side from `md`.
+  Then every remaining staff-page `<select>` → `UiSelect`: schedule ×3,
+  services ×1, staff/[id] ×2 (the numeric day-of-week one bridged with a
+  `String()`/`Number()` computed and its type round-trip proved). The one
+  `<select>` left in `app/` is `JoinFormField.vue` — deliberate native,
+  public page, commented as such.
+
+NOT done, and not claimed: enroll → activate (below); Ask's allowlist is
+NOT extended to the forms tables (open question in architecture.md; the
+health tables are permanently excluded regardless); the pre-launch pepper
+item still stands.
 
 QUEUED (in order):
 
@@ -19,28 +92,16 @@ QUEUED (in order):
    KEY CONSTRAINT: The Reserve is a MEMBERS-ONLY facility — membership is
    the gate to the business, not an upsell. Owns the enrolled → active half
    of the front door; item 2 owns the half before it, and Q8 is shared.
-2. Prospective-member onboarding + intake forms (§6) — the members-only
-   FRONT DOOR. Designed 2026-09-06, prospective-onboarding-design.md (this
-   supersedes "design draft exists" — there is a design). It splits across
-   two phases, and the split is the point:
-
-   - §6 FORM ENGINE — BUILDABLE NOW, no owner input needed: form
-     definitions + versioning, response storage, prospect_intake table,
-     tokenized link delivery, the public token-gated submission endpoint,
-     the staff review UI, 30-day retention purge. The same engine serves
-     existing-client waivers and closes the booking route's
-     requires_intake TODO — building it for prospects does not defer §6's
-     original scope, it delivers it.
-   - ENROLL → ACTIVATE — OWNER-BLOCKED, moves with §3: what a paid
-     membership grants, tiers, the moment a prospect becomes a member.
-     Shares owner question 8 with memberships.
-
-   THE SEAM: build through `approved`; stub `active` as "create a client
-   with no membership" so the pipeline is end-to-end testable, then
-   replace the stub when §3 lands. Do NOT build enrollment on guesses
-   about tiers. Riskiest piece is the unauthenticated submit endpoint —
-   the design doc flags it for the same verify-the-assumption rigor Ask
-   got.
+2. Onboarding ENROLL → ACTIVATE tail (§6, the half after `approved`) —
+   OWNER-BLOCKED, moves with §3. Everything before it shipped (see §6
+   block above). What remains is exactly: the `enrolled` / `active`
+   states on `prospect_intake`, the enrollment action (tier + card on
+   file, at the desk, with the person present), and client creation as
+   its consequence. Shares owner question 8 with memberships.
+   Do NOT build this on guesses about tiers, and do NOT add a
+   "create client" button to the review page in the meantime — the route
+   and page comments say why (08baa4d). When `enrolled` is added, the
+   purge's status allowlist already keeps it.
 3. Cancellation-fee engine — its enabler (consented card on file) is live.
 4. Marketing (§8).
 5. UI polish sprint — after feature phases (see ui-polish.md).
@@ -155,4 +216,8 @@ QUEUED (in order):
 
 - Membership tier definitions — the 12-question sheet in
   memberships-notes.md (Q12 added 2026-09-06: does any path to clienthood
-  bypass membership enrollment? Blocks the "Add client" button's fate)
+  bypass membership enrollment? Blocks the "Add client" button's fate.
+  NARROWED the same day: approval and enrollment are in-person only, so
+  no remote path exists; what is left is the desk itself — walk-ins with
+  no form, plus the Q9/Q11 guest and comp cases)
+- The §6 enroll → activate tail (QUEUED item 2) waits on the same sheet.
