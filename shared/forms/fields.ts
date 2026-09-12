@@ -80,6 +80,25 @@ const KEY_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * A Date → the day key this contract stores ("YYYY-MM-DD"), by the LOCAL
+ * calendar. Deliberately toLocaleDateString("en-CA"), never toISOString():
+ * the latter converts to UTC first and, in the evening, lands on tomorrow.
+ * This is the only formatter allowed to feed a date answer; isRealDate is
+ * its counterpart, and tests/shared/formValidation.test.ts asserts they
+ * agree on the awkward days.
+ */
+export function dateKey(date: Date): string {
+  return date.toLocaleDateString("en-CA");
+}
+
+/** The inverse of dateKey: a day key → a LOCAL midnight Date, or null. */
+export function parseDateKey(value: unknown): Date | null {
+  if (typeof value !== "string" || !isRealDate(value)) return null;
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  return new Date(y, m - 1, d);
+}
+
 /** A real calendar date, not just a well-shaped string (2026-02-31 is not). */
 export function isRealDate(value: string): boolean {
   if (!DATE_PATTERN.test(value)) return false;

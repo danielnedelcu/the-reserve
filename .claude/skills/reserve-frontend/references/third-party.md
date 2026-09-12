@@ -23,6 +23,32 @@ If you rebuild that attributes array, **keep the anchor first**. Sorting the
 array, or appending the anchor instead of unshifting it, silently
 reintroduces the bug — the calendar still renders, just on the wrong week.
 
+## v-calendar as a single-date field — type first, pick second
+
+`UiDatepicker` without `.range` is a plain date field. The public form's
+date answers (`app/components/JoinFormField.vue`, the `date` branch) are
+the reference:
+
+- **Bind through the shared bridge.** The picker speaks `Date`; the form
+  contract, the Zod schema and the server speak `"YYYY-MM-DD"`.
+  `dateKey` / `parseDateKey` in `shared/forms/fields.ts` are the ONLY
+  formatter and parser allowed between them — `dateKey` is
+  `toLocaleDateString("en-CA")`, never `toISOString()` (UTC lands on the
+  wrong day in the evening), and `tests/shared/formValidation.test.ts`
+  asserts every key it emits passes the server's `isRealDate`, leap days
+  and year-ends included.
+- **Give the person an input, not only a calendar.** For a date of birth
+  the target is decades back; paging a calendar month by month is not an
+  answer. Use the default slot's `inputValue` + `inputEvents` on a
+  `UiInput` with `masks.input = 'MM/DD/YYYY'`, and put the calendar behind
+  a button that calls `togglePopover({ target: $event.currentTarget })`.
+  Bind only `input`/`change`/`keyup` from `inputEvents`: the slot's
+  `click` would open the calendar on top of a phone keyboard.
+- **Validate on `popover-did-hide` and the input's blur**, the two moments
+  the person is done with it.
+- The picker renders inside `<ClientOnly>`; there is no SSR fallback, so
+  the field appears on hydration.
+
 ## Stripe — classic Card Element, NOT Payment Element
 
 ```ts

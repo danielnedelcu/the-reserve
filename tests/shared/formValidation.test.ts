@@ -1,6 +1,13 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
-import { parseFields, validateAnswers, isEmptyAnswer } from "../../shared/forms/fields";
+import {
+  parseFields,
+  validateAnswers,
+  isEmptyAnswer,
+  isRealDate,
+  dateKey,
+  parseDateKey,
+} from "../../shared/forms/fields";
 import { buildAnswerSchema, requiredAnswersPresent } from "../../shared/forms/validation";
 
 /**
@@ -111,5 +118,45 @@ describe("requiredAnswersPresent", () => {
 
   it("is not satisfied while a required field is untouched", () => {
     expect(requiredAnswersPresent(FIELDS, { first_name: "S", agrees: true })).toBe(false);
+  });
+});
+
+describe("dateKey and isRealDate agree (the datepicker bridge)", () => {
+  // The public form's date field is a v-calendar picker that speaks Date;
+  // the contract, the schema and the server speak "YYYY-MM-DD". dateKey is
+  // the only formatter between them, so every Date it can emit must be a
+  // string isRealDate accepts — including the days where a UTC conversion
+  // would be off by one.
+  const awkward = [
+    new Date(2024, 1, 29, 23, 59), // leap day, late evening
+    new Date(2025, 11, 31, 23, 30), // New Year's Eve, evening
+    new Date(1990, 0, 1, 0, 0), // midnight on the first
+    new Date(1953, 6, 4, 12, 0), // a plausible date of birth
+    new Date(2000, 2, 1, 1, 0), // the day after a non-leap Feb 28
+  ];
+
+  it.each(awkward)("%s formats to a key the server accepts", (d) => {
+    const key = dateKey(d);
+    expect(key).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(isRealDate(key)).toBe(true);
+  });
+
+  it.each(awkward)("%s survives a round trip through parseDateKey", (d) => {
+    const key = dateKey(d);
+    const back = parseDateKey(key);
+    expect(back).not.toBeNull();
+    expect(dateKey(back!)).toBe(key);
+    // and the round trip lands on the same LOCAL calendar day, not UTC's
+    expect([back!.getFullYear(), back!.getMonth(), back!.getDate()]).toEqual([
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+    ]);
+  });
+
+  it("refuses what isRealDate refuses, so a bad key cannot become a Date", () => {
+    for (const bad of ["2024-02-30", "1990-13-01", "not a date", "", null, undefined, 42]) {
+      expect(parseDateKey(bad)).toBeNull();
+    }
   });
 });

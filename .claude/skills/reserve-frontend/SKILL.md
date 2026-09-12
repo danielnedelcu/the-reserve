@@ -48,17 +48,22 @@ silent, survive typecheck, and are found by a person clicking.
 
 **Checkbox: pick by BINDING TARGET, not by looks.**
 
-- Bound to an **array** (a group of choices, Vue's checkbox-array `v-model`)
-  → **native `<input type="checkbox">`**. That array push/remove behaviour is
-  a native capability; `UiCheckbox` is a reka-ui `role="checkbox"` button, not
-  an input, and does not replicate it cleanly.
-  (`app/components/JoinFormField.vue:124-126`)
+- Bound to an **array** (a group of choices) → **`UiCheckboxGroup`** owning
+  the array, with a `UiCheckbox :value="option"` per choice. The group is
+  what adds and removes members; a bare `UiCheckbox` on its own has no
+  array behaviour, which is why this used to be the one native holdout.
+  (`app/components/JoinFormField.vue`, the multiselect branch)
 - A boolean **QUESTION put to a person** ("Are you currently pregnant?")
   → **Yes/No radios, never a lone checkbox**, with neither preselected.
   A single tick box cannot express "no" — it can only fail to express
   "yes" — so the record cannot tell a no from a silence, and a required
   yes/no question becomes unanswerable. This shipped as a bug once.
-  (`app/components/JoinFormField.vue:76`)
+  `UiRadioGroup` values are STRINGS (reka's `AcceptableValue` has no
+  boolean), so the component bridges `"yes"`/`"no"` ↔ `true`/`false` in a
+  computed and leaves unset as `undefined` — prove the TYPE round-trips
+  when you touch it; `false` arriving as anything but boolean false is
+  the exact bug above wearing a new coat.
+  (`app/components/JoinFormField.vue`, the boolean branch and `yesNo`)
 - A boolean **acknowledgement or toggle** the user either does or does not
   do (consent, a filter flag, a setting) → **`UiCheckbox`**. Unticked
   genuinely means "not done" here, so one box is honest.
@@ -69,16 +74,26 @@ The behavioural difference is real and bit browser testing in this repo:
 submission, and updates asynchronously after `.click()` — reading its state
 in the same tick returns the OLD value.
 
+Blur for a GROUP (radios, tick boxes): validate on the fieldset's
+`focusout` only when `relatedTarget` is outside it, not on each item's
+blur — otherwise focusing "Yes" and clicking "No" flashes "please answer"
+in between. A `UiSelect` validates when it CLOSES (`@update:open`), never
+on the trigger's blur, which fires as the list opens.
+
 **Public pages may diverge from staff-tool styling; staff tools may not.**
 
 The public form — `app/pages/join/[token].vue` with its field renderer
-`app/components/JoinFormField.vue` — is deliberately native-controlled and
-brand-styled: larger type and targets, requirements written as the word
-"(required)" rather than an asterisk, errors pairing an icon with text, and
-the brand purple overriding the app's neutral `--primary`. **Do not "fix"
-it to match staff screens** — the divergence is the accessibility
-requirement, for readers who are often older, low-vision and not confident
-with forms.
+`app/components/JoinFormField.vue` — uses the same ui-thing controls as
+the rest of the app (converted 2026-09-12; it was the last native holdout)
+but is deliberately brand-styled on top of them (its date field is a
+`UiDatepicker` behind a typed input — see `references/third-party.md`):
+larger type and targets (`h-11` triggers, `size-5` boxes and radios,
+`text-base` items),
+requirements written as the word "(required)" rather than an asterisk,
+errors pairing an icon with text, and the brand purple overriding the
+app's neutral `--primary`. **Do not "fix" it to match staff screens** —
+the divergence is the accessibility requirement, for readers who are often
+older, low-vision and not confident with forms.
 
 Generalising: a public-facing page may diverge from staff styling where
 accessibility or brand requires it, and **the divergence must carry a comment
@@ -148,9 +163,9 @@ this feature shipped three "finished" flows a human could not complete.
 ### Driving the browser without being fooled
 
 The traps above are silent failures: the product is broken and everything
-looks green. The first three here are the inverse, and just as expensive
-— **the product is fine and the test says it is broken**, which sends
-someone debugging a component that works. The fourth is worse than
+looks green. Traps 1–3, 5 and 6 here are the inverse, and just as
+expensive — **the product is fine and the test says it is broken**, which
+sends someone debugging a component that works. The fourth is worse than
 either: **the test's safety net is a no-op and the test writes to real
 data.** All were paid for on 2026-09-07 while verifying `UiSelect`
 conversions: a throwaway form acquired an unrequested v2 (a "Move up" and
@@ -211,10 +226,29 @@ get a rogue version.
    there, verify the intercept caught something before relying on it
    (`window.__reqs` logging the expected call is the check).
 
+5. **Screenshot pixels are not CSS pixels in the pane.** The screenshot
+   frame (e.g. 800×949) is the CSS viewport (e.g. 775×920) scaled by
+   ~1.03. Coordinates measured with `getBoundingClientRect()` and clicked
+   as-is land ~25px high and left — enough to miss a 44px input, open the
+   wrong control, or tick the first item of a group you never aimed at
+   (all three happened on 2026-09-12). Either click at coordinates read
+   FROM a screenshot, or multiply measured CSS coordinates by
+   `frame / innerWidth` and `frame / innerHeight` before clicking.
+
+6. **The pane's `key` action does not activate buttons for Space or
+   Return.** Those presses arrive with `e.key === ""`, so the browser never
+   synthesises the button's click — a keyboard-activation test reads as
+   "the button does nothing" while the component is fine (a datepicker
+   button "failed" this way on 2026-09-12; `Tab` and `Escape` do work).
+   To test keyboard activation, dispatch a coordinate-less `el.click()` —
+   that IS what keyboard activation produces (`detail: 0`, `clientX: 0`)
+   — and confirm with a capturing `click` listener that the event reached
+   the element.
+
 Two related facts from the same session: synthetic `pointerdown` can open
 a reka-ui layer but leaves its stack inconsistent (body keeps
 `pointer-events: none`; only a reload clears it), so open with REAL input;
 and a `<button role="checkbox">` updates on the next tick, so read its
 state after `await`, not in the same tick as the click. When a real-input
-test fails, rule the first three out before touching the component; when
-a test is "safe", rule the fourth out before pressing anything.
+test fails, rule traps 1–3, 5 and 6 out before touching the component;
+when a test is "safe", rule the fourth out before pressing anything.

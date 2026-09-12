@@ -1,9 +1,14 @@
 # Converting a native control to ui-thing
 
-ui-thing is the house default. The native `<select>` and
-`<input type="checkbox">` still in staff pages are **legacy conversion
-targets, not a pattern to copy** — with one intentional exception, the
-public `/join` page (see SKILL.md).
+ui-thing is the house default. Any native `<select>`,
+`<input type="checkbox">` or `<input type="radio">` still in `app/` is a
+**legacy conversion target, not a pattern to copy**. Where that stands on
+2026-09-12: every `<select>` is gone (two staff batches, then the public
+`/join` field renderer — which keeps its brand styling on top of the
+ui-thing controls, see SKILL.md). Native checkboxes remain in nine staff
+files (`grep -rn 'type="checkbox"' app | grep -v /Ui/`) and two native
+radios in `checkout.vue`; those are the next batches, by type, using the
+checklist below.
 
 But a working native control is **inconsistent, not broken**. That single
 fact sets the pace: conversion is worth doing carefully and never worth
@@ -44,8 +49,10 @@ avoid converting.
 
 ### Native checkbox → `UiCheckbox`
 
-- [ ] **Is it bound to an array?** If so, STOP — keep it native. Array
-      `v-model` is a native capability `UiCheckbox` does not replicate.
+- [ ] **Is it bound to an array?** Then it is a `UiCheckboxGroup` with a
+      `UiCheckbox :value` per option — the group owns the array. A bare
+      `UiCheckbox` has no array behaviour; do not try to fake it with a
+      handler per box.
 - [ ] `.checked` reads are gone; state lives in `data-state` / `aria-checked`.
 - [ ] It no longer participates in implicit form submission.
 - [ ] Anything reading state straight after a programmatic click needs to

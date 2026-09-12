@@ -73,7 +73,7 @@ when you are converting or testing:
 | --- | --- | --- |
 | element | `<input>` | `<button role="checkbox">` (reka-ui) |
 | state in DOM | `.checked` | `data-state` / `aria-checked` |
-| array `v-model` | yes, push/remove | no |
+| array `v-model` | yes, push/remove | only inside `UiCheckboxGroup` (`:value` per box) |
 | implicit form submit | participates | does not |
 | after `.click()` | state readable immediately | updates on the next tick |
 
