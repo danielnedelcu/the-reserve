@@ -59,7 +59,7 @@ function check(name, ok, detail = "") {
 }
 
 /** Fixtures created for this run, torn down at the end. */
-const made = { links: [], responses: [], prospects: [], definitionId: null, versionIds: [] };
+const made = { links: [], responses: [], prospects: [], definitionId: null, versionIds: [], staffId: null };
 
 const FIELDS = [
   { key: "first_name", label: "First name", type: "text", required: true, sensitive: false },
@@ -106,7 +106,23 @@ async function setup() {
   if (verErr) throw new Error(`fixture version: ${verErr.message}`);
   made.versionIds.push(version.id);
 
-  return { orgId: org.id, staffId: staff.id, versionId: version.id };
+  // A staff member with NO roles, so the fan-out's exclusion direction is
+  // never vacuous: whatever the live roster looks like, at least one active
+  // person in the org must NOT be notified.
+  const { data: bystander, error: staffErr } = await admin
+    .from("staff")
+    .insert({
+      organization_id: org.id,
+      display_name: "Verify Bystander",
+      email: `verify-bystander-${randomUUID().slice(0, 8)}@example.test`,
+      bookable: false,
+    })
+    .select("id")
+    .single();
+  if (staffErr) throw new Error(`fixture staff: ${staffErr.message}`);
+  made.staffId = bystander.id;
+
+  return { orgId: org.id, staffId: staff.id, versionId: version.id, bystanderId: bystander.id };
 }
 
 async function issueLink({ orgId, staffId, versionId }, overrides = {}) {
@@ -273,6 +289,68 @@ async function main() {
   }
   check("consent text was snapshotted onto the response", stored?.consent_text === "I agree to the terms.");
   check("consent timestamp recorded", !!stored?.consented_at);
+
+  // ── 5b. notification fan-out — the two-language predicate ──────────
+  // notify_prospect_submitted picks recipients in SQL; the bell and the nav
+  // gate on can('forms.responses.view') in the browser. Assert they AGREE
+  // on the awkward set: every active holder, no non-holder, no inactive.
+  console.log("\nprospect.submitted fan-out (recipients == permission holders)");
+
+  if (stored?.prospect_intake_id) {
+    const link = `/intake/${stored.prospect_intake_id}`;
+
+    const { data: holderRows } = await admin
+      .from("staff_roles")
+      .select("staff_id, staff!inner(organization_id, active), roles!inner(role_permissions!inner(permission_key))")
+      .eq("roles.role_permissions.permission_key", "forms.responses.view")
+      .eq("staff.organization_id", ctx.orgId)
+      .eq("staff.active", true);
+    const holders = new Set((holderRows ?? []).map((r) => r.staff_id));
+
+    const { data: orgStaff } = await admin
+      .from("staff")
+      .select("id, active")
+      .eq("organization_id", ctx.orgId);
+    const nonHolders = (orgStaff ?? []).filter((s) => s.active && !holders.has(s.id)).map((s) => s.id);
+
+    const { data: notes } = await admin
+      .from("notifications")
+      .select("staff_id, title, link, read_at")
+      .eq("kind", "prospect.submitted")
+      .eq("link", link);
+    const notified = new Set((notes ?? []).map((n) => n.staff_id));
+
+    check("at least one active staff member holds the permission (else the next check is vacuous)", holders.size > 0);
+    check("the bystander fixture is an active NON-holder (else the exclusion check is vacuous)",
+      nonHolders.includes(ctx.bystanderId));
+    check("every active permission holder got exactly one notification",
+      [...holders].every((id) => notified.has(id)) && (notes ?? []).length === holders.size,
+      `holders=${holders.size} notified=${notified.size} rows=${(notes ?? []).length}`);
+    check("NO active staff member without the permission was notified",
+      nonHolders.every((id) => !notified.has(id)),
+      `leaked to ${nonHolders.filter((id) => notified.has(id)).length}`);
+    check("the notification arrives unread and links to the prospect",
+      (notes ?? []).length > 0 && (notes ?? []).every((n) => n.read_at === null && n.link === link));
+
+    // Settling: under_review keeps it open; approve OR reject clears it for
+    // EVERY recipient, not only whoever clicked. Reject is the direction a
+    // "clear on approve" implementation would miss, so that is the one
+    // asserted here; the approve path is exercised in the browser.
+    const unreadFor = async () => {
+      const { data } = await admin.from("notifications").select("id")
+        .eq("kind", "prospect.submitted").eq("link", link).is("read_at", null);
+      return (data ?? []).length;
+    };
+    await admin.from("prospect_intake").update({ status: "under_review" }).eq("id", stored.prospect_intake_id);
+    check("moving to under_review does NOT settle the notification (queue still open)",
+      (await unreadFor()) === holders.size);
+    await admin.from("prospect_intake").update({ status: "rejected" }).eq("id", stored.prospect_intake_id);
+    check("REJECTING settles it for every recipient (read, not deleted)",
+      (await unreadFor()) === 0 && (await admin.from("notifications").select("id")
+        .eq("kind", "prospect.submitted").eq("link", link)).data.length === holders.size);
+  } else {
+    check("fan-out could be checked (needs a prospect id)", false);
+  }
 
   // ── 6. rate-limit state is really in the database ──────────────────
   console.log("\nrate limiting");
@@ -447,8 +525,16 @@ async function main() {
 
   // ── teardown ───────────────────────────────────────────────────────
   for (const id of made.responses) await admin.from("form_responses").delete().eq("id", id);
-  for (const id of made.prospects) await admin.from("prospect_intake").delete().eq("id", id);
+  for (const id of made.prospects) {
+    await admin.from("prospect_intake").delete().eq("id", id);
+    // The delete trigger takes the bell entry with the row — otherwise the
+    // 30-day purge would leave notifications pointing at 404s.
+    const { data: orphans } = await admin
+      .from("notifications").select("id").eq("kind", "prospect.submitted").eq("link", `/intake/${id}`);
+    check("deleting the prospect removes its notifications (no dangling bell entry)", (orphans ?? []).length === 0);
+  }
   for (const id of made.links) await admin.from("form_links").delete().eq("id", id);
+  if (made.staffId) await admin.from("staff").delete().eq("id", made.staffId);
   for (const id of made.versionIds) await admin.from("form_versions").delete().eq("id", id);
   if (made.definitionId) await admin.from("form_definitions").delete().eq("id", made.definitionId);
 

@@ -271,6 +271,9 @@
 | public.submit_form_response                  | uuid           | p_token uuid, p_answers jsonb, p_health jsonb, p_consent_text text, p_consented boolean, p_contact jsonb | FUNCTION |
 | public.purge_form_submission_attempts        | int4           |                                                                                                          | FUNCTION |
 | public.purge_prospect_intake                 | int4           |                                                                                                          | FUNCTION |
+| public.notify_prospect_submitted             | trigger        |                                                                                                          | FUNCTION |
+| public.settle_prospect_notifications         | trigger        |                                                                                                          | FUNCTION |
+| public.forget_prospect_notifications         | trigger        |                                                                                                          | FUNCTION |
 
 ## Enums
 

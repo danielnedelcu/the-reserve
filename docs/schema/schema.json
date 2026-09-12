@@ -5324,8 +5324,20 @@
       ],
       "triggers": [
         {
+          "name": "trg_forget_prospect_notifications",
+          "def": "CREATE TRIGGER trg_forget_prospect_notifications AFTER DELETE ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION forget_prospect_notifications()"
+        },
+        {
+          "name": "trg_notify_prospect_submitted",
+          "def": "CREATE TRIGGER trg_notify_prospect_submitted AFTER INSERT ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION notify_prospect_submitted()"
+        },
+        {
           "name": "trg_prospect_intake_touch",
           "def": "CREATE TRIGGER trg_prospect_intake_touch BEFORE UPDATE ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        },
+        {
+          "name": "trg_settle_prospect_notifications",
+          "def": "CREATE TRIGGER trg_settle_prospect_notifications AFTER UPDATE OF status ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION settle_prospect_notifications()"
         }
       ]
     },
@@ -7857,6 +7869,24 @@
     {
       "name": "public.purge_prospect_intake",
       "return_type": "int4",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.notify_prospect_submitted",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.settle_prospect_notifications",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.forget_prospect_notifications",
+      "return_type": "trigger",
       "arguments": "",
       "type": "FUNCTION"
     }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const supabase = useSupabaseClient();
 const router = useRouter();
+const { can } = usePermissions();
 
 interface Notification {
   id: string;
@@ -28,18 +29,48 @@ const { data: notifications, refresh } = await useAsyncData(
   },
 );
 
+/**
+ * Kinds that exist only for holders of a permission. The database already
+ * fans these out by permission (notify_prospect_submitted selects
+ * recipients by role_permissions), so in the normal case this filter
+ * removes nothing. It is here for the edge the trigger cannot see: a
+ * person who held the permission when the row was written and has since
+ * lost it. Same key as the /intake page and the nav item, so the three
+ * gates cannot disagree about who a reviewer is. verify:forms asserts the
+ * trigger's recipient set matches the permission holders.
+ */
+const KIND_PERMISSION: Record<string, string> = {
+  "prospect.submitted": "forms.responses.view",
+};
+
+const visible = computed(() =>
+  (notifications.value ?? []).filter((n) => {
+    const needs = KIND_PERMISSION[n.kind];
+    return !needs || can(needs);
+  }),
+);
+
 const unreadCount = computed(
-  () => (notifications.value ?? []).filter((n) => !n.read_at).length,
+  () => visible.value.filter((n) => !n.read_at).length,
 );
 
 // ---------------------------------------------------------------------------
-// Live updates: new rows for me appear without a refresh
+// Live updates: new rows for me appear without a refresh, and rows settled
+// by someone ELSE (a colleague deciding a prospect marks my copy read via
+// trigger) clear without one. DELETE is not subscribed: under RLS a delete
+// payload carries only the primary key, so a staff_id filter cannot apply.
 // ---------------------------------------------------------------------------
 let channel: ReturnType<typeof supabase.channel> | null = null;
+
+/** Tab woke up or came back: the socket may have died while it slept. */
+function onVisible() {
+  if (document.visibilityState === "visible") refresh();
+}
 
 onMounted(async () => {
   const { data: myStaffId } = await supabase.rpc("current_staff_id");
   if (!myStaffId) return;
+  document.addEventListener("visibilitychange", onVisible);
 
   channel = supabase
     .channel("notifications-live")
@@ -53,10 +84,25 @@ onMounted(async () => {
       },
       () => refresh(),
     )
-    .subscribe();
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "notifications",
+        filter: `staff_id=eq.${myStaffId}`,
+      },
+      () => refresh(),
+    )
+    .subscribe((status) => {
+      // A rejoin after a dropped socket has missed rows; reload on join so
+      // the list is never older than the connection.
+      if (status === "SUBSCRIBED") refresh();
+    });
 });
 
 onUnmounted(() => {
+  document.removeEventListener("visibilitychange", onVisible);
   if (channel) supabase.removeChannel(channel);
 });
 
@@ -87,6 +133,7 @@ const KIND_ICONS: Record<string, string> = {
   "timeoff.denied": "lucide:x-circle",
   "timeoff.requested": "lucide:inbox",
   "message.received": "lucide:message-circle",
+  "prospect.submitted": "lucide:user-round-plus",
 };
 
 function timeAgo(iso: string) {
@@ -147,7 +194,7 @@ function timeAgo(iso: string) {
 
       <div class="max-h-96 overflow-y-auto">
         <div
-          v-for="notification in notifications"
+          v-for="notification in visible"
           :key="notification.id"
           class="hover:bg-accent rounded-md px-3 py-2 text-sm transition-colors"
         >
@@ -201,7 +248,7 @@ function timeAgo(iso: string) {
         </div>
 
         <p
-          v-if="!notifications?.length"
+          v-if="!visible.length"
           class="text-muted-foreground px-3 py-6 text-center text-sm"
         >
           Nothing yet.

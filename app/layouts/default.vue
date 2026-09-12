@@ -6,11 +6,23 @@ const route = useRoute();
 
 await load();
 
+// Prospects awaiting review — queue state, live, permission-gated inside
+// the composable (it never queries for someone who cannot see /intake).
+const queue = useProspectQueue();
+onMounted(() => queue.start());
+onUnmounted(() => queue.stop());
+
 interface NavItem {
   title: string;
   to: string;
   icon: string;
   show: boolean;
+  /**
+   * Attention indicator: a count of things waiting behind this item.
+   * Rendered as the app's emerald dot PLUS text (sr-only in the rail, in
+   * the tooltip when collapsed) — never colour alone.
+   */
+  pending?: { count: number; noun: string };
 }
 interface NavSection {
   label: string;
@@ -56,6 +68,7 @@ const navSections = computed<NavSection[]>(() =>
           to: "/intake",
           icon: "lucide:user-round-plus",
           show: can("forms.responses.view"),
+          pending: { count: queue.pendingCount.value, noun: "awaiting review" },
         },
         {
           title: "Forms",
@@ -130,6 +143,12 @@ function isActive(to: string) {
   return to === "/" ? route.path === "/" : route.path.startsWith(to);
 }
 
+/** "3 awaiting review" — the words that travel with the dot. */
+function pendingLabel(item: NavItem) {
+  if (!item.pending?.count) return null;
+  return `${item.pending.count} ${item.pending.noun}`;
+}
+
 const initials = computed(() =>
   (user.value?.email ?? "?").slice(0, 2).toUpperCase(),
 );
@@ -198,11 +217,35 @@ watch([keys["Meta+K"], keys["Ctrl+K"]], ([meta, ctrl]) => {
                 <UiSidebarMenuButton
                   as-child
                   :is-active="isActive(item.to)"
-                  :tooltip="item.title"
+                  :tooltip="
+                    pendingLabel(item)
+                      ? `${item.title} · ${pendingLabel(item)}`
+                      : item.title
+                  "
                 >
-                  <NuxtLink :to="item.to">
+                  <!-- `relative` anchors the collapsed-mode dot; `truncate`
+                       on the title is explicit because the button's
+                       [&>span:last-child]:truncate no longer lands on it
+                       once the dot spans follow. -->
+                  <NuxtLink :to="item.to" class="relative">
                     <Icon :name="item.icon" />
-                    <span>{{ item.title }}</span>
+                    <span class="truncate">{{ item.title }}</span>
+                    <!-- Attention dot: the same emerald dot as the bell and
+                         messages. Sits at the row's end when expanded; in
+                         icon-only mode the row clips its overflow, so the
+                         copy on the icon's corner is the one that shows.
+                         The words are always present for a screen reader. -->
+                    <template v-if="pendingLabel(item)">
+                      <span class="sr-only">, {{ pendingLabel(item) }}</span>
+                      <span
+                        aria-hidden="true"
+                        class="ml-auto block size-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                      />
+                      <span
+                        aria-hidden="true"
+                        class="ring-sidebar absolute left-5 top-1.5 hidden size-1.5 rounded-full bg-emerald-500 ring-2 group-data-[collapsible=icon]:block dark:bg-emerald-400"
+                      />
+                    </template>
                   </NuxtLink>
                 </UiSidebarMenuButton>
               </UiSidebarMenuItem>

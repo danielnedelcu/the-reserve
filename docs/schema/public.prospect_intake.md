@@ -39,9 +39,12 @@ A person who has submitted an intake form and is not yet a client. TEMPORARY CUS
 
 ## Triggers
 
-| Name                      | Definition                                                                                                                        |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| trg_prospect_intake_touch | CREATE TRIGGER trg_prospect_intake_touch BEFORE UPDATE ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION touch_updated_at() |
+| Name                              | Definition                                                                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| trg_forget_prospect_notifications | CREATE TRIGGER trg_forget_prospect_notifications AFTER DELETE ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION forget_prospect_notifications()           |
+| trg_notify_prospect_submitted     | CREATE TRIGGER trg_notify_prospect_submitted AFTER INSERT ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION notify_prospect_submitted()                   |
+| trg_prospect_intake_touch         | CREATE TRIGGER trg_prospect_intake_touch BEFORE UPDATE ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                               |
+| trg_settle_prospect_notifications | CREATE TRIGGER trg_settle_prospect_notifications AFTER UPDATE OF status ON public.prospect_intake FOR EACH ROW EXECUTE FUNCTION settle_prospect_notifications() |
 
 ## Relations
 
