@@ -1114,6 +1114,101 @@ export type Database = {
           },
         ]
       }
+      lead_notes: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          lead_id: string
+          staff_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          staff_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_notes_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          consent: boolean
+          consent_at: string | null
+          created_at: string
+          email: string
+          first_name: string
+          id: string
+          interest: string
+          last_name: string
+          organization_id: string
+          phone: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          consent?: boolean
+          consent_at?: string | null
+          created_at?: string
+          email: string
+          first_name: string
+          id?: string
+          interest: string
+          last_name: string
+          organization_id: string
+          phone?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          consent?: boolean
+          consent_at?: string | null
+          created_at?: string
+          email?: string
+          first_name?: string
+          id?: string
+          interest?: string
+          last_name?: string
+          organization_id?: string
+          phone?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           active: boolean
@@ -1400,6 +1495,7 @@ export type Database = {
           first_name: string
           id: string
           last_name: string
+          lead_id: string | null
           organization_id: string
           phone: string | null
           reviewed_at: string | null
@@ -1414,6 +1510,7 @@ export type Database = {
           first_name: string
           id?: string
           last_name: string
+          lead_id?: string | null
           organization_id: string
           phone?: string | null
           reviewed_at?: string | null
@@ -1428,6 +1525,7 @@ export type Database = {
           first_name?: string
           id?: string
           last_name?: string
+          lead_id?: string | null
           organization_id?: string
           phone?: string | null
           reviewed_at?: string | null
@@ -1437,6 +1535,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "prospect_intake_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "prospect_intake_organization_id_fkey"
             columns: ["organization_id"]
@@ -2186,6 +2291,7 @@ export type Database = {
         Returns: undefined
       }
       purge_form_submission_attempts: { Args: never; Returns: number }
+      purge_leads: { Args: never; Returns: number }
       purge_prospect_intake: { Args: never; Returns: number }
       submit_form_response: {
         Args: {

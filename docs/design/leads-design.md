@@ -1,0 +1,219 @@
+# Marketing lead capture (§8) — design
+
+Status: PHASE 1 (schema) drafted 2026-09-13 as
+`supabase/migrations/20260913153010_leads_capture.sql`, awaiting push;
+phases 2–4 not built. Owner-INDEPENDENT (no tier answers needed).
+Design-room session 2026-09-12. `[AS-BUILT]` marks where the SQL
+deviates from the prose below.
+
+## What this is
+
+The front of the membership-admission funnel. Public landing pages (built
+OUTSIDE this app, on the marketing site) capture interest; the captured
+lead lands in The Reserve, where staff see it, note on it, and either
+pursue it into a formal intake or mark it lost. Deliberately NOT a CRM —
+leads, statuses, notes, and a conversion handoff, nothing more.
+
+The full funnel, and where this sits:
+
+    lead (interest captured)  ← THIS FEATURE (front)
+      → prospect (intake submitted)   ← §6, built
+        → approved                    ← §6, built
+          → enrolled / active         ← §3 tail, owner-blocked
+
+A lead is the stage BEFORE a prospect: minimal info, no consent, no health
+data, no token, no review-decision. It is its own entity, not an
+early-stage prospect — cramming it into prospect_intake would pollute that
+table's PHI-adjacent meaning, RLS, and retention. Same pattern as
+staff_invites being separate from staff: a distinct thing that can BECOME
+the next thing.
+
+## The `leads` table
+
+- id, organization_id (+ RLS)
+- first_name, last_name, email, phone (phone optional)
+- interest — a generic, TIER-INDEPENDENT option set: 'membership',
+  'service', 'inquiry' (see decision A). NOT tied to membership tiers,
+  which do not exist yet; refinable when §3 lands, not dependent on it.
+- source — set by the landing page, records which page/campaign captured
+  the lead (the head of the provenance chain). [AS-BUILT] `not null
+  default 'manual'`: staff holding leads.manage may enter a lead by hand
+  (a phone inquiry), and that row has no landing page to name — the
+  default records "staff conversation" as its origin without the entry
+  form having to remember to. The public endpoint still sets its real
+  source explicitly.
+- status — 'new' | 'contacted' | 'qualified' | 'converted' | 'lost'
+  (text + check constraint, the house enum idiom).
+- created_at, updated_at.
+- [AS-BUILT] consent (boolean, default false) + consent_at (timestamptz,
+  nullable), paired by a check (`consent = (consent_at is not null)`) so
+  a row cannot claim consent without saying when. Captured from day one
+  per the Deferred note below, so the model is ready before the policy is.
+- No PHI. A lead carries contact info only — the health machinery does
+  not apply here.
+
+## Lifecycle
+
+    new → contacted → qualified → converted | lost
+
+- new: just captured, untouched.
+- contacted: staff has reached out.
+- qualified: worth pursuing into an application.
+- converted: became a prospect (the funnel handoff — see Conversion).
+- lost: not pursuing.
+
+Keep it to these five. Status sprawl is how lightweight lead tracking
+rots into a CRM nobody updates; five is already generous.
+
+## Conversion — how a lead becomes a prospect
+
+Conversion is not a bare status flip; it is an ACTION that reuses existing
+machinery. From the lead detail page, a staff member "sends them an intake
+form" — issuing the tokenized link the §6 form engine already builds. That
+single act:
+
+1. issues a form_link for the prospect_intake form (existing flow),
+2. flips the lead to `converted`,
+3. threads the provenance FK: the resulting prospect_intake row carries
+   `lead_id` pointing back at this lead.
+
+So conversion = "issue the intake link from the lead record", which
+creates the prospect and the provenance link in one move. No new
+conversion concept — it is the form-send flow, triggered from a lead,
+recording where the prospect came from.
+
+## Provenance chain (the one CRM-ish thing worth having)
+
+Thread an FK at each stage so the funnel is traceable end to end:
+
+    leads.id  ←  prospect_intake.lead_id  ←  clients (via the prospect's
+                                              eventual enrollment)
+
+This answers "which campaign produced which member" — marketing ROI —
+and is nearly free: one nullable FK per stage. `prospect_intake.lead_id`
+is nullable (a prospect can arrive without a lead — someone who walks in
+and applies directly). Keep the chain intact; do not purge a link out of
+the middle of it (see Retention).
+
+## Public capture endpoint — the new hard part
+
+The landing page POSTs to a PUBLIC, UNAUTHENTICATED capture endpoint. This
+is the prospect-submission security model MINUS the token (a landing-page
+form is open by design — anyone can fill it), which makes abuse the harder
+problem, since a token no longer bounds it.
+
+Reuse from the §6 public-submission model:
+
+- Service-role write; NO anon insert policy on `leads` anywhere. The
+  endpoint is the only PUBLIC writer. [AS-BUILT] Staff holding
+  leads.manage can also insert and correct leads directly (the policy is
+  `for all`, org-scoped) — a hand-entered lead from a phone call is a
+  legitimate origin, recorded as source 'manual'. anon still has nothing.
+- DB-backed rate limiting (the form_submission_attempts pattern —
+  HMAC'd IPs keyed by FORM_IP_PEPPER, or a leads-specific equivalent),
+  fail-closed if the pepper is absent.
+- Server-side shape validation; reject unknown/oversized input.
+
+New, because there is no token:
+
+- HONEYPOT field — a hidden field bots fill and humans do not; reject
+  submissions that fill it. Free, no user friction, catches naive bots.
+  This is the baseline first layer.
+- Rate limiting is the second layer (bounds a single abuser; distributed
+  bots evade per-IP, which is the known residual).
+- CAPTCHA is DEFERRED — the escalation if spam actually materialises.
+  Recorded as deferred-with-trigger: add it (Turnstile, privacy-
+  preserving, low-friction) if honeypot + rate limiting prove
+  insufficient in practice. Decision keyed to observed abuse, not
+  built preemptively — but note the landing pages' discoverability
+  raises the odds vs the token-gated prospect form.
+
+## Retention
+
+- 1 month for all NON-CONVERTED statuses: new, contacted, qualified,
+  lost all purge after 1 month. (Decision B: one clock, `lost` on the
+  same 1-month window as the rest — simpler than two windows, and a lost
+  lead is cheap to keep for a month in case it re-engages.)
+- `converted` is EXEMPT — it is the head of a provenance chain now
+  (lead → prospect → client); purging it would sever "which campaign
+  produced this member". Kept indefinitely (or a much longer horizon).
+- Purge by an ALLOWLIST of statuses, not by "un-converted", so `converted`
+  and any future status are kept BY OMISSION — the same fail-safe shape as
+  the prospect_intake purge (a status the purge does not name is kept, not
+  swept). pg_cron, scheduled in the migration, with an outcome canary in a
+  verify script (nothing past the window in a purgeable status), since the
+  app's roles cannot read cron.job.
+
+## Permissions
+
+New keys, NOT a reuse of forms.responses.view (decision 4): 'leads.view'
+(see the leads list + detail) and 'leads.manage' (edit status, add notes,
+convert). Granted to front_desk and admin (+ super_admin). Own keys so a
+future marketing-only role can hold leads._ without the intake/health
+permissions — leads carry no PHI, so their audience can legitimately
+differ from intake's. Seed + grant in the migration; check the catalog
+first (do not mint a duplicate — forms._ / leads.\* are distinct).
+
+## Lead notes
+
+`lead_notes` following the client_notes pattern: append-only, authored
+(staff_id), dated. "Staff added a note about following up." No health
+tier (leads carry no health data), so no sensitivity split — simpler than
+client_notes. Read/write gated on leads.view / leads.manage.
+
+## The management UI
+
+The /intake review-list → detail pattern, re-aimed at leads:
+
+- a leads list (filter by status; oldest-or-newest first — a work queue,
+  not a feed), gated on leads.view;
+- a lead detail: contact info, interest, source, the notes thread, a
+  status control, and the "send intake form" (convert) action;
+- gated nav entry (leads.view), and — consistent with the prospect
+  work — consider a live indicator for new leads later (not v1 unless
+  wanted; the prospect nav-dot + bell pattern is the model if so).
+
+## What lives where (the boundary)
+
+- Landing pages: the MARKETING SITE, outside this app — public, SEO,
+  fast, separate deploy. Not built here. They only need to POST to the
+  capture endpoint.
+- The Reserve app exposes: ONE public endpoint (capture) + the
+  authenticated lead-management UI. Everything else stays behind auth.
+
+## Build order (phases, for the eventual Claude Code brief)
+
+1. Migration: leads + lead_notes tables, leads.\* permissions + grants,
+   the retention purge (pg_cron, allowlist), RLS. Push-first.
+2. Public capture endpoint: service-role write, honeypot + rate limit,
+   fail-closed, shape validation. The security-critical piece — verify
+   both directions (anon has no write path; honeypot rejects; rate limit
+   limits), same rigor as the §6 public submit.
+3. Lead management UI: list + detail + notes + status control.
+4. Conversion action: "send intake form from lead" → issues the link,
+   flips to converted, threads prospect_intake.lead_id. Reuses §6 send.
+
+## Deferred / owner-adjacent
+
+- CAPTCHA (trigger: observed spam).
+- Marketing-consent question on the landing page + its shelf life —
+  a landing page capturing contact info "so we can tell you about
+  membership" implies a marketing-contact consent, which may carry
+  jurisdictional rules. Owner/legal-adjacent; flag, do not block. The
+  capture endpoint should probably record a consent boolean + timestamp
+  from day one so the data model is ready even if the policy is not.
+- Live new-lead indicator (nav dot / bell) — the prospect pattern
+  applies if wanted; not v1 unless requested.
+- Tier-specific interest options (when §3 lands; the generic set works
+  until then and does not depend on it).
+
+## Relationship to other docs
+
+- §6 prospective-onboarding-design.md — conversion hands off to that
+  flow; the capture endpoint reuses its public-submission security model.
+- The provenance chain extends into it (prospect_intake.lead_id) and
+  through to clients.
+- architecture.md — the capture endpoint is a second public/anon inbound
+  path; it belongs on the doors diagram as another Door-0-class caller
+  (unauthenticated, but open rather than token-gated — a distinct, MORE
+  exposed variant worth its own note).

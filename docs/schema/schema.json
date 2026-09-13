@@ -5253,6 +5253,12 @@
           "type": "timestamp with time zone",
           "nullable": true,
           "comment": "When the decision was recorded. With reviewed_by this is the audit trail for an approval — approval creates nothing usable, so this row is the only evidence it happened."
+        },
+        {
+          "name": "lead_id",
+          "type": "uuid",
+          "nullable": true,
+          "comment": "The lead this prospect came from, if any — the middle link of the provenance chain leads → prospect_intake → clients. Nullable because a prospect can arrive with no lead. on delete set null: if a lead row is ever removed by hand, the prospect survives and the chain simply ends here."
         }
       ],
       "indexes": [
@@ -5271,6 +5277,14 @@
           "columns": [
             "organization_id",
             "submitted_at"
+          ]
+        },
+        {
+          "name": "prospect_intake_lead",
+          "def": "CREATE INDEX prospect_intake_lead ON public.prospect_intake USING btree (lead_id) WHERE (lead_id IS NOT NULL)",
+          "table": "public.prospect_intake",
+          "columns": [
+            "lead_id"
           ]
         }
       ],
@@ -5318,6 +5332,19 @@
           "table": "public.prospect_intake",
           "referenced_table": "",
           "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "prospect_intake_lead_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL",
+          "table": "public.prospect_intake",
+          "referenced_table": "public.leads",
+          "columns": [
+            "lead_id"
+          ],
+          "referenced_columns": [
             "id"
           ]
         }
@@ -5436,6 +5463,281 @@
           "type": "PRIMARY KEY",
           "def": "PRIMARY KEY (id)",
           "table": "public.form_submission_attempts",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.leads",
+      "type": "BASE TABLE",
+      "comment": "A person who expressed interest through a public landing page and is not yet a prospect. CONTACT INFORMATION ONLY — no health data, no consent to treatment, no token, no review decision; the health machinery does not apply. Written by the public capture endpoint under the service role (no anon insert policy exists, deliberately) and managed by staff holding leads.manage. Lifecycle new → contacted → qualified → converted | lost, kept to five on purpose. Non-converted leads are purged after one month by purge_leads(); converted leads are kept because they head a provenance chain (leads → prospect_intake.lead_id → clients).",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "first_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "last_name",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "interest",
+          "type": "text",
+          "nullable": false,
+          "comment": "A generic, TIER-INDEPENDENT option set: membership | service | inquiry. Deliberately NOT tied to membership tiers, which do not exist yet (§3, owner-blocked). Refinable when tiers land; not dependent on them."
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "nullable": false,
+          "default": "'manual'::text",
+          "comment": "Where the lead came from — the head of the provenance chain, and what \"which campaign produced this member\" resolves to. The public capture endpoint sets the landing page or campaign explicitly. Defaults to 'manual' so a lead a staff member enters by hand (a phone inquiry, a walk-in conversation) records its origin without the form having to remember to: a staff conversation IS meaningful provenance, distinct from any campaign."
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'new'::text",
+          "comment": "new → contacted → qualified → converted | lost. text + check, not an enum type, so adding a value is a constraint swap. converted is the funnel handoff: the lead became a prospect and its row is kept."
+        },
+        {
+          "name": "consent",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false",
+          "comment": "Marketing-contact consent as captured by the landing page. Recorded from day one so the data model is ready even though the consent POLICY (wording, shelf life, jurisdiction) is parked as owner/legal-adjacent. true requires consent_at; a lead with no consent captured is false/null, never a guess."
+        },
+        {
+          "name": "consent_at",
+          "type": "timestamp with time zone",
+          "nullable": true,
+          "comment": "When consent was given. Present exactly when consent is true (checked). The timestamp is what a future retention or re-consent rule will be measured from."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "leads_pkey",
+          "def": "CREATE UNIQUE INDEX leads_pkey ON public.leads USING btree (id)",
+          "table": "public.leads",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "leads_org_queue",
+          "def": "CREATE INDEX leads_org_queue ON public.leads USING btree (organization_id, status, created_at DESC)",
+          "table": "public.leads",
+          "columns": [
+            "organization_id",
+            "status",
+            "created_at"
+          ]
+        },
+        {
+          "name": "leads_org_email",
+          "def": "CREATE INDEX leads_org_email ON public.leads USING btree (organization_id, lower(email))",
+          "table": "public.leads",
+          "columns": [
+            "organization_id",
+            "lower"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "leads_check",
+          "type": "CHECK",
+          "def": "CHECK ((consent = (consent_at IS NOT NULL)))",
+          "table": "public.leads",
+          "referenced_table": "",
+          "columns": [
+            "consent",
+            "consent_at"
+          ]
+        },
+        {
+          "name": "leads_interest_check",
+          "type": "CHECK",
+          "def": "CHECK ((interest = ANY (ARRAY['membership'::text, 'service'::text, 'inquiry'::text])))",
+          "table": "public.leads",
+          "referenced_table": "",
+          "columns": [
+            "interest"
+          ]
+        },
+        {
+          "name": "leads_status_check",
+          "type": "CHECK",
+          "def": "CHECK ((status = ANY (ARRAY['new'::text, 'contacted'::text, 'qualified'::text, 'converted'::text, 'lost'::text])))",
+          "table": "public.leads",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "leads_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.leads",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "leads_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.leads",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_leads_touch",
+          "def": "CREATE TRIGGER trg_leads_touch BEFORE UPDATE ON public.leads FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        }
+      ]
+    },
+    {
+      "name": "public.lead_notes",
+      "type": "BASE TABLE",
+      "comment": "Staff notes on a lead (\"called, left voicemail\"). The client_notes pattern without the health tier: leads carry no health data, so there is no sensitivity split and no audited read path. APPEND-ONLY by policy omission — no update or delete policies exist and none will; a correction is a new note. Notes go with their lead when the retention purge deletes it (cascade); a converted lead is never purged, so its notes survive with it. Scoped to the org through the parent lead.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "lead_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "lead_notes_pkey",
+          "def": "CREATE UNIQUE INDEX lead_notes_pkey ON public.lead_notes USING btree (id)",
+          "table": "public.lead_notes",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "lead_notes_lead",
+          "def": "CREATE INDEX lead_notes_lead ON public.lead_notes USING btree (lead_id, created_at DESC)",
+          "table": "public.lead_notes",
+          "columns": [
+            "lead_id",
+            "created_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "lead_notes_body_check",
+          "type": "CHECK",
+          "def": "CHECK (((length(body) \u003e= 1) AND (length(body) \u003c= 4000)))",
+          "table": "public.lead_notes",
+          "referenced_table": "",
+          "columns": [
+            "body"
+          ]
+        },
+        {
+          "name": "lead_notes_staff_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)",
+          "table": "public.lead_notes",
+          "referenced_table": "public.staff",
+          "columns": [
+            "staff_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "lead_notes_lead_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE",
+          "table": "public.lead_notes",
+          "referenced_table": "public.leads",
+          "columns": [
+            "lead_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "lead_notes_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.lead_notes",
           "referenced_table": "",
           "columns": [
             "id"
@@ -6538,6 +6840,19 @@
       "def": "FOREIGN KEY (reviewed_by) REFERENCES staff(id)"
     },
     {
+      "table": "public.prospect_intake",
+      "columns": [
+        "lead_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.leads",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL"
+    },
+    {
       "table": "public.form_submission_attempts",
       "columns": [
         "organization_id"
@@ -6549,6 +6864,45 @@
       ],
       "parent_cardinality": "zero_or_one",
       "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.leads",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.lead_notes",
+      "columns": [
+        "staff_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.lead_notes",
+      "columns": [
+        "lead_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.leads",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE"
     }
   ],
   "functions": [
@@ -7887,6 +8241,12 @@
     {
       "name": "public.forget_prospect_notifications",
       "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.purge_leads",
+      "return_type": "int4",
       "arguments": "",
       "type": "FUNCTION"
     }
