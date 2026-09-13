@@ -510,7 +510,10 @@ const txnColumns = [
     header: "Total",
     enableSorting: true,
   },
-  { id: "actions", header: "", enableSorting: false },
+  // No header at all, rather than header: "" — TanStack Table v9 renders an
+  // empty string as an empty text node on the client while the server emits
+  // nothing, which is a hydration mismatch on every page with this column.
+  { id: "actions", enableSorting: false },
 ];
 
 // Provider utilization columns (numeric accessors so sorting is arithmetic)
@@ -946,7 +949,7 @@ function printReceipt(txn: Txn) {
           class="max-w-xs"
         />
       </div>
-      <div class="mt-3 border bg-card">
+      <div class="mt-3 border rounded-md bg-card">
         <UiTanStackTable
           :data="filteredTransactions"
           :columns="txnColumns"
@@ -1044,7 +1047,7 @@ function printReceipt(txn: Txn) {
         off, through {{ period === "day" ? "the day" : "today" }}). Healthy spa
         range is roughly 65–85%.
       </p>
-      <div class="mt-3 border bg-card">
+      <div class="mt-3 border rounded-md bg-card">
         <UiTanStackTable
           :data="utilization"
           :columns="utilColumns"
@@ -1119,7 +1122,7 @@ function printReceipt(txn: Txn) {
               class="text-muted-foreground flex w-full items-center justify-between border-t px-4 py-3 text-sm"
             >
               <p>
-                Page {{ table.getState().pagination.pageIndex + 1 }} of
+                Page {{ table.atoms.pagination.get().pageIndex + 1 }} of
                 {{ table.getPageCount() }}
               </p>
               <div class="flex items-center gap-2">

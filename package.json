@@ -28,7 +28,7 @@
     "@nuxtjs/supabase": "^2.0.9",
     "@pinia/nuxt": "^1.0.1",
     "@stripe/stripe-js": "^9.14.0",
-    "@tanstack/vue-table": "^8.21.3",
+    "@tanstack/vue-table": "^9.2.4",
     "@vee-validate/nuxt": "^4.15.1",
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^14.4.0",

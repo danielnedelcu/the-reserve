@@ -5,21 +5,13 @@
         v-if="loading"
         class="bg-muted absolute inset-x-0 top-0 z-10 h-1 overflow-hidden rounded-full"
       >
-        <div
-          class="bg-primary size-full origin-left animate-[loading_1.5s_ease-in-out_infinite]"
-        />
+        <div class="bg-primary size-full origin-left animate-[loading_1.5s_ease-in-out_infinite]" />
       </div>
     </slot>
 
     <UiTable :class="props.class">
-      <UiTableHeader
-        v-if="!hideHeader"
-        class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm"
-      >
-        <UiTableRow
-          v-for="headerGroup in table.getHeaderGroups()"
-          :key="headerGroup.id"
-        >
+      <UiTableHeader v-if="!hideHeader">
+        <UiTableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
           <UiTableHead
             v-for="header in headerGroup.headers"
             :key="header.id"
@@ -39,16 +31,11 @@
                     v-if="header.column.getCanSort()"
                     :class="[
                       'flex items-center gap-2',
-                      header.column.getCanSort()
-                        ? 'cursor-pointer select-none'
-                        : '',
+                      header.column.getCanSort() ? 'cursor-pointer select-none' : '',
                     ]"
                     @click="header.column.getToggleSortingHandler()?.($event)"
                   >
-                    <FlexRender
-                      :render="header.column.columnDef.header"
-                      :props="header.getContext()"
-                    />
+                    <FlexRender :header="header" />
                     <UiTooltip>
                       <UiTooltipTrigger>
                         <Icon
@@ -61,11 +48,7 @@
                           name="lucide:arrow-down"
                           class="size-4"
                         />
-                        <Icon
-                          v-else
-                          name="lucide:arrow-up-down"
-                          class="size-4 opacity-50"
-                        />
+                        <Icon v-else name="lucide:arrow-up-down" class="size-4 opacity-50" />
                       </UiTooltipTrigger>
                       <UiTooltipContent>
                         <span>
@@ -81,15 +64,10 @@
                     </UiTooltip>
                   </div>
                   <div v-else class="flex items-center gap-2">
-                    <FlexRender
-                      :render="header.column.columnDef.header"
-                      :props="header.getContext()"
-                    />
+                    <FlexRender :header="header" />
                   </div>
                   <UiTooltip>
-                    <UiDropdownMenu
-                      v-if="shouldShowColumnPinButton(header.column)"
-                    >
+                    <UiDropdownMenu v-if="shouldShowColumnPinButton(header.column)">
                       <UiDropdownMenuTrigger as-child>
                         <UiTooltipTrigger as-child>
                           <UiButton
@@ -98,30 +76,25 @@
                             class="hover:bg-muted"
                             @click.stop
                           >
-                            <Icon
-                              :name="getColumnPinIcon(header.column)"
-                              class="size-4"
-                            />
+                            <Icon :name="getColumnPinIcon(header.column)" class="size-4" />
                           </UiButton>
                         </UiTooltipTrigger>
                       </UiDropdownMenuTrigger>
                       <UiTooltipContent>
-                        <span>{{
-                          getColumnPinTooltipText(header.column)
-                        }}</span>
+                        <span>{{ getColumnPinTooltipText(header.column) }}</span>
                       </UiTooltipContent>
                       <UiDropdownMenuContent align="end" :side-offset="6">
                         <UiDropdownMenuItem
-                          :title="getPinLabel('left')"
+                          :title="getPinLabel('start')"
                           :icon="props.columnPinIconOn"
-                          :disabled="header.column.getIsPinned() == 'left'"
-                          @select="() => pinColumn(header.column, 'left')"
+                          :disabled="header.column.getIsPinned() === 'start'"
+                          @select="() => pinColumn(header.column, 'start')"
                         />
                         <UiDropdownMenuItem
-                          :title="getPinLabel('right')"
+                          :title="getPinLabel('end')"
                           :icon="props.columnPinIconOn"
-                          :disabled="header.column.getIsPinned() == 'right'"
-                          @select="() => pinColumn(header.column, 'right')"
+                          :disabled="header.column.getIsPinned() === 'end'"
+                          @select="() => pinColumn(header.column, 'end')"
                         />
                         <UiDropdownMenuItem
                           :title="getPinLabel(false)"
@@ -146,9 +119,7 @@
               :data-state="row.getIsSelected() ? 'selected' : undefined"
               :class="table.options.meta?.class?.tr"
               :style="getPinnedRowStyle(row)"
-              @contextmenu="
-                (event: MouseEvent) => emit('row-contextmenu', { event, row })
-              "
+              @contextmenu="(event: MouseEvent) => emit('row-contextmenu', { event, row })"
             >
               <UiTableCell
                 v-for="cell in row.getVisibleCells()"
@@ -177,16 +148,10 @@
                               @click.stop
                             >
                               <Icon
-                                :name="
-                                  row.getIsPinned()
-                                    ? rowPinIconOn
-                                    : rowPinIconOff
-                                "
+                                :name="row.getIsPinned() ? rowPinIconOn : rowPinIconOff"
                                 :class="[
                                   'size-4',
-                                  row.getIsPinned()
-                                    ? 'text-primary'
-                                    : 'opacity-60',
+                                  row.getIsPinned() ? 'text-primary' : 'opacity-60',
                                 ]"
                               />
                             </UiButton>
@@ -228,36 +193,24 @@
                           @click="row.toggleExpanded()"
                         >
                           <Icon
-                            :name="
-                              row.getIsExpanded()
-                                ? expandCellIconOn
-                                : expandCellIconOff
-                            "
+                            :name="row.getIsExpanded() ? expandCellIconOn : expandCellIconOff"
                             class="size-4"
                           />
                         </UiButton>
                       </UiTooltipTrigger>
                       <UiTooltipContent>
-                        <span>
-                          {{ row.getIsExpanded() ? "Collapse" : "Expand" }} row
-                        </span>
+                        <span> {{ row.getIsExpanded() ? "Collapse" : "Expand" }} row </span>
                       </UiTooltipContent>
                     </UiTooltip>
                   </template>
                   <template v-else>
-                    <FlexRender
-                      :render="cell.column.columnDef.cell"
-                      :props="cell.getContext()"
-                    />
+                    <FlexRender :cell="cell" />
                   </template>
                 </slot>
               </UiTableCell>
             </UiTableRow>
             <UiTableRow v-if="row.getIsExpanded()" :key="`${row.id}-expanded`">
-              <UiTableCell
-                :colspan="row.getVisibleCells().length"
-                class="bg-muted/50 p-0"
-              >
+              <UiTableCell :colspan="row.getVisibleCells().length" class="bg-muted/50 p-0">
                 <slot name="expanded-row" :row="row" :table="table">
                   <div class="p-4">
                     <p class="text-muted-foreground text-sm">
@@ -271,10 +224,7 @@
         </template>
 
         <UiTableRow v-else>
-          <UiTableCell
-            :colspan="table.getAllLeafColumns().length"
-            class="h-24 text-center"
-          >
+          <UiTableCell :colspan="table.getAllLeafColumns().length" class="h-24 text-center">
             <slot name="empty">
               {{ emptyText }}
             </slot>
@@ -283,29 +233,21 @@
       </UiTableBody>
 
       <UiTableFooter v-if="hasFooter">
-        <UiTableRow
-          v-for="footerGroup in table.getFooterGroups()"
-          :key="footerGroup.id"
-        >
+        <UiTableRow v-for="footerGroup in table.getFooterGroups()" :key="footerGroup.id">
           <UiTableHead
             v-for="footer in footerGroup.headers"
             :key="footer.id"
             :colspan="footer.colSpan"
             :class="footer.column.columnDef.meta?.class?.th"
           >
-            <template
-              v-if="!footer.isPlaceholder && footer.column.columnDef.footer"
-            >
+            <template v-if="!footer.isPlaceholder && footer.column.columnDef.footer">
               <slot
                 :name="`${footer.column.id}-footer`"
                 :footer="footer"
                 :column="footer.column"
                 :table="table"
               >
-                <FlexRender
-                  :render="footer.column.columnDef.footer"
-                  :props="footer.getContext()"
-                />
+                <FlexRender :footer="footer" />
               </slot>
             </template>
           </UiTableHead>
@@ -330,21 +272,14 @@
                 <UiSelectValue />
               </UiSelectTrigger>
               <UiSelectContent>
-                <UiSelectItem
-                  v-for="size in pageSizeOptions"
-                  :key="size"
-                  :value="`${size}`"
-                >
+                <UiSelectItem v-for="size in pageSizeOptions" :key="size" :value="`${size}`">
                   {{ size }}
                 </UiSelectItem>
               </UiSelectContent>
             </UiSelect>
           </div>
 
-          <div
-            v-if="showSelectedCount"
-            class="text-muted-foreground text-sm whitespace-nowrap"
-          >
+          <div v-if="showSelectedCount" class="text-muted-foreground text-sm whitespace-nowrap">
             {{ table.getFilteredSelectedRowModel().rows.length }} of
             {{ table.getFilteredRowModel().rows.length }} row(s) selected
           </div>
@@ -353,11 +288,8 @@
 
       <div class="flex items-center gap-4">
         <slot name="footer-right" :table="table">
-          <div
-            v-if="showPageInfo"
-            class="text-muted-foreground text-sm whitespace-nowrap"
-          >
-            Page {{ table.getState().pagination.pageIndex + 1 }} of
+          <div v-if="showPageInfo" class="text-muted-foreground text-sm whitespace-nowrap">
+            Page {{ table.atoms.pagination.get().pageIndex + 1 }} of
             {{ table.getPageCount() }}
           </div>
 
@@ -402,485 +334,504 @@
 </template>
 
 <script lang="ts">
-import {
-  FlexRender,
-  getCoreRowModel,
-  getExpandedRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useVueTable,
-} from "@tanstack/vue-table";
-import type {
-  Column,
-  ColumnDef,
-  ColumnFiltersState,
-  ColumnPinningState,
-  Row,
-  RowData,
-  RowPinningState,
-  SortingState,
-  TableOptions,
-  VisibilityState,
-} from "@tanstack/vue-table";
-import { startCase } from "lodash-es";
-import type { HTMLAttributes } from "vue";
+  import {
+    columnFacetingFeature,
+    columnFilteringFeature,
+    columnPinningFeature,
+    columnSizingFeature,
+    columnVisibilityFeature,
+    createExpandedRowModel,
+    createFacetedRowModel,
+    createFilteredRowModel,
+    createPaginatedRowModel,
+    createSortedRowModel,
+    filterFns,
+    FlexRender,
+    globalFilteringFeature,
+    rowExpandingFeature,
+    rowPaginationFeature,
+    rowPinningFeature,
+    rowSelectionFeature,
+    rowSortingFeature,
+    sortFns,
+    tableFeatures,
+    useTable,
+  } from "@tanstack/vue-table";
+  import type {
+    Column,
+    ColumnDef,
+    ColumnFiltersState,
+    ColumnPinningPosition,
+    ColumnPinningState,
+    Row,
+    RowData,
+    RowPinningPosition,
+    RowPinningState,
+    SortingState,
+    TableFeatures,
+    TableOptions,
+    ColumnVisibilityState,
+  } from "@tanstack/vue-table";
+  import { startCase } from "lodash-es";
+  import type { HTMLAttributes } from "vue";
 
-declare module "@tanstack/vue-table" {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface ColumnMeta<TData extends RowData, TValue> {
-    class?: {
-      th?: HTMLAttributes["class"];
-      td?: HTMLAttributes["class"];
-    };
+  /**
+   * Explicit v9 feature registration for this table. Only the features this component actually
+   * renders UI for are included; `columnSizingFeature` is required alongside `columnPinningFeature`
+   * because sticky pinned offsets are computed from `column.getStart()`/`column.getAfter()`, and
+   * `columnFacetingFeature` backs `column.getFacetedRowModel()` for footer-total style column
+   * defs.
+   */
+  export const tanStackTableFeatures = tableFeatures({
+    columnFilteringFeature,
+    globalFilteringFeature,
+    columnFacetingFeature,
+    columnPinningFeature,
+    columnSizingFeature,
+    columnVisibilityFeature,
+    rowExpandingFeature,
+    rowPaginationFeature,
+    rowPinningFeature,
+    rowSelectionFeature,
+    rowSortingFeature,
+    filteredRowModel: createFilteredRowModel(),
+    facetedRowModel: createFacetedRowModel(),
+    paginatedRowModel: createPaginatedRowModel(),
+    expandedRowModel: createExpandedRowModel(),
+    sortedRowModel: createSortedRowModel(),
+    filterFns,
+    sortFns,
+  });
+
+  export type TanStackTableFeatures = typeof tanStackTableFeatures;
+
+  declare module "@tanstack/vue-table" {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface ColumnMeta<TFeatures extends TableFeatures, TData extends RowData, TValue> {
+      class?: {
+        th?: HTMLAttributes["class"];
+        td?: HTMLAttributes["class"];
+      };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface TableMeta<TFeatures extends TableFeatures, TData extends RowData> {
+      class?: {
+        tr?: HTMLAttributes["class"];
+      };
+    }
   }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface TableMeta<TData extends RowData> {
-    class?: {
-      tr?: HTMLAttributes["class"];
-    };
-  }
-}
 </script>
 
-<script lang="ts" setup generic="T">
-const props = withDefaults(
-  defineProps<{
-    /** Array of data to display. */
-    data?: T[];
-    /** Column definitions. If not provided, columns will be auto-generated from data. */
-    columns?: ColumnDef<T, any>[];
-    /** Table class. */
-    class?: HTMLAttributes["class"];
-    /** Text to display when table is empty. */
-    emptyText?: string;
-    /** Hide table header. */
-    hideHeader?: boolean;
-    /** Show footer section. */
-    showFooter?: boolean;
-    /** Show pagination controls. */
-    showPagination?: boolean;
-    /** Show page info (e.g., "Page 1 of 10") */
-    showPageInfo?: boolean;
-    /** Show rows per page selector. */
-    showRowsPerPage?: boolean;
-    /** Show selected row count. */
-    showSelectedCount?: boolean;
-    /** Page size options. */
-    pageSizeOptions?: number[];
-    /** Initial page size. */
-    initialPageSize?: number;
-    /** Loading state. */
-    loading?: boolean;
-    /** Enable manual pagination (for server-side pagination) */
-    manualPagination?: boolean;
-    /** Total page count (required for manual pagination) */
-    pageCount?: number;
-    /** Enable manual sorting (for server-side sorting) */
-    manualSorting?: boolean;
-    /** Enable manual filtering (for server-side filtering) */
-    manualFiltering?: boolean;
-    /** Enable row pinning. */
-    enableRowPinning?: boolean;
-    /** Enable column pinning. */
-    enableColumnPinning?: boolean;
-    /** Show pin buttons in column headers. */
-    showColumnPinButtons?: boolean;
-    /** Additional table options. */
-    tableOptions?: Partial<TableOptions<T>>;
-    /**
-     * Text for "Rows per page" label.
-     *
-     * @default "Rows per page:"
-     */
-    rowsPerPageText?: string;
-    /**
-     * Icon name for expand cell (on state)
-     *
-     * @default "lucide:chevron-down"
-     */
-    expandCellIconOn?: string;
-    /**
-     * Icon name for expand cell (off state)
-     *
-     * @default "lucide:chevron-right"
-     */
-    expandCellIconOff?: string;
-    /**
-     * Icon name for pinned row (on state)
-     *
-     * @default "lucide:pin"
-     */
-    rowPinIconOn?: string;
-    /**
-     * Icon name for unpinned row (off state)
-     *
-     * @default "lucide:pin-off"
-     */
-    rowPinIconOff?: string;
-    /**
-     * Icon name for pinned column.
-     *
-     * @default "lucide:pin"
-     */
-    columnPinIconOn?: string;
-    /**
-     * Icon name for unpinning a column.
-     *
-     * @default "lucide:pin-off"
-     */
-    columnPinIconOff?: string;
-  }>(),
-  {
-    data: () => [],
-    emptyText: "No data available.",
-    showFooter: true,
-    showPagination: true,
-    showPageInfo: true,
-    showRowsPerPage: true,
-    pageSizeOptions: () => [10, 20, 30, 40, 50],
-    initialPageSize: 10,
-    loading: false,
-    manualPagination: false,
-    manualSorting: false,
-    manualFiltering: false,
-    enableRowPinning: true,
-    enableColumnPinning: false,
-    showColumnPinButtons: false,
-    pageCount: -1,
-    rowsPerPageText: "Rows per page:",
-    expandCellIconOn: "lucide:chevron-down",
-    expandCellIconOff: "lucide:chevron-right",
-    rowPinIconOn: "lucide:pin",
-    rowPinIconOff: "lucide:pin-off",
-    columnPinIconOn: "lucide:pin",
-    columnPinIconOff: "lucide:pin-off",
-  },
-);
-
-const emit = defineEmits<{
-  /**
-   * Emitted when the table is ready.
-   *
-   * Provides the table instance.
-   */
-  ready: [table: ReturnType<typeof useVueTable<T>>];
-  /** Emitted when pagination changes. */
-  "update:pagination": [pagination: { pageIndex: number; pageSize: number }];
-  /** Emitted when sorting changes. */
-  "update:sorting": [sorting: SortingState];
-  /** Emitted when column filters change. */
-  "update:columnFilters": [filters: ColumnFiltersState];
-  /** Emitted when a row is right-clicked. */
-  "row-contextmenu": [payload: { event: MouseEvent; row: any }];
-  /** Emitted when row pinning changes. */
-  "update:rowPinning": [pinning: RowPinningState];
-  /** Emitted when a row is pinned/unpinned via the pin cell. */
-  "row-pin": [payload: { row: any; pin: "top" | "bottom" | false }];
-  /** Emitted when column pinning changes. */
-  "update:columnPinning": [pinning: ColumnPinningState];
-  /** Emitted when a column is pinned/unpinned via header button. */
-  "column-pin": [payload: { column: any; pin: "left" | "right" | false }];
-}>();
-
-// Auto-generate columns from data if not provided
-const computedColumns = computed<ColumnDef<T, any>[]>(() => {
-  if (props.columns && props.columns.length > 0) {
-    return props.columns;
-  }
-
-  // Auto-generate from first data item
-  if (props.data && props.data.length > 0) {
-    const firstItem = props.data[0];
-    return Object.keys(firstItem as object).map((key) => ({
-      accessorKey: key,
-      header: startCase(key),
-      cell: (info: any) => info.getValue(),
-    }));
-  }
-
-  return [];
-});
-
-const sorting = ref<SortingState>([]);
-const columnFilters = ref<ColumnFiltersState>([]);
-const columnVisibility = ref<VisibilityState>({});
-const rowSelection = ref({});
-const globalFilter = ref("");
-const expanded = ref({});
-const rowPinning = ref<RowPinningState>({});
-const columnPinning = ref<ColumnPinningState>({});
-const pagination = ref({
-  pageIndex: 0,
-  pageSize: props.initialPageSize,
-});
-
-const table = useVueTable({
-  get data() {
-    return props.data;
-  },
-  get columns() {
-    return computedColumns.value;
-  },
-  state: {
-    get sorting() {
-      return sorting.value;
-    },
-    get columnFilters() {
-      return columnFilters.value;
-    },
-    get columnVisibility() {
-      return columnVisibility.value;
-    },
-    get rowSelection() {
-      return rowSelection.value;
-    },
-    get globalFilter() {
-      return globalFilter.value;
-    },
-    get pagination() {
-      return pagination.value;
-    },
-    get expanded() {
-      return expanded.value;
-    },
-    get rowPinning() {
-      return rowPinning.value;
-    },
-    get columnPinning() {
-      return columnPinning.value;
-    },
-  },
-  onSortingChange: (updaterOrValue) => {
-    sorting.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(sorting.value)
-        : updaterOrValue;
-    emit("update:sorting", sorting.value);
-  },
-  onColumnFiltersChange: (updaterOrValue) => {
-    columnFilters.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(columnFilters.value)
-        : updaterOrValue;
-    emit("update:columnFilters", columnFilters.value);
-  },
-  onColumnVisibilityChange: (updaterOrValue) => {
-    columnVisibility.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(columnVisibility.value)
-        : updaterOrValue;
-  },
-  onRowSelectionChange: (updaterOrValue) => {
-    rowSelection.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(rowSelection.value)
-        : updaterOrValue;
-  },
-  onGlobalFilterChange: (updaterOrValue) => {
-    globalFilter.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(globalFilter.value)
-        : updaterOrValue;
-  },
-  onPaginationChange: (updaterOrValue) => {
-    pagination.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(pagination.value)
-        : updaterOrValue;
-    emit("update:pagination", pagination.value);
-  },
-  onExpandedChange: (updaterOrValue) => {
-    expanded.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(expanded.value)
-        : updaterOrValue;
-  },
-  onRowPinningChange: (updaterOrValue) => {
-    rowPinning.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(rowPinning.value)
-        : updaterOrValue;
-    emit("update:rowPinning", rowPinning.value);
-  },
-  onColumnPinningChange: (updaterOrValue) => {
-    columnPinning.value =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(columnPinning.value)
-        : updaterOrValue;
-    emit("update:columnPinning", columnPinning.value);
-  },
-  getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
-  getFilteredRowModel: getFilteredRowModel(),
-  getPaginationRowModel: getPaginationRowModel(),
-  getExpandedRowModel: getExpandedRowModel(),
-  enableRowPinning: props.enableRowPinning,
-  enableColumnPinning: props.enableColumnPinning,
-  manualPagination: props.manualPagination,
-  manualSorting: props.manualSorting,
-  manualFiltering: props.manualFiltering,
-  pageCount: props.manualPagination ? props.pageCount : undefined,
-  ...props.tableOptions,
-});
-
-const pageSize = computed({
-  get() {
-    return table.getState().pagination.pageSize.toString();
-  },
-  set(value: string) {
-    table.setPageSize(Number(value));
-  },
-});
-
-const shouldShowColumnPinButton = (column: Column<T, unknown>) => {
-  return (
-    props.enableColumnPinning &&
-    props.showColumnPinButtons &&
-    column.getCanPin?.()
+<script lang="ts" setup generic="T extends RowData">
+  const props = withDefaults(
+    defineProps<{
+      /** Array of data to display. */
+      data?: T[];
+      /** Column definitions. If not provided, columns will be auto-generated from data. */
+      columns?: ColumnDef<TanStackTableFeatures, T, any>[];
+      /** Table class. */
+      class?: HTMLAttributes["class"];
+      /** Text to display when table is empty. */
+      emptyText?: string;
+      /** Hide table header. */
+      hideHeader?: boolean;
+      /** Show footer section. */
+      showFooter?: boolean;
+      /** Show pagination controls. */
+      showPagination?: boolean;
+      /** Show page info (e.g., "Page 1 of 10") */
+      showPageInfo?: boolean;
+      /** Show rows per page selector. */
+      showRowsPerPage?: boolean;
+      /** Show selected row count. */
+      showSelectedCount?: boolean;
+      /** Page size options. */
+      pageSizeOptions?: number[];
+      /** Initial page size. */
+      initialPageSize?: number;
+      /** Loading state. */
+      loading?: boolean;
+      /** Enable manual pagination (for server-side pagination) */
+      manualPagination?: boolean;
+      /** Total page count (required for manual pagination) */
+      pageCount?: number;
+      /** Enable manual sorting (for server-side sorting) */
+      manualSorting?: boolean;
+      /** Enable manual filtering (for server-side filtering) */
+      manualFiltering?: boolean;
+      /** Enable row pinning. */
+      enableRowPinning?: boolean;
+      /** Enable column pinning. */
+      enableColumnPinning?: boolean;
+      /** Show pin buttons in column headers. */
+      showColumnPinButtons?: boolean;
+      /** Additional table options. */
+      tableOptions?: Partial<TableOptions<TanStackTableFeatures, T>>;
+      /**
+       * Text for "Rows per page" label.
+       *
+       * @default "Rows per page:"
+       */
+      rowsPerPageText?: string;
+      /**
+       * Icon name for expand cell (on state)
+       *
+       * @default "lucide:chevron-down"
+       */
+      expandCellIconOn?: string;
+      /**
+       * Icon name for expand cell (off state)
+       *
+       * @default "lucide:chevron-right"
+       */
+      expandCellIconOff?: string;
+      /**
+       * Icon name for pinned row (on state)
+       *
+       * @default "lucide:pin"
+       */
+      rowPinIconOn?: string;
+      /**
+       * Icon name for unpinned row (off state)
+       *
+       * @default "lucide:pin-off"
+       */
+      rowPinIconOff?: string;
+      /**
+       * Icon name for pinned column.
+       *
+       * @default "lucide:pin"
+       */
+      columnPinIconOn?: string;
+      /**
+       * Icon name for unpinning a column.
+       *
+       * @default "lucide:pin-off"
+       */
+      columnPinIconOff?: string;
+    }>(),
+    {
+      data: () => [],
+      emptyText: "No data available.",
+      showFooter: true,
+      showPagination: true,
+      showPageInfo: true,
+      showRowsPerPage: true,
+      pageSizeOptions: () => [10, 20, 30, 40, 50],
+      initialPageSize: 10,
+      loading: false,
+      manualPagination: false,
+      manualSorting: false,
+      manualFiltering: false,
+      enableRowPinning: true,
+      enableColumnPinning: false,
+      showColumnPinButtons: false,
+      pageCount: -1,
+      rowsPerPageText: "Rows per page:",
+      expandCellIconOn: "lucide:chevron-down",
+      expandCellIconOff: "lucide:chevron-right",
+      rowPinIconOn: "lucide:pin",
+      rowPinIconOff: "lucide:pin-off",
+      columnPinIconOn: "lucide:pin",
+      columnPinIconOff: "lucide:pin-off",
+    }
   );
-};
 
-const getColumnPinIcon = (column: Column<T, unknown>) => {
-  const state = column.getIsPinned?.();
-  if (state === "left" || state === "right") return props.columnPinIconOn;
-  return props.columnPinIconOff;
-};
+  const emit = defineEmits<{
+    /**
+     * Emitted when the table is ready.
+     *
+     * Provides the table instance.
+     */
+    ready: [table: ReturnType<typeof useTable<TanStackTableFeatures, T>>];
+    /** Emitted when pagination changes. */
+    "update:pagination": [pagination: { pageIndex: number; pageSize: number }];
+    /** Emitted when sorting changes. */
+    "update:sorting": [sorting: SortingState];
+    /** Emitted when column filters change. */
+    "update:columnFilters": [filters: ColumnFiltersState];
+    /** Emitted when a row is right-clicked. */
+    "row-contextmenu": [payload: { event: MouseEvent; row: any }];
+    /** Emitted when row pinning changes. */
+    "update:rowPinning": [pinning: RowPinningState];
+    /** Emitted when a row is pinned/unpinned via the pin cell. */
+    "row-pin": [payload: { row: any; pin: RowPinningPosition }];
+    /** Emitted when column pinning changes. */
+    "update:columnPinning": [pinning: ColumnPinningState];
+    /** Emitted when a column is pinned/unpinned via header button. */
+    "column-pin": [payload: { column: any; pin: ColumnPinningPosition }];
+  }>();
 
-const getColumnPinTooltipText = (column: Column<T, unknown>) => {
-  const state = column.getIsPinned?.();
-  if (state === "left") return "Currently pinned left";
-  if (state === "right") return "Currently pinned right";
-  return "Not pinned";
-};
+  // Auto-generate columns from data if not provided
+  const computedColumns = computed<ColumnDef<TanStackTableFeatures, T, any>[]>(() => {
+    if (props.columns && props.columns.length > 0) {
+      return props.columns;
+    }
 
-const getPinLabel = (pin: "left" | "right" | false) => {
-  if (pin === "left") return "Pin to the left";
-  if (pin === "right") return "Pin to the right";
-  return "Unpin";
-};
+    // Auto-generate from first data item
+    if (props.data && props.data.length > 0) {
+      const firstItem = props.data[0];
+      return Object.keys(firstItem as object).map((key) => ({
+        accessorKey: key,
+        header: startCase(key),
+        cell: (info: any) => info.getValue(),
+      }));
+    }
 
-const pinColumn = (
-  column: Column<T, unknown>,
-  pin: "left" | "right" | false,
-) => {
-  column.pin(pin);
-  emit("column-pin", { column, pin });
-};
+    return [];
+  });
 
-const getRowPinTooltipText = (row: Row<T>) => {
-  const state = row.getIsPinned();
-  if (state === "top") return "Pinned top";
-  if (state === "bottom") return "Pinned bottom";
-  return "Not pinned";
-};
+  const sorting = ref<SortingState>([]);
+  const columnFilters = ref<ColumnFiltersState>([]);
+  const columnVisibility = ref<ColumnVisibilityState>({});
+  const rowSelection = ref({});
+  const globalFilter = ref("");
+  const expanded = ref({});
+  const rowPinning = ref<RowPinningState>({ top: [], bottom: [] });
+  const columnPinning = ref<ColumnPinningState>({ start: [], end: [] });
+  const pagination = ref({
+    pageIndex: 0,
+    pageSize: props.initialPageSize,
+  });
 
-const getRowPinLabel = (pin: "top" | "bottom" | false) => {
-  if (pin === "top") return "Pin to top";
-  if (pin === "bottom") return "Pin to bottom";
-  return "Unpin";
-};
+  const table = useTable({
+    features: tanStackTableFeatures,
+    get data() {
+      return props.data;
+    },
+    get columns() {
+      return computedColumns.value;
+    },
+    state: {
+      get sorting() {
+        return sorting.value;
+      },
+      get columnFilters() {
+        return columnFilters.value;
+      },
+      get columnVisibility() {
+        return columnVisibility.value;
+      },
+      get rowSelection() {
+        return rowSelection.value;
+      },
+      get globalFilter() {
+        return globalFilter.value;
+      },
+      get pagination() {
+        return pagination.value;
+      },
+      get expanded() {
+        return expanded.value;
+      },
+      get rowPinning() {
+        return rowPinning.value;
+      },
+      get columnPinning() {
+        return columnPinning.value;
+      },
+    },
+    onSortingChange: (updaterOrValue) => {
+      sorting.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(sorting.value) : updaterOrValue;
+      emit("update:sorting", sorting.value);
+    },
+    onColumnFiltersChange: (updaterOrValue) => {
+      columnFilters.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(columnFilters.value) : updaterOrValue;
+      emit("update:columnFilters", columnFilters.value);
+    },
+    onColumnVisibilityChange: (updaterOrValue) => {
+      columnVisibility.value =
+        typeof updaterOrValue === "function"
+          ? updaterOrValue(columnVisibility.value)
+          : updaterOrValue;
+    },
+    onRowSelectionChange: (updaterOrValue) => {
+      rowSelection.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(rowSelection.value) : updaterOrValue;
+    },
+    onGlobalFilterChange: (updaterOrValue) => {
+      globalFilter.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(globalFilter.value) : updaterOrValue;
+    },
+    onPaginationChange: (updaterOrValue) => {
+      pagination.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(pagination.value) : updaterOrValue;
+      emit("update:pagination", pagination.value);
+    },
+    onExpandedChange: (updaterOrValue) => {
+      expanded.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(expanded.value) : updaterOrValue;
+    },
+    onRowPinningChange: (updaterOrValue) => {
+      rowPinning.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(rowPinning.value) : updaterOrValue;
+      emit("update:rowPinning", rowPinning.value);
+    },
+    onColumnPinningChange: (updaterOrValue) => {
+      columnPinning.value =
+        typeof updaterOrValue === "function" ? updaterOrValue(columnPinning.value) : updaterOrValue;
+      emit("update:columnPinning", columnPinning.value);
+    },
+    // Any row can be expanded to reveal the `expanded-row` slot's detail
+    // content, regardless of whether it has subRows.
+    getRowCanExpand: () => true,
+    enableRowPinning: props.enableRowPinning,
+    enableColumnPinning: props.enableColumnPinning,
+    manualPagination: props.manualPagination,
+    manualSorting: props.manualSorting,
+    manualFiltering: props.manualFiltering,
+    pageCount: props.manualPagination ? props.pageCount : undefined,
+    ...props.tableOptions,
+  });
 
-const pinRow = (row: Row<T>, pin: "top" | "bottom" | false) => {
-  row.pin(pin);
-  emit("row-pin", { row, pin });
-};
+  const pageSize = computed({
+    get() {
+      return table.atoms.pagination.get().pageSize.toString();
+    },
+    set(value: string) {
+      table.setPageSize(Number(value));
+    },
+  });
 
-const getPinnedHeaderStyle = (column: Column<T, unknown>) => {
-  const pinned = column.getIsPinned?.();
-  if (!pinned) return undefined;
+  const shouldShowColumnPinButton = (column: Column<TanStackTableFeatures, T, unknown>) => {
+    return props.enableColumnPinning && props.showColumnPinButtons && column.getCanPin?.();
+  };
 
-  const isLeft = pinned === "left";
-  const offset = column.getStart?.(isLeft ? "left" : "right") ?? 0;
+  const getColumnPinIcon = (column: Column<TanStackTableFeatures, T, unknown>) => {
+    const state = column.getIsPinned?.();
+    if (state === "start" || state === "end") return props.columnPinIconOn;
+    return props.columnPinIconOff;
+  };
 
-  return {
-    position: "sticky",
-    [isLeft ? "left" : "right"]: `${offset}px`,
-    zIndex: 30,
-    background: "var(--ui-table-pinned-bg, var(--background))",
-    boxShadow: isLeft
-      ? "2px 0 6px -2px rgb(0 0 0 / 0.08)"
-      : "-2px 0 6px -2px rgb(0 0 0 / 0.08)",
-  } as const;
-};
+  const getColumnPinTooltipText = (column: Column<TanStackTableFeatures, T, unknown>) => {
+    const state = column.getIsPinned?.();
+    if (state === "start") return "Currently pinned to start";
+    if (state === "end") return "Currently pinned to end";
+    return "Not pinned";
+  };
 
-const getPinnedColumnStyle = (column: Column<T, unknown>) => {
-  const pinned = column.getIsPinned?.();
-  if (!pinned) return undefined;
+  const getPinLabel = (pin: ColumnPinningPosition) => {
+    if (pin === "start") return "Pin to the start";
+    if (pin === "end") return "Pin to the end";
+    return "Unpin";
+  };
 
-  const isLeft = pinned === "left";
-  const offset = column.getStart?.(isLeft ? "left" : "right") ?? 0;
+  const pinColumn = (
+    column: Column<TanStackTableFeatures, T, unknown>,
+    pin: ColumnPinningPosition
+  ) => {
+    column.pin(pin);
+    emit("column-pin", { column, pin });
+  };
 
-  return {
-    position: "sticky",
-    [isLeft ? "left" : "right"]: `${offset}px`,
-    zIndex: 10,
-    background: "var(--ui-table-pinned-bg, var(--background))",
-    boxShadow: isLeft
-      ? "2px 0 6px -2px rgb(0 0 0 / 0.08)"
-      : "-2px 0 6px -2px rgb(0 0 0 / 0.08)",
-  } as const;
-};
+  const getRowPinTooltipText = (row: Row<TanStackTableFeatures, T>) => {
+    const state = row.getIsPinned();
+    if (state === "top") return "Pinned top";
+    if (state === "bottom") return "Pinned bottom";
+    return "Not pinned";
+  };
 
-const getPinnedRowStyle = (row: Row<T>) => {
-  const pinned = row.getIsPinned();
-  if (!pinned) return undefined;
+  const getRowPinLabel = (pin: RowPinningPosition) => {
+    if (pin === "top") return "Pin to top";
+    if (pin === "bottom") return "Pin to bottom";
+    return "Unpin";
+  };
 
-  const index =
-    typeof (row as any).getPinnedIndex === "function"
-      ? (row as any).getPinnedIndex()
-      : 0;
-  const offsetVar = "var(--ui-table-row-height, 44px)";
-  const offsetValue = `calc(${index} * ${offsetVar})`;
+  const pinRow = (row: Row<TanStackTableFeatures, T>, pin: RowPinningPosition) => {
+    row.pin(pin);
+    emit("row-pin", { row, pin });
+  };
 
-  return pinned === "top"
-    ? {
-        position: "sticky",
-        top: offsetValue,
-        zIndex: 5,
-        background: "var(--ui-table-pinned-bg, var(--background))",
-      }
-    : {
-        position: "sticky",
-        bottom: offsetValue,
-        zIndex: 5,
-        background: "var(--ui-table-pinned-bg, var(--background))",
-      };
-};
+  const getPinnedHeaderStyle = (column: Column<TanStackTableFeatures, T, unknown>) => {
+    const pinned = column.getIsPinned?.();
+    if (!pinned) return undefined;
 
-const hasFooter = computed(() => {
-  return computedColumns.value.some((col) => col.footer);
-});
+    const isStart = pinned === "start";
+    const offset = column.getStart?.(pinned) ?? 0;
 
-onMounted(() => {
-  emit("ready", table);
-});
+    return {
+      position: "sticky",
+      [isStart ? "insetInlineStart" : "insetInlineEnd"]: `${offset}px`,
+      zIndex: 30,
+      background: "var(--ui-table-pinned-bg, var(--background))",
+      boxShadow: isStart ? "2px 0 6px -2px rgb(0 0 0 / 0.08)" : "-2px 0 6px -2px rgb(0 0 0 / 0.08)",
+    } as const;
+  };
 
-defineExpose({
-  table,
-  sorting,
-  columnFilters,
-  columnVisibility,
-  rowSelection,
-  globalFilter,
-  pagination,
-  expanded,
-  rowPinning,
-  columnPinning,
-});
+  const getPinnedColumnStyle = (column: Column<TanStackTableFeatures, T, unknown>) => {
+    const pinned = column.getIsPinned?.();
+    if (!pinned) return undefined;
+
+    const isStart = pinned === "start";
+    const offset = column.getStart?.(pinned) ?? 0;
+
+    return {
+      position: "sticky",
+      [isStart ? "insetInlineStart" : "insetInlineEnd"]: `${offset}px`,
+      zIndex: 10,
+      background: "var(--ui-table-pinned-bg, var(--background))",
+      boxShadow: isStart ? "2px 0 6px -2px rgb(0 0 0 / 0.08)" : "-2px 0 6px -2px rgb(0 0 0 / 0.08)",
+    } as const;
+  };
+
+  const getPinnedRowStyle = (row: Row<TanStackTableFeatures, T>) => {
+    const pinned = row.getIsPinned();
+    if (!pinned) return undefined;
+
+    const index = row.getPinnedIndex();
+    const offsetVar = "var(--ui-table-row-height, 44px)";
+    const offsetValue = `calc(${index} * ${offsetVar})`;
+
+    return pinned === "top"
+      ? {
+          position: "sticky",
+          top: offsetValue,
+          zIndex: 5,
+          background: "var(--ui-table-pinned-bg, var(--background))",
+        }
+      : {
+          position: "sticky",
+          bottom: offsetValue,
+          zIndex: 5,
+          background: "var(--ui-table-pinned-bg, var(--background))",
+        };
+  };
+
+  const hasFooter = computed(() => {
+    return computedColumns.value.some((col) => col.footer);
+  });
+
+  onMounted(() => {
+    emit("ready", table);
+  });
+
+  defineExpose({
+    table,
+    sorting,
+    columnFilters,
+    columnVisibility,
+    rowSelection,
+    globalFilter,
+    pagination,
+    expanded,
+    rowPinning,
+    columnPinning,
+  });
 </script>
 
 <style>
-/* Loading animation */
-@keyframes loading {
-  0% {
-    transform: translateX(-100%);
+  /* Loading animation */
+  @keyframes loading {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
   }
-  50% {
-    transform: translateX(0%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
 </style>

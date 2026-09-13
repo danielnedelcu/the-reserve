@@ -41,7 +41,7 @@ avoid converting.
 - [ ] **`@change` no longer fires.** Anything that hung off it must move to
       `v-model` or a watcher. This is the most common silent breakage.
 - [ ] **The value is a string.** Numeric options need `.toString()` out and
-      `Number()` back (`Ui/TanStackTable.vue:727`).
+      `Number()` back (`Ui/TanStackTable.vue:689`).
 - [ ] The `id` your `<label for>` points at now belongs on `UiSelectTrigger`.
 - [ ] The empty/placeholder option is a `placeholder` prop, not an
       `<option value="">`.

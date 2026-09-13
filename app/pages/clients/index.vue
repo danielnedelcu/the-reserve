@@ -101,7 +101,10 @@ const clientColumns = [
     header: "No-shows",
     enableSorting: true,
   },
-  { id: "actions", header: "", enableSorting: false },
+  // No header at all, rather than header: "" — TanStack Table v9 renders an
+  // empty string as an empty text node on the client while the server emits
+  // nothing, which is a hydration mismatch on every page with this column.
+  { id: "actions", enableSorting: false },
 ];
 
 // ---------------------------------------------------------------------------
@@ -248,9 +251,16 @@ const saveClient = handleSubmit(async (values) => {
 </script>
 
 <template>
-  <div class="mx-auto w-full p-6 md:p-10">
+  <div class="mx-auto flex h-[calc(100dvh-3rem)] w-full flex-col p-6 md:p-10">
+    <!-- The page owns the viewport: the layout header is h-12 (3rem), so
+         this root fills the rest, as a flex column. Everything above the
+         table is shrink-0; the table card is the one thing allowed to
+         shrink, which is what lets a long list scroll inside the card with
+         the pager pinned at the bottom of the window, while a short list
+         keeps the card content-sized and the pager right under the last
+         row. -->
     <div
-      class="grid grid-cols-1 gap-5 md:flex md:items-center md:justify-between"
+      class="grid shrink-0 grid-cols-1 gap-5 md:flex md:items-center md:justify-between"
     >
       <div>
         <h1 class="text-2xl font-semibold">Clients</h1>
@@ -264,7 +274,7 @@ const saveClient = handleSubmit(async (values) => {
       </UiButton>
     </div>
 
-    <div class="mt-6 flex flex-wrap items-center gap-4">
+    <div class="mt-6 flex shrink-0 flex-wrap items-center gap-4">
       <UiInput
         v-model="search"
         placeholder="Search name, email, phone…"
@@ -282,8 +292,28 @@ const saveClient = handleSubmit(async (values) => {
       </label>
     </div>
 
+    <!-- The card is a flex column that may SHRINK (min-h-0, no grow): with
+         more rows than fit, it takes the remaining height and the table
+         scrolls inside it; with fewer, it stays as tall as its rows. The
+         constraint has to reach the scroll container through
+         UiTanStackTable's own markup — a fragment of two siblings, the
+         table wrapper (first child) and the pager (last child) — so those
+         are addressed from here with child selectors, and the table's
+         container (data-slot=table-container) gets the overflow. Header
+         cells stick to the container's top; sticky goes on the <th>s, not
+         the <thead>, because under collapsed table borders a sticky thead
+         loses its bottom border, so the line is an inset shadow per cell —
+         and the header row's own border-b is switched off, or the two
+         stack into a 2px line at rest.
+         No minimum height anywhere: a floor on the container padded a
+         one-row list up to the floor and pushed the pager off the rows,
+         which is exactly what this layout is meant to avoid. All styled
+         from the page: Ui/TanStackTable.vue stays the stock upstream
+         file. overflow-hidden clips the square sticky header cells to the
+         card's rounded corners — without it their bg-card paints over the
+         border's curve at the top corners. -->
     <div
-      class="mt-4 border bg-card **:data-[slot=table-container]:max-h-[70vh] **:data-[slot=table-container]:overflow-y-auto"
+      class="mt-4 flex min-h-0 flex-col overflow-hidden rounded-md border bg-card [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-col [&>div:last-child]:shrink-0 **:data-[slot=table-container]:min-h-0 **:data-[slot=table-container]:overflow-y-auto **:data-[slot=table-head]:sticky **:data-[slot=table-head]:top-0 **:data-[slot=table-head]:z-10 **:data-[slot=table-head]:bg-card **:data-[slot=table-head]:shadow-[inset_0_-1px_0_var(--border)] [&_thead_tr]:border-b-0"
     >
       <UiTanStackTable
         :data="visibleClients"

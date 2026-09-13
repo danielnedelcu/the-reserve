@@ -145,7 +145,7 @@ color="bg-emerald-500 text-white dark:bg-emerald-400 dark:text-emerald-950"
 **`UiSelect` values are STRINGS.** It is a compound component
 (`Trigger` / `Content` / `Item`), not a drop-in for `<select>`, and it binds
 strings. Numbers need converting on both sides — `UiTanStackTable` keeps a
-computed purely for this (`Ui/TanStackTable.vue:727`). Full API and the
+computed purely for this (`Ui/TanStackTable.vue:689`). Full API and the
 `text` prop vs slot in `references/components.md`.
 
 ## Before you call UI work done

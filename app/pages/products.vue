@@ -78,7 +78,10 @@ const productColumns = computed(() => [
     header: "Stock",
     enableSorting: true,
   },
-  { id: "actions", header: "", enableSorting: false },
+  // No header at all, rather than header: "" — TanStack Table v9 renders an
+  // empty string as an empty text node on the client while the server emits
+  // nothing, which is a hydration mismatch on every page with this column.
+  { id: "actions", enableSorting: false },
 ]);
 
 const visibleProducts = computed(() => {
@@ -213,9 +216,14 @@ async function toggleActive(product: ProductRow) {
 </script>
 
 <template>
-  <div class="mx-auto w-full p-6 md:p-10">
+  <div class="mx-auto flex h-[calc(100dvh-3rem)] w-full flex-col p-6 md:p-10">
+    <!-- Same layout as clients/index.vue (the reference, with the reasoning):
+         the root owns the viewport below the h-12 layout header, everything
+         above the table is shrink-0, and the table card is the one thing
+         allowed to shrink — long lists scroll inside it with the pager at
+         the window's bottom edge, short lists keep it content-sized. -->
     <div
-      class="grid grid-cols-1 gap-5 md:flex md:items-center md:justify-between"
+      class="grid shrink-0 grid-cols-1 gap-5 md:flex md:items-center md:justify-between"
     >
       <div>
         <h1 class="text-2xl font-semibold">Products</h1>
@@ -230,7 +238,7 @@ async function toggleActive(product: ProductRow) {
       </UiButton>
     </div>
 
-    <div class="mt-6 flex flex-wrap items-center gap-4">
+    <div class="mt-6 flex shrink-0 flex-wrap items-center gap-4">
       <UiInput
         v-model="search"
         placeholder="Search name, SKU…"
@@ -248,7 +256,9 @@ async function toggleActive(product: ProductRow) {
       </label>
     </div>
 
-    <div class="mt-4 border bg-card">
+    <div
+      class="mt-4 flex min-h-0 flex-col overflow-hidden rounded-md border bg-card [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-col [&>div:last-child]:shrink-0 **:data-[slot=table-container]:min-h-0 **:data-[slot=table-container]:overflow-y-auto **:data-[slot=table-head]:sticky **:data-[slot=table-head]:top-0 **:data-[slot=table-head]:z-10 **:data-[slot=table-head]:bg-card **:data-[slot=table-head]:shadow-[inset_0_-1px_0_var(--border)] [&_thead_tr]:border-b-0"
+    >
       <UiTanStackTable
         :data="visibleProducts"
         :columns="productColumns"

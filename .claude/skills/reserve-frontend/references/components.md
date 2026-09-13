@@ -46,7 +46,7 @@ components rather than one, and its value is always a string.
 
 - `UiSelectTrigger` takes `placeholder` and the `id` your label points at.
   `UiSelectValue` is the alternative when you want the trigger to render the
-  chosen item itself (`Ui/TanStackTable.vue:329`).
+  chosen item itself (`Ui/TanStackTable.vue:272`).
 - `UiSelectItem` takes `value` plus EITHER a `text` prop or a default slot
   (`Ui/Select/Item.vue:11`).
 - **Numeric options must be converted on both sides.** The paging control
@@ -54,11 +54,11 @@ components rather than one, and its value is always a string.
 
 ```ts
 const pageSize = computed({
-  get: () => table.getState().pagination.pageSize.toString(),
+  get: () => table.atoms.pagination.get().pageSize.toString(),
   set: (value: string) => table.setPageSize(Number(value)),
 });
 ```
-(`Ui/TanStackTable.vue:727`)
+(`Ui/TanStackTable.vue:689`)
 
 There is no `change` event to listen to — use `v-model`, or watch the bound
 ref. Code ported from `<select>` that relied on `@change` will silently stop
