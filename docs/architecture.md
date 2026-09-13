@@ -77,6 +77,20 @@ Postgres rather than process memory, and visitor IPs are HMAC'd under a
 server-only secret so the attempt log is not a list of who visited a
 health-intake page.
 
+**Door 0 has a second, MORE exposed caller: public lead capture**
+(`POST /api/public/leads`, §8). A marketing-site landing page posts a
+name, an email and an interest — no session, and unlike the intake form
+NO TOKEN: the form is open by design, so nothing bounds who may call it.
+Same privilege model — anon holds no policy on `leads`, the route writes
+under the service role, attempts are counted in Postgres under HMAC'd IPs
+— plus the layers the missing token forces: exact-origin CORS from
+configuration (never `*`), a honeypot answered exactly like a success, a
+tighter per-address rate limit, and strict shape validation. The
+organisation a lead belongs to is a server-side setting, never a client
+claim. Known residual: per-address limiting is evaded by distributed
+bots; CAPTCHA is the escalation, keyed to observed abuse. Proved both
+ways by `verify:leads`.
+
 It shares door 2's mechanism and belongs at its own position on the trust
 axis, not as a footnote to a staff flow. Detail:
 `docs/design/prospective-onboarding-design.md`.

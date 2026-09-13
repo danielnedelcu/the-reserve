@@ -1,8 +1,9 @@
 # Marketing lead capture (§8) — design
 
-Status: PHASE 1 (schema) drafted 2026-09-13 as
-`supabase/migrations/20260913153010_leads_capture.sql`, awaiting push;
-phases 2–4 not built. Owner-INDEPENDENT (no tier answers needed).
+Status: PHASE 1 (schema) SHIPPED 2026-09-13
+(`supabase/migrations/20260913153010_leads_capture.sql`). PHASE 2 (public
+capture endpoint) built 2026-09-13 — `server/api/public/leads/index.ts`,
+`verify:leads` 52/52; phases 3–4 not built. Owner-INDEPENDENT (no tier answers needed).
 Design-room session 2026-09-12. `[AS-BUILT]` marks where the SQL
 deviates from the prose below.
 
@@ -111,14 +112,24 @@ Reuse from the §6 public-submission model:
   legitimate origin, recorded as source 'manual'. anon still has nothing.
 - DB-backed rate limiting (the form_submission_attempts pattern —
   HMAC'd IPs keyed by FORM_IP_PEPPER, or a leads-specific equivalent),
-  fail-closed if the pepper is absent.
+  fail-closed if the pepper is absent. [AS-BUILT] The SAME table, with
+  `token is null` as the lead discriminator (the prospect route records
+  a token on every attempt, garbage included) and a tighter per-address
+  cap of 5 per hour — a person fills a landing page once. Counting only
+  null-token rows keeps lead spam from locking a prospect out from the
+  same address. The discriminator is a convention, asserted by
+  verify:leads from the code that decides it; an `endpoint` column is
+  the bounded tightening if it ever needs to be a constraint.
 - Server-side shape validation; reject unknown/oversized input.
 
 New, because there is no token:
 
 - HONEYPOT field — a hidden field bots fill and humans do not; reject
   submissions that fill it. Free, no user friction, catches naive bots.
-  This is the baseline first layer.
+  This is the baseline first layer. [AS-BUILT] The field is `website`
+  (`LEAD_HONEYPOT_FIELD`), allowed by the strict schema so a filled one
+  is CAUGHT rather than rejected as unknown; a trip is recorded as a
+  rejected attempt and answered with the identical success body.
 - Rate limiting is the second layer (bounds a single abuser; distributed
   bots evade per-IP, which is the known residual).
 - CAPTCHA is DEFERRED — the escalation if spam actually materialises.
@@ -127,6 +138,26 @@ New, because there is no token:
   insufficient in practice. Decision keyed to observed abuse, not
   built preemptively — but note the landing pages' discoverability
   raises the odds vs the token-gated prospect form.
+
+## Two questions the endpoint had to answer that the design left open
+
+**Which organisation?** A public POST carries no session and no token, so
+nothing in the request can be trusted to name the org — a page saying
+"org X" would let anyone post into any org. [AS-BUILT] The org is a
+SERVER-SIDE setting, `LEADS_ORGANIZATION_ID`, fail-closed (503 when
+absent). Single-org today, so that is the whole answer; the bounded
+upgrade for a second org with its own landing pages is a per-page
+capture key resolved to an org in the database. Deliberately not "the
+first organisations row", which is a hardcode wearing a query.
+
+**Which origins?** The landing pages live on the marketing site, a
+different origin, so the browser preflights. [AS-BUILT] Exact origins
+from `LEADS_ALLOWED_ORIGINS`, never `*`; unset means no cross-origin
+caller. A request naming any other origin is refused with 403 for the
+preflight and the POST alike. Honest limit: CORS is enforced by browsers,
+so a script with no Origin header is not stopped by it and cannot be —
+the origin check keeps other websites from using the form; the honeypot
+and the rate limit are what stand against scripts.
 
 ## Retention
 
@@ -142,7 +173,9 @@ New, because there is no token:
   the prospect_intake purge (a status the purge does not name is kept, not
   swept). pg_cron, scheduled in the migration, with an outcome canary in a
   verify script (nothing past the window in a purgeable status), since the
-  app's roles cannot read cron.job.
+  app's roles cannot read cron.job. [AS-BUILT] The canary lives in
+  verify:leads, alongside a both-directions purge check: a backdated
+  `new` lead and its note go, a backdated `converted` lead survives.
 
 ## Permissions
 

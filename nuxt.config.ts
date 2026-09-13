@@ -54,6 +54,14 @@ export default defineNuxtConfig({
     // unsalted IPv4 digest is precomputable, so plaintext-equivalent).
     // Absent => the public submission route refuses to serve.
     formIpPepper: process.env.FORM_IP_PEPPER,
+    // Public lead capture (/api/public/leads). A landing-page POST carries
+    // no session and no token, so the organisation a lead belongs to is a
+    // SERVER-SIDE fact set here, never a client claim. Absent => the route
+    // refuses to serve.
+    leadsOrganizationId: process.env.LEADS_ORGANIZATION_ID,
+    // Exact origins (comma-separated) allowed to call it from a browser —
+    // the marketing site. Never `*`. Absent => no cross-origin caller.
+    leadsAllowedOrigins: process.env.LEADS_ALLOWED_ORIGINS,
     // ...existing server-side entries...
     public: {
       stripePublishableKey: process.env.NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,

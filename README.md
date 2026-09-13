@@ -118,6 +118,7 @@ silent — the app returns 200 and looks healthy either way.
 | `npm run verify:presets` | every preset query runs, and each chip pairs with server SQL |
 | `npm run verify:forms` | anon has no write path; the health/non-health split holds; retention purges work in both directions |
 | `npm run e2e:forms` | the public submission endpoint over HTTP — token single-use, rate limit actually limits |
+| `npm run verify:leads` | the OPEN lead-capture endpoint, both directions — anon has no write path, honeypot rejects silently, per-IP limit limits, CORS is exact-origin, shape and interest set enforced, retention purge keeps `converted` (needs the dev server) |
 
 ## The rules that bite
 
