@@ -136,16 +136,20 @@ const STATUS_DOT: Record<string, string> = {
 </script>
 
 <template>
-  <div class="rounded-md border bg-card p-5">
-    <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold">Today's appointments</h2>
-      <p class="text-muted-foreground text-xs">
-        {{ appointments?.length ?? 0 }} appointment{{
-          (appointments?.length ?? 0) === 1 ? "" : "s"
-        }}
-        <span v-if="settledCount"> · {{ settledCount }} settled ✓</span>
-      </p>
-    </div>
+  <!-- Capped card, pinned title, the whole list scrolls (section headings
+       scroll with their groups): DashboardScrollFrame. -->
+  <DashboardScrollFrame class="max-h-[450px] p-5">
+    <template #header>
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Today's appointments</h2>
+        <p class="text-muted-foreground text-xs">
+          {{ appointments?.length ?? 0 }} appointment{{
+            (appointments?.length ?? 0) === 1 ? "" : "s"
+          }}
+          <span v-if="settledCount"> · {{ settledCount }} settled ✓</span>
+        </p>
+      </div>
+    </template>
 
     <!-- READY TO CHECK OUT: the money lane, always on top -->
     <section v-if="readyToSettle.length" class="mt-4">
@@ -198,7 +202,9 @@ const STATUS_DOT: Record<string, string> = {
               :class="STATUS_DOT[appt.status]"
             />
             <div class="min-w-0">
-              <p class="truncate text-sm font-medium">{{ clientName(appt) }}</p>
+              <p class="truncate text-sm font-medium">
+                {{ clientName(appt) }}
+              </p>
               <p class="text-muted-foreground truncate text-xs">
                 {{ appt.appointment_services[0]?.name_snapshot }} ·
                 {{ appt.staff?.display_name }} ·
@@ -292,5 +298,5 @@ const STATUS_DOT: Record<string, string> = {
     >
       No appointments today.
     </p>
-  </div>
+  </DashboardScrollFrame>
 </template>

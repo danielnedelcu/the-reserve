@@ -125,67 +125,71 @@ function timeRange(appt: Appt) {
 </script>
 
 <template>
-  <div class="rounded-md border bg-card p-5">
-    <!-- Weekly calendar: dots per provider, click a day to list it below -->
-    <UiCalendar
-      view="weekly"
-      borderless
-      title-position="left"
-      transparent
-      expanded
-      :attributes="attributes"
-      @dayclick="onDayClick"
-    />
+  <!-- DashboardScrollFrame: the calendar and the day heading stay put, the
+       day's list scrolls, "Open full schedule" stays visible below. The
+       cap is taller than the other two cards' because the calendar itself
+       takes the top ~230px. -->
+  <DashboardScrollFrame class="max-h-[600px] p-5">
+    <template #header>
+      <!-- Weekly calendar: dots per provider, click a day to list it below -->
+      <UiCalendar
+        view="weekly"
+        borderless
+        title-position="left"
+        transparent
+        expanded
+        :attributes="attributes"
+        @dayclick="onDayClick"
+      />
 
-    <!-- Selected day's appointments -->
-    <div class="mt-4">
-      <div class="flex items-center gap-3">
+      <!-- Selected day's heading -->
+      <div class="mt-4 flex items-center gap-3">
         <p class="text-muted-foreground shrink-0 text-xs font-medium">
           {{ dayLabel }}
         </p>
         <div class="border-border/70 flex-1 border-t border-dashed" />
       </div>
+    </template>
 
-      <ul class="mt-3 space-y-3">
-        <li v-for="appt in dayAppointments" :key="appt.id">
-          <UiCard class="relative overflow-hidden rounded-md py-3">
-            <div
-              class="absolute inset-y-0 left-0 w-1"
-              :style="{ backgroundColor: providerColor(appt.staff_id) }"
-              aria-hidden="true"
-            />
-            <UiCardContent class="px-4 py-0 pl-5">
-              <p class="text-xs font-medium flex flex-col">
-                {{
-                  appt.client
-                    ? `${appt.client.first_name} ${appt.client.last_name}`
-                    : "Client"
-                }}
-                <span class="text-muted-foreground font-normal">
-                  {{ appt.appointment_services[0]?.name_snapshot }}
-                </span>
-              </p>
-              <p class="text-muted-foreground mt-0.5 text-xs">
-                {{ timeRange(appt) }}
-                <span v-if="appt.staff"> · {{ appt.staff.display_name }}</span>
-              </p>
-            </UiCardContent>
-          </UiCard>
-        </li>
-        <li
-          v-if="!dayAppointments.length"
-          class="text-muted-foreground text-sm"
-        >
-          No appointments this day.
-        </li>
-      </ul>
-    </div>
+    <!-- Selected day's appointments (this is what scrolls) -->
+    <ul class="mt-3 space-y-3">
+      <li v-for="appt in dayAppointments" :key="appt.id">
+        <UiCard class="relative overflow-hidden rounded-md py-3">
+          <div
+            class="absolute inset-y-0 left-0 w-1"
+            :style="{ backgroundColor: providerColor(appt.staff_id) }"
+            aria-hidden="true"
+          />
+          <UiCardContent class="px-4 py-0 pl-5">
+            <p class="text-xs font-medium flex flex-col">
+              {{
+                appt.client
+                  ? `${appt.client.first_name} ${appt.client.last_name}`
+                  : "Client"
+              }}
+              <span class="text-muted-foreground font-normal">
+                {{ appt.appointment_services[0]?.name_snapshot }}
+              </span>
+            </p>
+            <p class="text-muted-foreground mt-0.5 text-xs">
+              {{ timeRange(appt) }}
+              <span v-if="appt.staff"> · {{ appt.staff.display_name }}</span>
+            </p>
+          </UiCardContent>
+        </UiCard>
+      </li>
+      <li v-if="!dayAppointments.length" class="text-muted-foreground text-sm">
+        No appointments this day.
+      </li>
+    </ul>
 
-    <NuxtLink
-      to="/schedule"
-      class="text-muted-foreground mt-5 block text-xs underline-offset-4 hover:underline"
-    >
-      Open full schedule →
-    </NuxtLink>
-  </div>
+    <template #footer>
+      <NuxtLink
+        to="/schedule"
+        class="text-muted-foreground mt-5 block text-xs underline-offset-4 hover:underline"
+      >
+        Open full schedule →
+      </NuxtLink>
+    </template>
+  </DashboardScrollFrame>
 </template>
