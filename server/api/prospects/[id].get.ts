@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: prospect, error } = await client
     .from("prospect_intake")
-    .select("id, first_name, last_name, email, phone, status, submitted_at, reviewed_at, reviewed_by")
+    .select("id, first_name, last_name, email, phone, status, submitted_at, reviewed_at, reviewed_by, lead_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -38,8 +38,21 @@ export default defineEventHandler(async (event) => {
   // relabel what someone said.
   const fields = response ? parseFields(response.form_versions.fields) : [];
 
+  // Provenance: the lead this prospect came from, if any (§8). Read as the
+  // caller — a reviewer without leads.view gets null and no hint.
+  let lead: { id: string; first_name: string; last_name: string; source: string } | null = null;
+  if (prospect.lead_id) {
+    const { data } = await client
+      .from("leads")
+      .select("id, first_name, last_name, source")
+      .eq("id", prospect.lead_id)
+      .maybeSingle();
+    lead = data ?? null;
+  }
+
   return {
     prospect,
+    lead,
     submission: response
       ? {
           id: response.id,

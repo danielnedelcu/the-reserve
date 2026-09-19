@@ -32,6 +32,8 @@ interface Detail {
     submitted_at: string;
     reviewed_at: string | null;
   };
+  /** The lead this prospect came from, if any (§8 provenance). */
+  lead: { id: string; first_name: string; last_name: string; source: string } | null;
   submission: {
     id: string;
     formName: string;
@@ -98,6 +100,15 @@ async function decide(status: "under_review" | "approved" | "rejected") {
       <p class="text-muted-foreground mt-1 text-sm">
         {{ prospect.email
         }}<span v-if="prospect.phone"> · {{ prospect.phone }}</span>
+      </p>
+      <!-- Provenance: the lead → prospect link, from the prospect's end. -->
+      <p v-if="data?.lead" class="text-muted-foreground mt-1 flex items-center gap-1.5 text-sm">
+        <Icon name="lucide:megaphone" class="size-4" aria-hidden="true" />
+        Came from a lead
+        <NuxtLink :to="`/leads/${data.lead.id}`" class="font-medium hover:underline">
+          {{ data.lead.first_name }} {{ data.lead.last_name }}
+        </NuxtLink>
+        · via {{ data.lead.source }}
       </p>
 
       <!-- What approving does, said plainly, on the screen where someone

@@ -813,6 +813,7 @@ export type Database = {
           form_version_id: string
           id: string
           issued_by: string
+          lead_id: string | null
           organization_id: string
           revoked_at: string | null
           token: string
@@ -826,6 +827,7 @@ export type Database = {
           form_version_id: string
           id?: string
           issued_by: string
+          lead_id?: string | null
           organization_id: string
           revoked_at?: string | null
           token?: string
@@ -839,6 +841,7 @@ export type Database = {
           form_version_id?: string
           id?: string
           issued_by?: string
+          lead_id?: string | null
           organization_id?: string
           revoked_at?: string | null
           token?: string
@@ -863,6 +866,13 @@ export type Database = {
             columns: ["issued_by"]
             isOneToOne: false
             referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_links_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
           {
@@ -2264,6 +2274,34 @@ export type Database = {
           new_user_id: string
         }
         Returns: string
+      }
+      convert_lead: {
+        Args: {
+          p_delivery_email: string
+          p_expires_at: string
+          p_form_version_id: string
+          p_lead_id: string
+        }
+        Returns: {
+          client_id: string | null
+          consumed_at: string | null
+          created_at: string
+          delivery_email: string | null
+          expires_at: string
+          form_version_id: string
+          id: string
+          issued_by: string
+          lead_id: string | null
+          organization_id: string
+          revoked_at: string | null
+          token: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "form_links"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       count_other_active_super_admins: {
         Args: { excluded_staff: string; org: string }

@@ -3,9 +3,9 @@
 Status: PHASE 1 (schema) SHIPPED 2026-09-13
 (`supabase/migrations/20260913153010_leads_capture.sql`). PHASE 2 (public
 capture endpoint) SHIPPED 2026-09-13 — `server/api/public/leads/index.ts`.
-PHASE 3 (staff UI + live indicators) built 2026-09-18 — `/leads`,
-`/leads/:id`, `useLeadQueue`, migration `20260919013317`; `verify:leads`
-62/62. Phase 4 (conversion) not built. Owner-INDEPENDENT (no tier answers needed).
+PHASE 3 (staff UI + live indicators) SHIPPED 2026-09-18. PHASE 4
+(conversion) built 2026-09-18 — migration `20260919021059`,
+`convert_lead()`, `form_links.lead_id`; the feature is complete. Owner-INDEPENDENT (no tier answers needed).
 Design-room session 2026-09-12. `[AS-BUILT]` marks where the SQL
 deviates from the prose below.
 
@@ -84,6 +84,20 @@ So conversion = "issue the intake link from the lead record", which
 creates the prospect and the provenance link in one move. No new
 conversion concept — it is the form-send flow, triggered from a lead,
 recording where the prospect came from.
+
+[AS-BUILT] The thread spans two features, so it needed a deliberate
+carrier: `form_links.lead_id` (nullable; never together with client_id,
+by check constraint) is set at conversion, and `submit_form_response` —
+the only place a prospect row is created — copies it onto
+`prospect_intake.lead_id`. The chain is whole the moment the person
+answers and needs nothing from anyone at that moment. Steps 1 and 2 are
+one transaction in `convert_lead()`, SECURITY INVOKER: the caller's own
+RLS authorises the flip (leads.manage) and the link (forms.send), and
+either refusal rolls back both. The route is the existing
+`POST /api/forms/:key/links` with a `leadId`, so the /forms send dialog
+and the lead page share one path. Provenance is visible from both ends:
+the lead page links to the application once it exists, the prospect page
+names the lead and source it came from.
 
 ## Provenance chain (the one CRM-ish thing worth having)
 

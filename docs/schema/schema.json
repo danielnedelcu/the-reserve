@@ -5067,6 +5067,12 @@
           "type": "timestamp with time zone",
           "nullable": false,
           "default": "now()"
+        },
+        {
+          "name": "lead_id",
+          "type": "uuid",
+          "nullable": true,
+          "comment": "The lead this link was issued for by conversion (convert_lead). Read by submit_form_response and copied onto the prospect_intake row it creates — the provenance thread leads → prospect_intake → clients. Null for links issued any other way; never set together with client_id. on delete set null: a lead removed by hand ends the chain here rather than voiding the link."
         }
       ],
       "indexes": [
@@ -5103,9 +5109,28 @@
             "organization_id",
             "expires_at"
           ]
+        },
+        {
+          "name": "form_links_lead",
+          "def": "CREATE INDEX form_links_lead ON public.form_links USING btree (lead_id) WHERE (lead_id IS NOT NULL)",
+          "table": "public.form_links",
+          "columns": [
+            "lead_id"
+          ]
         }
       ],
       "constraints": [
+        {
+          "name": "form_links_subject_not_both",
+          "type": "CHECK",
+          "def": "CHECK (((client_id IS NULL) OR (lead_id IS NULL)))",
+          "table": "public.form_links",
+          "referenced_table": "",
+          "columns": [
+            "client_id",
+            "lead_id"
+          ]
+        },
         {
           "name": "form_links_organization_id_fkey",
           "type": "FOREIGN KEY",
@@ -5176,6 +5201,19 @@
           "referenced_table": "",
           "columns": [
             "token"
+          ]
+        },
+        {
+          "name": "form_links_lead_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL",
+          "table": "public.form_links",
+          "referenced_table": "public.leads",
+          "columns": [
+            "lead_id"
+          ],
+          "referenced_columns": [
+            "id"
           ]
         }
       ]
@@ -6826,6 +6864,19 @@
       "def": "FOREIGN KEY (form_version_id) REFERENCES form_versions(id) ON DELETE RESTRICT"
     },
     {
+      "table": "public.form_links",
+      "columns": [
+        "lead_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.leads",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL"
+    },
+    {
       "table": "public.prospect_intake",
       "columns": [
         "organization_id"
@@ -8278,6 +8329,12 @@
       "name": "public.forget_lead_notifications",
       "return_type": "trigger",
       "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.convert_lead",
+      "return_type": "form_links",
+      "arguments": "p_lead_id uuid, p_form_version_id uuid, p_delivery_email text, p_expires_at timestamp with time zone",
       "type": "FUNCTION"
     }
   ],

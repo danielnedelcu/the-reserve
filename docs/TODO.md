@@ -1,6 +1,6 @@
 # The Reserve — live board
 
-Last updated: 2026-09-11. This is the working state of the project — what's
+Last updated: 2026-09-18. This is the working state of the project — what's
 done, what's queued, what's blocked on whom. Update when the board changes.
 
 ## Phase status
@@ -103,7 +103,21 @@ QUEUED (in order):
    and page comments say why (08baa4d). When `enrolled` is added, the
    purge's status allowlist already keeps it.
 3. Cancellation-fee engine — its enabler (consented card on file) is live.
-4. Marketing (§8).
+4. Marketing (§8) — LEAD CAPTURE DONE 2026-09-13 → 09-18, all four
+   phases (docs/design/leads-design.md): `leads` + `lead_notes` schema
+   with the allowlist purge; the OPEN public capture endpoint
+   (`POST /api/public/leads`, honeypot + per-IP limit + exact-origin CORS,
+   org and origins as fail-closed config); the staff UI (`/leads`,
+   `/leads/:id`, notes, status control) with the arrival-alert nav dot
+   and bell; and conversion — "send intake form" issues the §6 link
+   through `convert_lead()` in one transaction and threads
+   `prospect_intake.lead_id` at submit. `verify:leads` 72/72. What
+   remains of §8 beyond lead capture (campaigns, marketing consent
+   policy, landing pages themselves — which live on the marketing site)
+   is not designed. Known residuals recorded in the design doc:
+   per-IP limiting is evaded by distributed bots (CAPTCHA is the
+   escalation, keyed to observed abuse); the marketing-consent POLICY is
+   owner/legal-adjacent, the columns are ready for it.
 5. UI polish sprint — after feature phases (see ui-polish.md).
 
 ## Punch list (small, unblocked, any-session)

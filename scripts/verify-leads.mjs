@@ -326,6 +326,47 @@ async function main() {
     .lt("created_at", new Date(Date.now() - 31 * 86_400_000).toISOString());
   check("OUTCOME CANARY: no lead past the one-month window remains in a purgeable status",
     (canary ?? []).length === 0, `${(canary ?? []).length} stale row(s) — the nightly purge may not be running`);
+
+  // ── 9. conversion — the provenance thread through the public submit ─
+  console.log("\nconversion (form_links.lead_id → submit → prospect_intake.lead_id)");
+  const { rows: subjectCheck } = await c.query(`select pg_get_constraintdef(oid) def from pg_constraint where conname = 'form_links_subject_not_both'`);
+  check("form_links refuses a link for a client AND a lead (form_links_subject_not_both exists)", subjectCheck.length === 1);
+  const { error: anonConvert } = await anon.rpc("convert_lead", { p_lead_id: randomUUID(), p_form_version_id: randomUUID(), p_delivery_email: "", p_expires_at: new Date().toISOString() });
+  check("convert_lead refuses a caller with no staff identity (anon)", !!anonConvert, anonConvert?.message);
+  const { error: serviceConvert } = await admin.rpc("convert_lead", { p_lead_id: randomUUID(), p_form_version_id: randomUUID(), p_delivery_email: "", p_expires_at: new Date().toISOString() });
+  check("convert_lead refuses the service role too — it runs as the CALLER, and the service role is nobody", !!serviceConvert && /Not a staff member/.test(serviceConvert.message), serviceConvert?.message);
+
+  // What convert_lead writes, produced the way the harness can — as the
+  // service role, without the flip — so the SUBMIT half is proved on its
+  // own: a link carrying lead_id must yield a prospect carrying lead_id.
+  const convLead = await admin.from("leads").insert({ organization_id: ORG, first_name: "Conv", last_name: "Lead", email: `conv-${run}${SUFFIX}`, interest: "membership", source: "verify-conversion" }).select("id").single();
+  const { data: def } = await admin.from("form_definitions").select("id").eq("organization_id", ORG).eq("key", "prospect_intake").single();
+  const { data: ver } = await admin.from("form_versions").select("id, fields").eq("form_definition_id", def.id).order("version", { ascending: false }).limit(1).single();
+  const { data: staffAny } = await admin.from("staff").select("id").eq("organization_id", ORG).eq("active", true).limit(1).single();
+  const { error: bothErr } = await admin.from("form_links").insert({ organization_id: ORG, form_version_id: ver.id, client_id: (await admin.from("clients").select("id").eq("organization_id", ORG).limit(1).maybeSingle()).data?.id ?? randomUUID(), lead_id: convLead.data.id, issued_by: staffAny.id });
+  check("…and it does refuse one (insert with both client_id and lead_id fails)", !!bothErr, bothErr?.message);
+  const convLink = await admin.from("form_links").insert({ organization_id: ORG, form_version_id: ver.id, lead_id: convLead.data.id, issued_by: staffAny.id }).select("id, token").single();
+  check("a link can carry lead_id on its own", !convLink.error, convLink.error?.message);
+  const answers = Object.fromEntries(ver.fields.filter((f) => f.required).map((f) => [f.key, f.type === "email" ? `conv-answer-${run}${SUFFIX}` : "Conv"]));
+  const submitted = await fetch(`${base}/api/public/forms/${convLink.data.token}/submit`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": freshIp() }, body: JSON.stringify({ answers, consented: true }) });
+  check("the link submits through the PUBLIC route (200)", submitted.status === 200, `${submitted.status}`);
+  const { data: prospect } = await admin.from("prospect_intake").select("id, lead_id, status").eq("lead_id", convLead.data.id).maybeSingle();
+  check("the prospect created by that submit carries lead_id = the lead — the chain is whole", prospect?.lead_id === convLead.data.id, JSON.stringify(prospect));
+  check("…and starts at submitted, like any prospect", prospect?.status === "submitted");
+  const plainLink = await admin.from("form_links").insert({ organization_id: ORG, form_version_id: ver.id, issued_by: staffAny.id }).select("token").single();
+  const plainAnswers = { ...answers, email: `plain-answer-${run}${SUFFIX}` };
+  await fetch(`${base}/api/public/forms/${plainLink.data.token}/submit`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": freshIp() }, body: JSON.stringify({ answers: plainAnswers, consented: true }) });
+  const { data: plainProspect } = await admin.from("prospect_intake").select("lead_id").eq("email", plainAnswers.email).maybeSingle();
+  check("a link issued WITHOUT a lead yields a prospect with lead_id null — the thread is opt-in, not a default", plainProspect !== null && plainProspect.lead_id === null);
+  const convLink2 = `/leads/${convLead.data.id}`;
+  await admin.from("leads").update({ status: "converted" }).eq("id", convLead.data.id);
+  check("flipping to converted settles the arrival notification (it leaves new)",
+    (await admin.from("notifications").select("id").eq("kind", "lead.captured").eq("link", convLink2).is("read_at", null)).data.length === 0);
+  // teardown of this section
+  if (prospect) await admin.from("prospect_intake").delete().eq("id", prospect.id);
+  if (plainProspect) await admin.from("prospect_intake").delete().eq("email", plainAnswers.email);
+  await admin.from("form_links").delete().eq("lead_id", convLead.data.id);
+  await admin.from("form_links").delete().eq("token", plainLink.data.token);
   await c.end();
 
   // ── teardown ───────────────────────────────────────────────────────

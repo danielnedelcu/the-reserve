@@ -9,7 +9,7 @@ import {
 
 /**
  * POST /api/forms/:key/links
- * Body: { deliveryEmail?, clientId?, expiresInDays? }
+ * Body: { deliveryEmail?, clientId?, leadId?, expiresInDays? }
  *
  * Issues a tokenized link to the form's CURRENT version and, when given
  * an address, EMAILS it. Authenticated, low-novelty — the staff_invites
@@ -26,6 +26,14 @@ import {
  *
  * No clientId means a prospect link. Issuing creates no prospect row —
  * a prospect comes into being when they answer.
+ *
+ * leadId CONVERTS A LEAD (§8 phase 4): the same subject-less link, issued
+ * through convert_lead(), which flips the lead to converted and stamps
+ * the link with lead_id in one transaction under the caller's RLS —
+ * leads.manage for the flip, forms.send for the link, and neither half
+ * without the other. submit_form_response later copies lead_id onto the
+ * prospect it creates, which completes the provenance chain. The lead's
+ * own email is the default recipient.
  */
 export default defineEventHandler(async (event) => {
   const { client } = await requirePermission(event, "forms.send");
@@ -37,8 +45,37 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{
     deliveryEmail?: string;
     clientId?: string;
+    leadId?: string;
     expiresInDays?: number;
   }>(event);
+
+  if (body?.leadId && body?.clientId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "A link is for a client or for a lead, not both.",
+    });
+  }
+
+  // Converting: look the lead up FIRST, through the caller's own client, so
+  // the two failures convert_lead cannot tell apart get distinct messages
+  // here — nothing in scope (404) versus already converted (409).
+  let lead: { id: string; email: string; status: string } | null = null;
+  if (body?.leadId) {
+    const { data, error } = await client
+      .from("leads")
+      .select("id, email, status")
+      .eq("id", body.leadId)
+      .maybeSingle();
+    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+    if (!data) throw createError({ statusCode: 404, statusMessage: "Lead not found" });
+    if (data.status === "converted") {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "This lead has already been sent the intake form.",
+      });
+    }
+    lead = data;
+  }
 
   const definition = await getDefinition(client, key);
   if (!definition) {
@@ -83,22 +120,48 @@ export default defineEventHandler(async (event) => {
 
   const days = Math.min(Math.max(body?.expiresInDays ?? 14, 1), 90);
   const expiresAt = new Date(Date.now() + days * 86_400_000).toISOString();
+  const deliveryEmail = body?.deliveryEmail?.trim() || lead?.email || null;
 
-  const { data, error } = await client
-    .from("form_links")
-    .insert({
-      organization_id: orgId,
-      form_version_id: definition.currentVersion.id,
-      client_id: body?.clientId ?? null,
-      delivery_email: body?.deliveryEmail ?? null,
-      issued_by: staffId,
-      expires_at: expiresAt,
-    })
-    .select("id, token, expires_at")
-    .single();
-
-  if (error) {
-    throw createError({ statusCode: 500, statusMessage: error.message });
+  let data: { id: string; token: string; expires_at: string };
+  if (lead) {
+    // One transaction: flip + link, or neither. The RPC runs as the caller
+    // (security invoker), so RLS on both tables is the authorisation.
+    const { data: link, error } = await client.rpc("convert_lead", {
+      p_lead_id: lead.id,
+      p_form_version_id: definition.currentVersion.id,
+      p_delivery_email: deliveryEmail ?? "",
+      p_expires_at: expiresAt,
+    });
+    if (error) {
+      // Raced with another conversion, or the caller lacks leads.manage /
+      // forms.send: the function raised and nothing was written.
+      if (error.message.includes("lead_not_convertible")) {
+        throw createError({
+          statusCode: 409,
+          statusMessage:
+            "This lead could not be converted — it may have just been converted by someone else, or you cannot manage leads.",
+        });
+      }
+      throw createError({ statusCode: 500, statusMessage: error.message });
+    }
+    data = { id: link.id, token: link.token, expires_at: link.expires_at };
+  } else {
+    const { data: link, error } = await client
+      .from("form_links")
+      .insert({
+        organization_id: orgId,
+        form_version_id: definition.currentVersion.id,
+        client_id: body?.clientId ?? null,
+        delivery_email: deliveryEmail,
+        issued_by: staffId,
+        expires_at: expiresAt,
+      })
+      .select("id, token, expires_at")
+      .single();
+    if (error) {
+      throw createError({ statusCode: 500, statusMessage: error.message });
+    }
+    data = link;
   }
 
   // Deliver it, if we were told where to. The URL is built from the
@@ -107,14 +170,14 @@ export default defineEventHandler(async (event) => {
   const path = `/join/${data.token}`;
   let emailed: boolean | null = null;
 
-  if (body?.deliveryEmail) {
+  if (deliveryEmail) {
     const origin = getRequestURL(event).origin;
     const content = formLinkEmail({
       formUrl: `${origin}${path}`,
       formName: definition.name,
       expiresInDays: days,
     });
-    emailed = await sendMail({ to: body.deliveryEmail, ...content });
+    emailed = await sendMail({ to: deliveryEmail, ...content });
   }
 
   return {
@@ -128,6 +191,7 @@ export default defineEventHandler(async (event) => {
     // The caller shows the link either way; distinguishing the two is what
     // lets the UI say "sent" honestly rather than optimistically.
     emailed,
-    deliveryEmail: body?.deliveryEmail ?? null,
+    deliveryEmail,
+    leadId: lead?.id ?? null,
   };
 });

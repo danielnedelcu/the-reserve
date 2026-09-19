@@ -16,8 +16,14 @@ import {
  * provenance chain in the same move. Picking it from a dropdown would
  * record a conversion with no prospect behind it. The options come from
  * LEAD_MANUAL_STATUSES, the same list the status route accepts, so the
- * screen and the route cannot disagree. The convert action itself is
- * stubbed below until phase 4 lands, and says so on the screen.
+ * screen and the route cannot disagree.
+ *
+ * THE CONVERT ACTION IS THE FORM-SEND FLOW. "Send intake form" posts to
+ * the same route the /forms send dialog uses, with leadId: the route
+ * runs convert_lead(), which flips the lead and issues the link in one
+ * transaction, and submit_form_response later copies lead_id onto the
+ * prospect the person becomes. Once a prospect exists, this page links
+ * to it — the provenance chain, visible from its head.
  */
 definePageMeta({ middleware: "can", permission: "leads.view" });
 useSeoMeta({ title: "Lead — The Reserve" });
@@ -48,6 +54,18 @@ interface Detail {
     created_at: string;
     author: { display_name: string } | null;
   }[];
+  /** The intake link issued by conversion, if the caller may see links. */
+  link: {
+    id: string;
+    token: string;
+    expires_at: string;
+    consumed_at: string | null;
+    revoked_at: string | null;
+    delivery_email: string | null;
+    created_at: string;
+  } | null;
+  /** The prospect this lead became, once they have answered. */
+  prospect: { id: string; status: string; submitted_at: string } | null;
 }
 
 const { data, refresh } = await useFetch<Detail>(`/api/leads/${id}`);
@@ -55,6 +73,53 @@ const lead = computed(() => data.value?.lead);
 const notes = computed(() => data.value?.notes ?? []);
 const canManage = computed(() => can("leads.manage"));
 const converted = computed(() => lead.value?.status === "converted");
+const canSendForm = computed(() => can("forms.send"));
+
+// ── convert: send the intake form ──────────────────────────────────────
+const sendOpen = ref(false);
+const sendEmail = ref("");
+const sending = ref(false);
+
+function openSend() {
+  sendEmail.value = lead.value?.email ?? "";
+  sendOpen.value = true;
+}
+
+async function sendIntakeForm() {
+  if (!lead.value) return;
+  sending.value = true;
+  try {
+    const res = await $fetch<{ emailed: boolean | null; deliveryEmail: string | null; path: string }>(
+      "/api/forms/prospect_intake/links",
+      { method: "POST", body: { leadId: lead.value.id, deliveryEmail: sendEmail.value.trim() || undefined } },
+    );
+    sendOpen.value = false;
+    await refresh();
+    if (res.emailed) {
+      toast.success("Intake form sent", `On its way to ${res.deliveryEmail}. This lead is now converted.`);
+    } else {
+      toast.warning(
+        "Converted, but the email did not go",
+        `The link is ready — copy it from below and send it to ${res.deliveryEmail ?? "them"} yourself.`,
+      );
+    }
+  } catch (e: unknown) {
+    const err = e as { data?: { statusMessage?: string } };
+    toast.error("Could not send the intake form", err.data?.statusMessage ?? "Please try again.");
+    await refresh();
+  } finally {
+    sending.value = false;
+  }
+}
+
+const linkState = computed(() => {
+  const l = data.value?.link;
+  if (!l) return null;
+  if (l.consumed_at) return { text: "Answered", icon: "lucide:circle-check" };
+  if (l.revoked_at) return { text: "Link revoked", icon: "lucide:circle-x" };
+  if (new Date(l.expires_at) < new Date()) return { text: "Link expired", icon: "lucide:clock-alert" };
+  return { text: "Waiting for their answer", icon: "lucide:hourglass" };
+});
 
 const STATUS_OPTIONS: { value: LeadManualStatus; label: string }[] = [
   { value: "new", label: "New" },
@@ -182,10 +247,31 @@ function when(iso: string): string {
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div class="w-full sm:w-64">
             <label class="text-sm font-medium" for="lead-status">Status</label>
-            <div v-if="converted" class="mt-1.5 flex items-center gap-2 text-sm font-medium">
-              <Icon name="lucide:arrow-right-circle" class="size-5" aria-hidden="true" />
-              Converted
-              <span class="text-muted-foreground font-normal">— they were sent the intake form</span>
+            <div v-if="converted" class="mt-1.5 text-sm">
+              <div class="flex items-center gap-2 font-medium">
+                <Icon name="lucide:arrow-right-circle" class="size-5" aria-hidden="true" />
+                Converted
+                <span class="text-muted-foreground font-normal">— sent the intake form</span>
+              </div>
+              <!-- The other end of the chain, as far as this caller may see it. -->
+              <div v-if="data?.prospect" class="mt-2">
+                <NuxtLink :to="`/intake/${data.prospect.id}`" class="inline-flex items-center gap-1.5 font-medium hover:underline">
+                  <Icon name="lucide:user-round-plus" class="size-4" aria-hidden="true" />
+                  View their application
+                </NuxtLink>
+                <span class="text-muted-foreground"> · answered {{ when(data.prospect.submitted_at) }}</span>
+              </div>
+              <div v-else-if="linkState" class="text-muted-foreground mt-2 flex items-center gap-1.5">
+                <Icon :name="linkState.icon" class="size-4" aria-hidden="true" />
+                {{ linkState.text }}
+                <template v-if="data?.link?.delivery_email"> · sent to {{ data.link.delivery_email }}</template>
+              </div>
+              <p
+                v-if="data?.link && !data.link.consumed_at && !data.link.revoked_at"
+                class="text-muted-foreground mt-1 truncate text-xs"
+              >
+                Link: <code class="select-all">{{ `/join/${data.link.token}` }}</code>
+              </p>
             </div>
             <UiSelect v-else v-model="statusModel" :disabled="!canManage || savingStatus">
               <UiSelectTrigger id="lead-status" class="mt-1.5" />
@@ -203,22 +289,57 @@ function when(iso: string): string {
             </p>
           </div>
 
-          <!-- The convert action. Stubbed: phase 4 wires it to the form-send
-               flow, which issues the intake link, flips the lead to
-               converted and threads prospect_intake.lead_id in one move.
-               Shown disabled with the reason, rather than hidden, so the
-               screen is honest about what it cannot yet do. -->
+          <!-- The convert action: sending the intake form IS the conversion.
+               Needs leads.manage (the flip) and forms.send (the link); the
+               database enforces both inside one transaction. -->
           <div v-if="canManage && !converted" class="text-right">
-            <UiButton disabled>
+            <UiButton :disabled="!canSendForm" @click="openSend">
               <Icon name="lucide:send" class="mr-1.5 size-4" aria-hidden="true" />
               Send intake form
             </UiButton>
             <p class="text-muted-foreground mt-1.5 text-xs">
-              Converting a lead arrives with the next update.
+              {{ canSendForm ? "Sending it converts this lead." : "Sending forms needs the forms.send permission." }}
             </p>
           </div>
         </div>
       </section>
+
+      <!-- Send the intake form: confirm the address, then convert. -->
+      <UiDialog v-model:open="sendOpen">
+        <UiDialogContent class="sm:max-w-md">
+          <UiDialogHeader>
+            <UiDialogTitle>Send the intake form</UiDialogTitle>
+            <UiDialogDescription>
+              {{ lead.first_name }} gets a link to the intake form. Sending it
+              marks this lead as converted; when they answer, their
+              application appears under New members and points back here.
+            </UiDialogDescription>
+          </UiDialogHeader>
+          <div>
+            <label class="text-sm font-medium" for="send-email">Email the link to</label>
+            <UiInput
+              id="send-email"
+              v-model="sendEmail"
+              type="email"
+              class="mt-1.5"
+              placeholder="name@example.com"
+              @keydown.enter.prevent="sendIntakeForm"
+            />
+            <p class="text-muted-foreground mt-1.5 text-xs">
+              Leave it blank to get the link without emailing it.
+            </p>
+          </div>
+          <UiDialogFooter>
+            <UiButton variant="outline" type="button" :disabled="sending" @click="sendOpen = false">
+              Cancel
+            </UiButton>
+            <UiButton :disabled="sending" @click="sendIntakeForm">
+              <Icon name="lucide:send" class="mr-1.5 size-4" aria-hidden="true" />
+              {{ sending ? "Sending…" : "Send and convert" }}
+            </UiButton>
+          </UiDialogFooter>
+        </UiDialogContent>
+      </UiDialog>
 
       <!-- Notes: append-only, authored, dated -->
       <section class="mt-8">
