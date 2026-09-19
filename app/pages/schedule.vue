@@ -268,6 +268,76 @@ function blocksFor(staffId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Week view: collision layout
+// ---------------------------------------------------------------------------
+/**
+ * WHY THIS EXISTS. The day view gives each provider a lane, so the
+ * no-double-booking constraint guarantees its cards never collide. The
+ * week view has ONE lane per day shared by every provider, so two
+ * providers working at the same time — perfectly valid, and at realistic
+ * volume it happens on most working days — used to be drawn in the same
+ * horizontal space, the later start on top. Translucent fills blended
+ * the two into unreadable overprint; the opaque-fill reskin made the
+ * lower card vanish entirely. Neither was a layout. This is: cards that
+ * overlap in time share the lane's width side by side, all readable,
+ * and a card that overlaps nothing keeps the full width.
+ *
+ * Per day: sort by start; chain overlapping appointments into clusters
+ * (an appointment joins the open cluster if it starts before the
+ * cluster's latest end); inside a cluster assign columns greedily (the
+ * first column whose last appointment has ended, else a new one). Every
+ * card in the cluster is 1/columns wide at column × that offset.
+ */
+interface Slot {
+  col: number;
+  cols: number;
+}
+const weekLayout = computed(() => {
+  const slots = new Map<string, Slot>();
+  for (const day of weekDays.value) {
+    const appts = [...(apptsByDay.value[day.dateStr] ?? [])].sort((a, b) =>
+      a.starts_at < b.starts_at ? -1 : a.starts_at > b.starts_at ? 1 : 0,
+    );
+    let cluster: Appt[] = [];
+    let clusterEnd = "";
+    let columnEnds: string[] = [];
+    const flush = () => {
+      for (const a of cluster) slots.get(a.id)!.cols = columnEnds.length;
+      cluster = [];
+      columnEnds = [];
+    };
+    for (const appt of appts) {
+      if (cluster.length && appt.starts_at >= clusterEnd) flush();
+      let col = columnEnds.findIndex((end) => end <= appt.starts_at);
+      if (col === -1) col = columnEnds.push("") - 1;
+      columnEnds[col] = appt.ends_at;
+      cluster.push(appt);
+      clusterEnd = clusterEnd > appt.ends_at ? clusterEnd : appt.ends_at;
+      slots.set(appt.id, { col, cols: 1 });
+    }
+    flush();
+  }
+  return slots;
+});
+
+/** blockStyle's vertical geometry plus the cluster's horizontal share. */
+function weekCardStyle(appt: Appt) {
+  const { col, cols } = weekLayout.value.get(appt.id) ?? { col: 0, cols: 1 };
+  const GAP = 4; // px between neighbours, matching the lane's inset
+  return {
+    ...blockStyle(appt),
+    left: `calc(${(col / cols) * 100}% + ${GAP}px)`,
+    width: `calc(${100 / cols}% - ${GAP * (col === cols - 1 ? 2 : 1.5)}px)`,
+  };
+}
+
+/** Full alone, name + time beside one neighbour, name only beside more. */
+function weekDensity(appt: Appt): "full" | "compact" | "minimal" {
+  const cols = weekLayout.value.get(appt.id)?.cols ?? 1;
+  return cols === 1 ? "full" : cols === 2 ? "compact" : "minimal";
+}
+
+// ---------------------------------------------------------------------------
 // Month view helpers
 // ---------------------------------------------------------------------------
 const MAX_CHIPS = 3;
@@ -673,8 +743,9 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
                 :key="appt.id"
                 :appointment="appt"
                 variant="week"
-                class="absolute inset-x-1"
-                :style="blockStyle(appt)"
+                :density="weekDensity(appt)"
+                class="absolute"
+                :style="weekCardStyle(appt)"
                 @select="detailAppt = appt"
               />
             </div>

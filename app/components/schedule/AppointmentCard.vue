@@ -43,8 +43,18 @@ const props = withDefaults(
      * chip — one line: short time + "First L." (month cells)
      */
     variant?: "day" | "week" | "chip";
+    /**
+     * How much fits. Only the week view sets this, from its collision
+     * layout: a card sharing its lane with one neighbour is `compact`
+     * (name + time, the service goes), with two or more it is `minimal`
+     * (name only). The provider colour is never what gets dropped — in
+     * the week view it is the only provider signal there is — and the
+     * client name is the last thing to truncate. Whatever is dropped
+     * stays in the native tooltip and in the detail dialog.
+     */
+    density?: "full" | "compact" | "minimal";
   }>(),
-  { variant: "day" },
+  { variant: "day", density: "full" },
 );
 
 defineEmits<{ select: [] }>();
@@ -88,6 +98,15 @@ const colourStyle = computed(() => {
 });
 
 const dimmed = computed(() => props.appointment.status === "no_show");
+
+/** Everything, for the hover tooltip — what a narrow card had to drop. */
+const fullText = computed(() => {
+  const c = props.appointment.client;
+  const name = c ? `${c.first_name} ${c.last_name}` : "Client";
+  return [name, service.value, timeLabel(props.appointment.starts_at)]
+    .filter(Boolean)
+    .join(" · ");
+});
 </script>
 
 <template>
@@ -104,6 +123,8 @@ const dimmed = computed(() => props.appointment.status === "no_show");
     :data-appointment-id="appointment.id"
     :data-staff-id="appointment.staff_id"
     :data-status="appointment.status"
+    :data-density="density"
+    :title="fullText"
     @click="$emit('select')"
   >
     <template v-if="variant === 'chip'">
@@ -125,8 +146,10 @@ const dimmed = computed(() => props.appointment.status === "no_show");
           aria-hidden="true"
         />
       </div>
-      <div class="text-muted-foreground truncate">{{ service }}</div>
-      <div class="text-muted-foreground tabular-nums">
+      <div v-if="density === 'full'" class="text-muted-foreground truncate">
+        {{ service }}
+      </div>
+      <div v-if="density !== 'minimal'" class="text-muted-foreground tabular-nums">
         {{ variant === "day" ? timeLabel(appointment.starts_at) : shortTime(appointment.starts_at) }}
       </div>
     </template>

@@ -133,11 +133,27 @@ verification.
    is distinguished. A visual vocabulary for status is a design session
    (what does "checked in" look like to a front desk at a glance), not a
    reskin decision.
-4. **Collision / overlap layout.** Two appointments in one lane at
-   overlapping times simply overlap today (absolute positioning, no
-   collision pass). Image 4's between-times popover is one answer;
-   side-by-side lanes is another. Either is a layout algorithm with its
-   own edge cases, not a skin.
+4. **Collision / overlap layout — BUILT 2026-09-19, its trigger fired.**
+   As parked: two appointments in one lane at overlapping times simply
+   overlapped (absolute positioning, no collision pass). Why it stopped
+   being parkable: six months of realistic preview volume produced
+   different-provider overlaps on most working days (93 pairs, zero
+   same-provider — the exclusion constraint holds), and the week view
+   hid one of every pair. The day view never had this problem: its
+   lanes are per provider. The week view has ONE lane per day shared by
+   every provider, so a valid two-provider hour drew both cards in the
+   same horizontal space; translucent fills blended them, the opaque
+   fill of piece 2 made the lower card vanish outright. Built as
+   width-splitting (`weekLayout` in schedule.vue): per day, cluster
+   time-chained appointments, assign columns greedily, each card
+   1/columns wide at its column's offset; a card overlapping nothing
+   stays full width. Degradation by width is the card's `density`: one
+   neighbour → name + time (the service goes, as in image 4), two or
+   more → name only; the provider colour is never dropped, because in
+   the shared lane it is the only provider signal; whatever is dropped
+   stays in the hover tooltip and the detail dialog. Week view only —
+   day, month and the card's other variants are untouched. Image 4's
+   between-times popover remains a possible refinement, not a need.
 
 ## Step zero — the behaviour inventory (the safety contract)
 
