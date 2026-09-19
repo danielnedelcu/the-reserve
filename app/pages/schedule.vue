@@ -118,7 +118,11 @@ interface Appt {
   status: string;
   notes: string | null;
   client: { first_name: string; last_name: string } | null;
-  appointment_services: { name_snapshot: string; price_cents: number }[];
+  appointment_services: {
+    name_snapshot: string;
+    price_cents: number;
+    duration_min: number;
+  }[];
   resource: { name: string } | null;
 }
 
@@ -167,7 +171,7 @@ const {
     const { data, error } = await supabase
       .from("appointments")
       .select(
-        "id, client_id, staff_id, resource_id, starts_at, ends_at, status, notes, client:clients(first_name, last_name), appointment_services(name_snapshot, price_cents), resource:resources(name)",
+        "id, client_id, staff_id, resource_id, starts_at, ends_at, status, notes, client:clients(first_name, last_name), appointment_services(name_snapshot, price_cents, duration_min), resource:resources(name)",
       )
       .gte("starts_at", fetchRange.value.from)
       .lte("starts_at", fetchRange.value.to)
@@ -199,6 +203,22 @@ const hours = Array.from(
   (_, i) => DAY_START_HOUR + i,
 );
 
+/**
+ * The grid body is not a fixed 720px any more: it fills the column (so a
+ * tall window gets taller hours instead of a blank band under 7p) with
+ * GRID_MINUTES px as its floor (so a short window scrolls). Everything
+ * positioned inside it is therefore placed as a PERCENTAGE of the day,
+ * never in px-per-minute — hour lines, hour labels and cards all go
+ * through these two helpers so the three cannot drift apart.
+ */
+const pctOfDay = (minutes: number) => `${(minutes / GRID_MINUTES) * 100}%`;
+const hourTop = (h: number) => pctOfDay((h - DAY_START_HOUR) * 60);
+
+/**
+ * POSITION only. Colour used to be set here too; it now lives in
+ * ScheduleAppointmentCard, once, for every view (the tint fill + colour
+ * left edge that says whose appointment this is).
+ */
 function blockStyle(appt: Appt) {
   // SCAR: browser-local hours — see the two-timezone seam note above
   // fetchRange. Deliberately unchanged.
@@ -208,25 +228,13 @@ function blockStyle(appt: Appt) {
     start.getHours() * 60 + start.getMinutes() - DAY_START_HOUR * 60;
   const lengthMin = (end.getTime() - start.getTime()) / 60_000;
   return {
-    top: `${Math.max(startMin, 0)}px`,
-    height: `${Math.max(lengthMin, 24)}px`,
-    backgroundColor: providerTint(appt.staff_id),
-    borderColor: providerColor(appt.staff_id),
+    top: pctOfDay(Math.max(startMin, 0)),
+    height: pctOfDay(lengthMin),
+    minHeight: "24px",
   };
 }
-
-function timeLabel(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-function shortTime(iso: string) {
-  const d = new Date(iso);
-  const h = d.getHours() % 12 || 12;
-  const m = d.getMinutes();
-  return `${h}${m ? ":" + String(m).padStart(2, "0") : ""}${d.getHours() < 12 ? "a" : "p"}`;
-}
+// timeLabel / shortTime moved to app/utils/appointmentTime.ts (auto-imported),
+// shared with the card component.
 
 // ---------------------------------------------------------------------------
 // Day view: staff columns
@@ -454,9 +462,16 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
 </script>
 
 <template>
-  <div class="p-6 md:p-8">
+  <div class="flex h-[calc(100dvh-3rem)] flex-col p-6 md:p-8">
+    <!-- The page owns the viewport, the same way clients/index.vue does:
+         the layout header is h-12 (3rem), this root fills the rest as a
+         flex column, everything above the calendar is shrink-0, and the
+         calendar card takes whatever height is left (flex-1, min-h-0).
+         Inside the card the grid scrolls and the column headings stay put
+         (sticky top), so a short window never hides which column is
+         whose. -->
     <!-- Header -->
-    <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="flex shrink-0 flex-wrap items-center justify-between gap-4">
       <div class="flex flex-wrap items-center gap-3">
         <h1 class="text-2xl font-semibold">Schedule</h1>
 
@@ -514,76 +529,71 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
       </UiButton>
     </div>
 
-    <p v-if="apptError" class="text-destructive mt-4 text-sm">
+    <p v-if="apptError" class="text-destructive mt-4 shrink-0 text-sm">
       Couldn't load appointments: {{ apptError.message }}
     </p>
 
     <!-- ================= DAY VIEW (staff columns) ================= -->
     <div
       v-if="view === 'day'"
-      class="mt-6 overflow-x-auto rounded-xl border bg-card"
+      class="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card"
     >
-      <div class="flex min-w-fit">
-        <div class="w-14 shrink-0 border-r">
-          <div class="h-10 border-b" />
-          <div class="relative" :style="{ height: `${GRID_MINUTES}px` }">
-            <p
-              v-for="h in hours"
-              :key="h"
-              class="text-muted-foreground absolute -translate-y-1/2 pr-2 text-right text-xs"
-              :style="{ top: `${(h - DAY_START_HOUR) * 60}px`, right: '4px' }"
-            >
-              {{ h % 12 === 0 ? 12 : h % 12 }}{{ h < 12 ? "a" : "p" }}
-            </p>
-          </div>
-        </div>
-
-        <div
-          v-for="member in staffList"
-          :key="member.id"
-          class="min-w-44 flex-1 border-r last:border-r-0"
-        >
-          <div
-            class="flex h-10 items-center justify-center gap-2 border-b px-2"
-          >
-            <span
-              class="size-2 rounded-full"
-              :style="{ backgroundColor: providerColor(member.id) }"
-              aria-hidden="true"
-            />
-            <p class="truncate text-sm font-medium">
-              {{ member.display_name }}
-            </p>
-          </div>
-          <div class="relative" :style="{ height: `${GRID_MINUTES}px` }">
+      <div class="min-h-0 flex-1 overflow-auto">
+        <div class="flex min-h-full min-w-fit">
+          <div class="flex w-14 shrink-0 flex-col border-r">
+            <div class="sticky top-0 z-20 h-10 border-b bg-card" />
             <div
-              v-for="h in hours"
-              :key="h"
-              class="border-border/50 absolute w-full border-t"
-              :style="{ top: `${(h - DAY_START_HOUR) * 60}px` }"
-            />
-            <button
-              v-for="appt in blocksFor(member.id)"
-              :key="appt.id"
-              class="absolute inset-x-1 overflow-hidden rounded-md border-l-4 px-2 py-1 text-left text-xs transition hover:shadow-md"
-              :class="appt.status === 'no_show' ? 'opacity-50' : ''"
-              :style="blockStyle(appt)"
-              @click="detailAppt = appt"
+              class="relative flex-1"
+              :style="{ minHeight: `${GRID_MINUTES}px` }"
             >
-              <p class="truncate font-medium">
-                {{
-                  appt.client
-                    ? `${appt.client.first_name} ${appt.client.last_name}`
-                    : "Client"
-                }}
+              <p
+                v-for="h in hours"
+                :key="h"
+                class="text-muted-foreground absolute translate-y-2 pr-2 text-right text-xs"
+                :style="{ top: hourTop(h), right: '4px' }"
+              >
+                {{ h % 12 === 0 ? 12 : h % 12 }}{{ h < 12 ? "a" : "p" }}
               </p>
-              <p class="text-muted-foreground truncate">
-                {{ appt.appointment_services[0]?.name_snapshot }}
+            </div>
+          </div>
+
+          <div
+            v-for="member in staffList"
+            :key="member.id"
+            class="flex min-w-44 flex-1 flex-col border-r last:border-r-0"
+          >
+            <div
+              class="sticky top-0 z-20 flex h-10 items-center justify-center gap-2 border-b bg-card px-2"
+            >
+              <span
+                class="size-2 rounded-full"
+                :style="{ backgroundColor: providerColor(member.id) }"
+                aria-hidden="true"
+              />
+              <p class="truncate text-sm font-medium">
+                {{ member.display_name }}
               </p>
-              <p class="text-muted-foreground">
-                {{ timeLabel(appt.starts_at) }}
-              </p>
-            </button>
+            </div>
+            <div
+              class="relative flex-1"
+              :style="{ minHeight: `${GRID_MINUTES}px` }"
+            >
+              <div
+                v-for="h in hours"
+                :key="h"
+                class="border-border/50 absolute w-full border-t"
+                :style="{ top: hourTop(h) }"
+              />
+              <ScheduleAppointmentCard
+                v-for="appt in blocksFor(member.id)"
+                :key="appt.id"
+                :appointment="appt"
+                variant="day"
+                class="absolute inset-x-1"
+                :style="blockStyle(appt)"
+                @select="detailAppt = appt"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -592,90 +602,93 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
     <!-- ================= WEEK VIEW (day columns, time grid) ================= -->
     <div
       v-else-if="view === 'week'"
-      class="mt-6 overflow-x-auto rounded-xl border bg-card"
+      class="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card"
     >
-      <div class="flex min-w-fit">
-        <div class="w-14 shrink-0 border-r">
-          <div class="h-14 border-b" />
-          <div class="relative" :style="{ height: `${GRID_MINUTES}px` }">
-            <p
-              v-for="h in hours"
-              :key="h"
-              class="text-muted-foreground absolute -translate-y-1/2 pr-2 text-right text-xs"
-              :style="{ top: `${(h - DAY_START_HOUR) * 60}px`, right: '4px' }"
-            >
-              {{ h % 12 === 0 ? 12 : h % 12 }}{{ h < 12 ? "a" : "p" }}
-            </p>
-          </div>
-        </div>
-
-        <div
-          v-for="day in weekDays"
-          :key="day.dateStr"
-          class="min-w-36 flex-1 border-r last:border-r-0"
-        >
-          <!-- Day header: click through to day view -->
-          <button
-            class="flex h-14 w-full flex-col items-center justify-center border-b transition hover:bg-secondary/50"
-            @click="openDay(day.dateStr)"
-          >
-            <p
-              class="text-xs"
-              :class="
-                day.isWeekend ? 'text-destructive/70' : 'text-muted-foreground'
-              "
-            >
-              {{ day.dayName }}
-            </p>
-            <span
-              class="mt-0.5 inline-flex size-7 items-center justify-center rounded-full text-sm"
-              :class="
-                day.dateStr === todayStr
-                  ? 'bg-primary text-primary-foreground font-semibold'
-                  : ''
-              "
-            >
-              {{ day.dayNum }}
-            </span>
-          </button>
-
-          <div class="relative" :style="{ height: `${GRID_MINUTES}px` }">
+      <div class="min-h-0 flex-1 overflow-auto">
+        <div class="flex min-h-full min-w-fit">
+          <div class="flex w-14 shrink-0 flex-col border-r">
+            <div class="sticky top-0 z-20 h-14 border-b bg-card" />
             <div
-              v-for="h in hours"
-              :key="h"
-              class="border-border/50 absolute w-full border-t"
-              :style="{ top: `${(h - DAY_START_HOUR) * 60}px` }"
-            />
-            <button
-              v-for="appt in apptsByDay[day.dateStr] ?? []"
-              :key="appt.id"
-              class="absolute inset-x-1 overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left text-[11px] leading-tight transition hover:shadow-md"
-              :class="appt.status === 'no_show' ? 'opacity-50' : ''"
-              :style="blockStyle(appt)"
-              @click="detailAppt = appt"
+              class="relative flex-1"
+              :style="{ minHeight: `${GRID_MINUTES}px` }"
             >
-              <p class="text-muted-foreground">
-                {{ shortTime(appt.starts_at) }}
+              <p
+                v-for="h in hours"
+                :key="h"
+                class="text-muted-foreground absolute translate-y-2 pr-2 text-right text-xs"
+                :style="{ top: hourTop(h), right: '4px' }"
+              >
+                {{ h % 12 === 0 ? 12 : h % 12 }}{{ h < 12 ? "a" : "p" }}
               </p>
-              <p class="truncate font-medium">
-                {{
-                  appt.client
-                    ? `${appt.client.first_name} ${appt.client.last_name.charAt(0)}.`
-                    : "Client"
-                }}
-              </p>
-              <p class="text-muted-foreground truncate">
-                {{ appt.appointment_services[0]?.name_snapshot }}
-              </p>
+            </div>
+          </div>
+
+          <div
+            v-for="day in weekDays"
+            :key="day.dateStr"
+            class="flex min-w-36 flex-1 flex-col border-r last:border-r-0"
+          >
+            <!-- Day header: click through to day view -->
+            <button
+              class="sticky top-0 z-20 flex h-14 w-full flex-col items-center justify-center gap-1 border-b bg-card transition hover:bg-secondary/50"
+              @click="openDay(day.dateStr)"
+            >
+              <!-- span, not p: main.css gives every <p> text-base and a
+                   margin, which overflowed the 56px header and sat the
+                   today circle on the border. -->
+              <span
+                class="text-xs leading-none"
+                :class="
+                  day.isWeekend
+                    ? 'text-destructive/70'
+                    : 'text-muted-foreground'
+                "
+              >
+                {{ day.dayName }}
+              </span>
+              <span
+                class="inline-flex size-7 items-center justify-center rounded-full text-sm"
+                :class="
+                  day.dateStr === todayStr
+                    ? 'bg-primary text-primary-foreground font-semibold'
+                    : ''
+                "
+              >
+                {{ day.dayNum }}
+              </span>
             </button>
+
+            <div
+              class="relative flex-1"
+              :style="{ minHeight: `${GRID_MINUTES}px` }"
+            >
+              <div
+                v-for="h in hours"
+                :key="h"
+                class="border-border/50 absolute w-full border-t"
+                :style="{ top: hourTop(h) }"
+              />
+              <ScheduleAppointmentCard
+                v-for="appt in apptsByDay[day.dateStr] ?? []"
+                :key="appt.id"
+                :appointment="appt"
+                variant="week"
+                class="absolute inset-x-1"
+                :style="blockStyle(appt)"
+                @select="detailAppt = appt"
+              />
+            </div>
           </div>
         </div>
       </div>
     </div>
 
     <!-- ================= MONTH VIEW ================= -->
-    <div v-else class="mt-6 overflow-hidden rounded-xl border bg-card">
-      <div class="grid grid-cols-7 border-b">
+    <div
+      v-else
+      class="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card"
+    >
+      <div class="grid shrink-0 grid-cols-7 border-b">
         <p
           v-for="d in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']"
           :key="d"
@@ -684,11 +697,15 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
           {{ d }}
         </p>
       </div>
-      <div class="grid grid-cols-7">
+      <!-- Rows share the remaining height (1fr) down to a 7rem floor; below
+           that the grid scrolls under the pinned weekday row. -->
+      <div
+        class="grid min-h-0 flex-1 auto-rows-[minmax(7rem,1fr)] grid-cols-7 overflow-y-auto"
+      >
         <div
           v-for="day in monthGrid.days"
           :key="day.dateStr"
-          class="border-border/60 min-h-28 cursor-pointer border-b border-r p-1.5 transition hover:bg-secondary/40"
+          class="border-border/60 cursor-pointer border-b border-r p-1.5 transition hover:bg-secondary/40"
           :class="!day.inMonth && 'bg-secondary/20'"
           @click="openDay(day.dateStr)"
         >
@@ -709,26 +726,17 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
           </div>
 
           <div class="mt-1 space-y-1">
-            <div
+            <ScheduleAppointmentCard
               v-for="appt in (apptsByDay[day.dateStr] ?? []).slice(
                 0,
                 MAX_CHIPS,
               )"
               :key="appt.id"
-              class="truncate rounded px-1.5 py-0.5 text-[11px] leading-tight"
-              :style="{
-                backgroundColor: providerTint(appt.staff_id),
-                borderLeft: `3px solid ${providerColor(appt.staff_id)}`,
-              }"
-              @click.stop="detailAppt = appt"
-            >
-              <span class="font-medium">{{ shortTime(appt.starts_at) }}</span>
-              {{
-                appt.client
-                  ? `${appt.client.first_name} ${appt.client.last_name.charAt(0)}.`
-                  : "Client"
-              }}
-            </div>
+              :appointment="appt"
+              variant="chip"
+              @click.stop
+              @select="detailAppt = appt"
+            />
             <p
               v-if="(apptsByDay[day.dateStr]?.length ?? 0) > MAX_CHIPS"
               class="text-muted-foreground px-1.5 text-[11px]"

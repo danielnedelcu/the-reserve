@@ -93,6 +93,10 @@ styling meaning. Specifically:
   in the detail dialog. The reskin keeps exactly that: no-show dimmed,
   cancelled absent, nothing else distinguished. Richer per-status styling
   is a design decision, not a skin — parked below.
+  **[UPDATED 2026-09-19, piece 2]** — one deliberate normalisation: with
+  a single card component, `no_show` now dims in the MONTH chips too,
+  where the old inline chip did not. Same treatment, one more place;
+  nothing else about status changed.
 - **Block / lunch styling — nothing to preserve.** [INVENTORY] The grid
   renders no blocks and no lunch; the schema's nearest concept is an
   availability_exceptions row of kind `break`, which the schedule never
@@ -198,6 +202,19 @@ established (what survives unchanged):
   inline (688–691); the day header's colour dot (518–522); WeekCalendar's
   colour bar and dots. Status: no-show dimmed, cancelled absent, nothing
   else.
+  **[UPDATED 2026-09-19, piece 2]** — the three inline card markups are
+  gone; every card is `app/components/schedule/AppointmentCard.vue`
+  (`<ScheduleAppointmentCard>`, variants day / week / chip). The
+  semantics moved with them and are set ONCE there: tint fill (painted
+  as a layer over an opaque card base, so two cards in one slot occlude
+  instead of bleeding through each other) + `border-l-4` in the
+  provider colour + image 4's corner dot in the same colour; `no_show`
+  → `opacity-50`; cancelled never reaches a card because the page still
+  does not fetch it. `blockStyle` is position only (top/height as a
+  percentage of the day). `providerColor`/`providerTint` and the day
+  header's dot are unchanged; WeekCalendar is untouched by piece 2.
+  Time labels moved to `app/utils/appointmentTime.ts`, shared by the
+  card and the dialogs, still on the browser clock (see the seam);
 
 The inventory is the contract: every item is re-verified after each piece.
 Where a piece changes an item on purpose, the item stays in the list with
