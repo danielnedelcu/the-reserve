@@ -96,6 +96,13 @@ export default defineEventHandler(async (event) => {
       statusMessage: "No location configured",
     });
   const tz = location.timezone;
+  // SCAR — the two-timezone seam (inventory, 2026-09-19). Slots are
+  // computed in the LOCATION'S timezone here; the schedule grid that
+  // displays the booked result positions cards by the VIEWER'S browser
+  // clock (app/pages/schedule.vue, blockStyle / fetchRange). Same zone
+  // today, so they agree; see the note there and docs/TODO.md. This side
+  // is the correct one — the fix, when made, moves the grid onto the
+  // location's zone, not this route onto the browser's.
 
   const dayStart = localToUtc(date, "00:00", tz).getTime();
   const dayEnd = dayStart + 24 * 3_600_000;

@@ -122,6 +122,19 @@ interface Appt {
   resource: { name: string } | null;
 }
 
+// SCAR — the two-timezone seam (inventory, 2026-09-19). Everything on this
+// page that turns a day key into an instant or an instant into grid
+// pixels uses the VIEWER'S BROWSER CLOCK: the day range below is built
+// from browser-local midnight, and blockStyle() positions a card from
+// `getHours()`/`getMinutes()`. The slots route computes availability in
+// the LOCATION'S timezone (server/utils/timezone.ts, localToUtc). The two
+// agree only while the viewer and the location share a zone — true today,
+// one city — and a viewer elsewhere would see cards drawn at their own
+// local hour while being offered slots computed for the spa's. Recorded
+// in docs/TODO.md as a latent correctness bug to fix DELIBERATELY (the
+// fix is the location timezone on this side, not the browser's on the
+// other). Until then, keep this behaviour exactly as it is: the redesign
+// redraws these cards and must not "fix" it in passing.
 const fetchRange = computed(() => {
   if (view.value === "day") {
     return {
@@ -184,6 +197,8 @@ const hours = Array.from(
 );
 
 function blockStyle(appt: Appt) {
+  // SCAR: browser-local hours — see the two-timezone seam note above
+  // fetchRange. Deliberately unchanged.
   const start = new Date(appt.starts_at);
   const end = new Date(appt.ends_at);
   const startMin =

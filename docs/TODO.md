@@ -122,6 +122,19 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
+- LATENT CORRECTNESS BUG, fix deliberately, NOT in the scheduler reskin:
+  the two-timezone seam. The schedule grid positions appointments and
+  builds its day range from the VIEWER'S browser clock
+  (app/pages/schedule.vue `blockStyle`, `fetchRange`), while the slots
+  route computes availability in the LOCATION'S timezone
+  (server/api/appointments/slots.get.ts, `localToUtc`). They agree only
+  while viewer and location share a zone — true today, one city. Found by
+  the scheduler behaviour inventory 2026-09-19; commented as a scar at
+  both ends. The fix moves the grid onto the location's zone (the slots
+  side is right); it needs its own verification across a DST boundary and
+  a viewer in another zone, which is why it is not folded into a visual
+  change.
+
 - requirePermission helper adoption in checkout + refund routes
   (server/utils/requireUser.ts:23 does auth+permission in one call)
 - receiptEmail return-shape consistency ({subject,html} object like the
