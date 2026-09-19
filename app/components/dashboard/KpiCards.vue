@@ -107,25 +107,14 @@ const revenueMetrics = computed(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Trends (direction = arrow, goodness = color; invert for no-shows)
+// Trends — the shared rule in app/utils/trend.ts (direction = arrow,
+// goodness = colour; invert for no-shows). Counts use the shared
+// baseline floor. The no-show trend compares two RATES and revenue two
+// CENT totals, so the count floor does not fit them; both pass an
+// explicit floor of 1 (any prior value) to keep their old behaviour —
+// noted in docs/TODO.md as a consistency gap to close with floors of
+// their own kind.
 // ---------------------------------------------------------------------------
-interface Trend {
-  pct: number;
-  up: boolean;
-  good: boolean;
-}
-function trend(
-  current: number,
-  previous: number,
-  invert = false,
-): Trend | null {
-  if (!previous) return null;
-  const pct = Math.round(((current - previous) / Math.abs(previous)) * 100);
-  if (pct === 0) return null;
-  const up = pct > 0;
-  return { pct: Math.abs(pct), up, good: invert ? !up : up };
-}
-
 interface Card {
   label: string;
   value: string;
@@ -162,7 +151,7 @@ const cards = computed<Card[]>(() => {
           ? trend(
               apptMetrics.value.noShowLast7,
               apptMetrics.value.noShowPrior7,
-              true,
+              { invert: true, minBaseline: 1 },
             )
           : null,
       icon: "lucide:user-x",
@@ -184,7 +173,9 @@ const cards = computed<Card[]>(() => {
       label: "Revenue (7 days)",
       value: dollars(revenueMetrics.value.last7),
       subtitle: "services + retail",
-      trend: trend(revenueMetrics.value.last7, revenueMetrics.value.prior7),
+      trend: trend(revenueMetrics.value.last7, revenueMetrics.value.prior7, {
+        minBaseline: 1,
+      }),
       icon: "lucide:banknote",
     });
   }
@@ -216,7 +207,7 @@ const cards = computed<Card[]>(() => {
               >
                 <Icon
                   :name="
-                    card.trend.up
+                    card.trend.direction === 'up'
                       ? 'lucide:trending-up'
                       : 'lucide:trending-down'
                   "

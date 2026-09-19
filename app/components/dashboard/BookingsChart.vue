@@ -76,22 +76,20 @@ const isEmpty = computed(
 );
 
 /**
- * Change vs last month, from the totals. null = nothing to compare
- * against (last month had no bookings), and the footer stat hides.
+ * Change vs last month, from the totals, through the shared trend rule:
+ * no percentage until last month is a big enough baseline
+ * (TREND_MIN_BASELINE), and none for a zero change. The footer then
+ * shows the plain totals and says why there is no comparison yet.
  */
-const change = computed(() => {
-  const { thisMonth, lastMonth } = totals.value;
-  if (lastMonth === 0) return null;
-  const pct = Math.round(((thisMonth - lastMonth) / lastMonth) * 100);
-  return {
-    pct: Math.abs(pct),
-    direction: pct > 0 ? "up" : pct < 0 ? "down" : "flat",
-  } as const;
-});
-
-const dayCount = computed(() =>
-  Math.max(daysIn(thisStart), daysIn(lastStart)),
+const change = computed(() =>
+  trend(totals.value.thisMonth, totals.value.lastMonth),
 );
+const belowBaseline = computed(
+  () =>
+    totals.value.lastMonth > 0 && totals.value.lastMonth < TREND_MIN_BASELINE,
+);
+
+const dayCount = computed(() => Math.max(daysIn(thisStart), daysIn(lastStart)));
 
 /** A month shorter than the axis gets nulls past its last day, not zeros. */
 const pad = (arr: number[]) =>
@@ -166,13 +164,16 @@ const summary = computed(() => {
     <UiCardHeader class="p-4 pb-0">
       <UiCardTitle class="text-base">Bookings by day</UiCardTitle>
       <UiCardDescription>
-        {{ monthName(thisStart) }} over {{ monthName(lastStart) }}, aligned
-        by day of month
+        {{ monthName(thisStart) }} over {{ monthName(lastStart) }}, aligned by
+        day of month
       </UiCardDescription>
     </UiCardHeader>
 
     <UiCardContent class="p-4">
-      <div v-if="pending && !rows" class="h-60 animate-pulse rounded-md bg-muted" />
+      <div
+        v-if="pending && !rows"
+        class="h-60 animate-pulse rounded-md bg-muted"
+      />
 
       <div
         v-else-if="isEmpty"
@@ -184,33 +185,46 @@ const summary = computed(() => {
 
       <template v-else>
         <div class="h-60">
-          <UiApexchart type="area" height="100%" :series="series" :options="options" />
+          <UiApexchart
+            type="area"
+            height="100%"
+            :series="series"
+            :options="options"
+          />
         </div>
         <p class="sr-only">
-          {{ summary }} Solid line is {{ monthName(thisStart) }}, dashed line
-          is {{ monthName(lastStart) }}.
+          {{ summary }} Solid line is {{ monthName(thisStart) }}, dashed line is
+          {{ monthName(lastStart) }}.
         </p>
 
         <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <span
-            v-if="change && change.direction !== 'flat'"
+            v-if="change"
             class="flex items-center gap-1 font-medium"
             :class="
-              change.direction === 'up'
+              change.good
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
           >
             <Icon
-              :name="change.direction === 'up' ? 'lucide:trending-up' : 'lucide:trending-down'"
+              :name="
+                change.direction === 'up'
+                  ? 'lucide:trending-up'
+                  : 'lucide:trending-down'
+              "
               class="size-4"
             />
-            {{ change.direction === "up" ? "Up" : "Down" }} {{ change.pct }}%
-            vs {{ monthName(lastStart) }}
+            {{ change.direction === "up" ? "Up" : "Down" }} {{ change.pct }}% vs
+            {{ monthName(lastStart) }}
           </span>
-          <span v-else-if="change" class="text-muted-foreground flex items-center gap-1 font-medium">
-            <Icon name="lucide:minus" class="size-4" />
-            Level with {{ monthName(lastStart) }}
+          <span
+            v-else-if="belowBaseline"
+            class="text-muted-foreground flex items-center gap-1"
+          >
+            <Icon name="lucide:info" class="size-4" />
+            No comparison yet — fewer than {{ TREND_MIN_BASELINE }} bookings in
+            {{ monthName(lastStart) }}
           </span>
           <span class="text-muted-foreground">{{ summary }}</span>
         </div>

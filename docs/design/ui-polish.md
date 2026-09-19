@@ -33,5 +33,12 @@ Add items as they occur; strike them when done.
   Verify it landed; add if not.
 - Sheet/dialog footer button order + spacing audit across the app
   (some flex-row overrides applied piecemeal).
+- First-run nudge on the empty dashboard (parked 2026-09-19 after the
+  sparse-data acceptance pass): every card says its own "nothing yet"
+  sentence in the same tone, which reads fine, but nothing on a new
+  spa's dashboard points anywhere. One nudge — "Book your first
+  appointment" in the Today card, or a single first-run banner — is
+  additive and its own design question (where it lives, when it stops
+  showing). Pairs with the empty-states audit below.
 - Empty states audit: consistent tone and affordance ("start one",
   "no matches") across list surfaces.

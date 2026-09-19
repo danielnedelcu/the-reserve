@@ -135,6 +135,33 @@ QUEUED (in order):
   a viewer in another zone, which is why it is not folded into a visual
   change.
 
+- KPI cards — permission gate discrepancy (owed since the dashboard
+  shipped): the booking counts in app/components/dashboard/KpiCards.vue
+  ("Appointments (7 days)", "Booked ahead", no-show rate) have no
+  `can()` gate and rely on appointments RLS, so a viewer limited to
+  appointments.view.own sees their OWN counts presented as the club's.
+  The bookings chart (2026-09-19) gates on appointments.view.any for
+  exactly that reason; the cards should match, or say "yours" when the
+  viewer is own-only.
+- KPI cards — trend-floor consistency (found 2026-09-19 with the chart
+  floor): counts now use the shared app/utils/trend.ts baseline
+  (TREND_MIN_BASELINE = 10 in the previous period). The no-show and
+  revenue cards call the same function but pass `minBaseline: 1` — a
+  DOCUMENTED PLACEHOLDER that preserves their pre-floor behaviour, not
+  a floor. The real fix, per card:
+  - No-show rate: the trend compares two RATES (percent), so the
+    denominator that matters is the SAMPLE SIZE under each rate, not
+    the prior rate's value. Floor on the prior window's booked count
+    (the `total` inside `noShowRate`), e.g. ≥ 10 booked appointments in
+    the prior 7 days, else no trend; the prior rate itself may be small
+    and still be a perfectly good baseline. Needs `apptMetrics` to
+    expose the prior window's count alongside the rate.
+  - Revenue: the trend compares two CENT totals, so the floor is a
+    DOLLAR AMOUNT on the prior week, e.g. ≥ $100 (10_000 cents) of
+    service + retail, else no trend; a $12 prior week makes any normal
+    week a 500% "surge". Pass it as `minBaseline` in cents.
+  Either way the placeholder `minBaseline: 1` goes away, and the card
+  comment in KpiCards.vue that points here comes out with it.
 - requirePermission helper adoption in checkout + refund routes
   (server/utils/requireUser.ts:23 does auth+permission in one call)
 - receiptEmail return-shape consistency ({subject,html} object like the
