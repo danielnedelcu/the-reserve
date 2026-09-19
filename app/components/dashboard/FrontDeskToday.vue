@@ -210,6 +210,15 @@ const STATUS_DOT: Record<string, string> = {
               </p>
             </div>
           </div>
+          <!-- Button weight follows action importance, on purpose. The
+               card has ONE filled button: Checkout in the money lane
+               above, where the visit is over and taking payment is the
+               next thing. Here the visit is mid-flight, so the row's own
+               next step (Start / Complete) is the outline button and
+               Checkout — an early-checkout shortcut that skips Complete —
+               is a ghost: same icon as the primary Checkout so it reads
+               as the same action, muted so it never competes with the
+               step beside it. Don't level these. -->
           <div class="flex gap-2">
             <UiButton
               v-if="canAct && NEXT[appt.status]"
@@ -224,8 +233,10 @@ const STATUS_DOT: Record<string, string> = {
               v-if="canCheckout"
               size="sm"
               variant="ghost"
+              class="text-muted-foreground"
               :to="`/checkout?appointment=${appt.id}`"
             >
+              <Icon name="lucide:credit-card" class="size-4" />
               Checkout
             </UiButton>
           </div>
