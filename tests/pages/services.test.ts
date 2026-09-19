@@ -20,7 +20,7 @@ const servicesRows = [
   {
     id: "sv1",
     category_id: "c1",
-    name: "[EXAMPLE] Swedish Massage — 60 min",
+    name: "Swedish Massage",
     description: "Classic full-body relaxation massage.",
     duration_minutes: 60,
     buffer_before_min: 0,
@@ -34,7 +34,7 @@ const servicesRows = [
   {
     id: "sv2",
     category_id: "c1",
-    name: "[EXAMPLE] Retired Treatment",
+    name: "Retired Treatment",
     description: null,
     duration_minutes: 30,
     buffer_before_min: 0,
