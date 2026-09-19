@@ -277,6 +277,9 @@
 | public.settle_prospect_notifications         | trigger        |                                                                                                          | FUNCTION |
 | public.forget_prospect_notifications         | trigger        |                                                                                                          | FUNCTION |
 | public.purge_leads                           | int4           |                                                                                                          | FUNCTION |
+| public.notify_lead_captured                  | trigger        |                                                                                                          | FUNCTION |
+| public.settle_lead_notifications             | trigger        |                                                                                                          | FUNCTION |
+| public.forget_lead_notifications             | trigger        |                                                                                                          | FUNCTION |
 
 ## Enums
 
@@ -285,7 +288,7 @@
 | auth.aal_level | aal1, aal2, aal3 |
 | auth.code_challenge_method | plain, s256 |
 | auth.factor_status | unverified, verified |
-| auth.factor_type | phone, totp, webauthn |
+| auth.factor_type | phone, recovery_code, totp, webauthn |
 | auth.oauth_authorization_status | approved, denied, expired, pending |
 | auth.oauth_client_type | confidential, public |
 | auth.oauth_registration_type | dynamic, manual |

@@ -2,8 +2,10 @@
 
 Status: PHASE 1 (schema) SHIPPED 2026-09-13
 (`supabase/migrations/20260913153010_leads_capture.sql`). PHASE 2 (public
-capture endpoint) built 2026-09-13 — `server/api/public/leads/index.ts`,
-`verify:leads` 52/52; phases 3–4 not built. Owner-INDEPENDENT (no tier answers needed).
+capture endpoint) SHIPPED 2026-09-13 — `server/api/public/leads/index.ts`.
+PHASE 3 (staff UI + live indicators) built 2026-09-18 — `/leads`,
+`/leads/:id`, `useLeadQueue`, migration `20260919013317`; `verify:leads`
+62/62. Phase 4 (conversion) not built. Owner-INDEPENDENT (no tier answers needed).
 Design-room session 2026-09-12. `[AS-BUILT]` marks where the SQL
 deviates from the prose below.
 
@@ -202,9 +204,29 @@ The /intake review-list → detail pattern, re-aimed at leads:
   not a feed), gated on leads.view;
 - a lead detail: contact info, interest, source, the notes thread, a
   status control, and the "send intake form" (convert) action;
+  [AS-BUILT] the status control and its route both draw from
+  `LEAD_MANUAL_STATUSES` (new, contacted, qualified, lost) — `converted`
+  is reachable only through the phase-4 action, the route refuses it by
+  name, and a converted lead cannot be moved back by hand. The convert
+  button is present but disabled, with the reason on the screen, until
+  phase 4.
 - gated nav entry (leads.view), and — consistent with the prospect
   work — consider a live indicator for new leads later (not v1 unless
   wanted; the prospect nav-dot + bell pattern is the model if so).
+  [AS-BUILT] Shipped in phase 3 as an ARRIVAL alert: the nav dot counts
+  leads in `new` (queue state, shared, no last-seen), and a
+  `lead.captured` bell notification fans out to leads.view holders. Both
+  clear on FIRST TOUCH — any move out of `new` marks every recipient's
+  copy read (a colleague picking a lead up clears everyone's bell), and
+  moving back to `new` does not re-announce. The notification is written
+  by a trigger on `leads`, not by the capture route, so a lead entered by
+  hand is announced identically; `leads` joined the realtime publication
+  in the same migration, and useLeadQueue carries the re-count-on-join
+  and on-visible defences from useProspectQueue — the pane tab that was
+  open across the push demonstrated the documented incident exactly (a
+  pre-publication subscription reported SUBSCRIBED and received nothing
+  until reload). The /leads list refetches whenever the queue count
+  changes, so it never contradicts the dot above it.
 
 ## What lives where (the boundary)
 

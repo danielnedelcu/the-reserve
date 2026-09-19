@@ -42,9 +42,12 @@ A person who expressed interest through a public landing page and is not yet a p
 
 ## Triggers
 
-| Name            | Definition                                                                                                    |
-| --------------- | ------------------------------------------------------------------------------------------------------------- |
-| trg_leads_touch | CREATE TRIGGER trg_leads_touch BEFORE UPDATE ON public.leads FOR EACH ROW EXECUTE FUNCTION touch_updated_at() |
+| Name                          | Definition                                                                                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| trg_forget_lead_notifications | CREATE TRIGGER trg_forget_lead_notifications AFTER DELETE ON public.leads FOR EACH ROW EXECUTE FUNCTION forget_lead_notifications()           |
+| trg_leads_touch               | CREATE TRIGGER trg_leads_touch BEFORE UPDATE ON public.leads FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                                 |
+| trg_notify_lead_captured      | CREATE TRIGGER trg_notify_lead_captured AFTER INSERT ON public.leads FOR EACH ROW EXECUTE FUNCTION notify_lead_captured()                     |
+| trg_settle_lead_notifications | CREATE TRIGGER trg_settle_lead_notifications AFTER UPDATE OF status ON public.leads FOR EACH ROW EXECUTE FUNCTION settle_lead_notifications() |
 
 ## Relations
 

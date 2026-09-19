@@ -94,6 +94,8 @@ async function post(body, { ip = freshIp(), origin, raw } = {}) {
   return { status: res.status, headers: res.headers, json, text };
 }
 
+let bystanderId = null;
+
 async function main() {
   const ping = await fetch(base).catch(() => null);
   if (!ping) {
@@ -101,6 +103,15 @@ async function main() {
     process.exit(1);
   }
   console.log(`\nPublic lead capture — boundary verification (${base})\n`);
+
+  // An active staff member with NO roles: whatever the live roster looks
+  // like, at least one person in the org must NOT be notified.
+  const { data: bystander, error: bystanderErr } = await admin
+    .from("staff")
+    .insert({ organization_id: ORG, display_name: "Verify Bystander", email: `verify-bystander-${run}@example.test`, bookable: false })
+    .select("id").single();
+  if (bystanderErr) throw new Error(`fixture staff: ${bystanderErr.message}`);
+  bystanderId = bystander.id;
 
   // ── 1. anon has no write path but the endpoint ─────────────────────
   console.log("anon privileges");
@@ -133,6 +144,36 @@ async function main() {
   check("…consent_at stamped by the SERVER, just now (within 60s)", skew < 60_000, `skew ${Math.round(skew / 1000)}s`);
   const { data: anonRead } = await anon.from("leads").select("id").eq("email", good.email);
   check("anon cannot READ the row just written", (anonRead ?? []).length === 0);
+
+  // ── 2b. the bell: fan-out == leads.view holders, settle, forget ────
+  console.log("\nlead.captured notifications (recipients == permission holders)");
+  const link = `/leads/${stored?.id}`;
+  const { data: holderRows } = await admin
+    .from("staff_roles")
+    .select("staff_id, staff!inner(organization_id, active), roles!inner(role_permissions!inner(permission_key))")
+    .eq("roles.role_permissions.permission_key", "leads.view")
+    .eq("staff.organization_id", ORG)
+    .eq("staff.active", true);
+  const holders = new Set((holderRows ?? []).map((r) => r.staff_id));
+  const { data: orgStaff } = await admin.from("staff").select("id, active").eq("organization_id", ORG);
+  const nonHolders = (orgStaff ?? []).filter((s) => s.active && !holders.has(s.id)).map((s) => s.id);
+  const { data: notes } = await admin.from("notifications").select("staff_id, link, read_at, title").eq("kind", "lead.captured").eq("link", link);
+  const notified = new Set((notes ?? []).map((n) => n.staff_id));
+  check("at least one active staff member holds leads.view (else the next check is vacuous)", holders.size > 0);
+  check("the bystander fixture is an active NON-holder (else the exclusion check is vacuous)", nonHolders.includes(bystanderId));
+  check("every active leads.view holder got exactly one lead.captured notification",
+    [...holders].every((id) => notified.has(id)) && (notes ?? []).length === holders.size,
+    `holders=${holders.size} notified=${notified.size} rows=${(notes ?? []).length}`);
+  check("NO active staff member without leads.view was notified", nonHolders.every((id) => !notified.has(id)));
+  check("the notification arrives unread and links to the lead",
+    (notes ?? []).length > 0 && (notes ?? []).every((n) => n.read_at === null && n.link === link));
+  const unreadFor = async () => (await admin.from("notifications").select("id").eq("kind", "lead.captured").eq("link", link).is("read_at", null)).data.length;
+  await admin.from("leads").update({ status: "contacted" }).eq("id", stored.id);
+  check("CONTACTING the lead settles the notification for every recipient (read, not deleted)",
+    (await unreadFor()) === 0 && (await admin.from("notifications").select("id").eq("kind", "lead.captured").eq("link", link)).data.length === holders.size);
+  await admin.from("leads").update({ status: "new" }).eq("id", stored.id);
+  check("moving it back to new does NOT re-notify (one arrival, one announcement)",
+    (await admin.from("notifications").select("id").eq("kind", "lead.captured").eq("link", link)).data.length === holders.size);
 
   const noConsentLead = lead({ consent: false });
   const noConsent = await post(noConsentLead);
@@ -195,6 +236,8 @@ async function main() {
     const def = rows[0]?.def ?? "";
     return [...def.matchAll(/'([^']+)'::text/g)].map((m) => m[1]).sort();
   };
+  const { rows: pub } = await c.query(`select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'leads'`);
+  check("leads is in the supabase_realtime publication (a subscription to an unpublished table reports SUBSCRIBED and receives nothing)", pub.length === 1);
   const dbInterests = await setFrom("leads_interest_check");
   const dbStatuses = await setFrom("leads_status_check");
   check("LEAD_INTERESTS equals leads_interest_check exactly",
@@ -287,6 +330,9 @@ async function main() {
 
   // ── teardown ───────────────────────────────────────────────────────
   await admin.from("leads").delete().like("email", `%${SUFFIX}`);
+  const { data: orphans } = await admin.from("notifications").select("id").eq("kind", "lead.captured").eq("link", link);
+  check("deleting the lead removes its notifications (no dangling bell entry)", (orphans ?? []).length === 0);
+  if (bystanderId) await admin.from("staff").delete().eq("id", bystanderId);
 
   console.log(`\n${passed}/${passed + failed} passed`);
   if (failed) {

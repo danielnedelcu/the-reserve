@@ -163,7 +163,7 @@ this feature shipped three "finished" flows a human could not complete.
 ### Driving the browser without being fooled
 
 The traps above are silent failures: the product is broken and everything
-looks green. Traps 1–3, 5 and 6 here are the inverse, and just as
+looks green. Traps 1–3, 5, 6 and 7 here are the inverse, and just as
 expensive — **the product is fine and the test says it is broken**, which
 sends someone debugging a component that works. The fourth is worse than
 either: **the test's safety net is a no-op and the test writes to real
@@ -245,10 +245,22 @@ get a rogue version.
    — and confirm with a capturing `click` listener that the event reached
    the element.
 
+7. **One real click on a `UiSelect` trigger can open the list AND select
+   the next option.** reka aligns the open list so the currently selected
+   item sits over the trigger; when the pointer is on the trigger's lower
+   half, the option BELOW the current one is under the pointer at
+   pointer-up, and the click selects it. A status control read "New",
+   one click on it, and the lead was "Contacted" with the route called
+   and an audit row written (2026-09-18). Reading the DOM right after saw
+   `aria-expanded="false"` and no listbox, which looks like "the click
+   missed" — it did the opposite. When a test needs the list OPEN (to
+   measure options), click the trigger's TOP half; and after any trigger
+   click, read the bound value before assuming nothing happened.
+
 Two related facts from the same session: synthetic `pointerdown` can open
 a reka-ui layer but leaves its stack inconsistent (body keeps
 `pointer-events: none`; only a reload clears it), so open with REAL input;
 and a `<button role="checkbox">` updates on the next tick, so read its
 state after `await`, not in the same tick as the click. When a real-input
-test fails, rule traps 1–3, 5 and 6 out before touching the component;
+test fails, rule traps 1–3 and 5–7 out before touching the component;
 when a test is "safe", rule the fourth out before pressing anything.

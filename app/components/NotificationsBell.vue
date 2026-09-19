@@ -41,6 +41,7 @@ const { data: notifications, refresh } = await useAsyncData(
  */
 const KIND_PERMISSION: Record<string, string> = {
   "prospect.submitted": "forms.responses.view",
+  "lead.captured": "leads.view",
 };
 
 const visible = computed(() =>
@@ -134,6 +135,7 @@ const KIND_ICONS: Record<string, string> = {
   "timeoff.requested": "lucide:inbox",
   "message.received": "lucide:message-circle",
   "prospect.submitted": "lucide:user-round-plus",
+  "lead.captured": "lucide:megaphone",
 };
 
 function timeAgo(iso: string) {

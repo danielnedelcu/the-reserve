@@ -5639,8 +5639,20 @@
       ],
       "triggers": [
         {
+          "name": "trg_forget_lead_notifications",
+          "def": "CREATE TRIGGER trg_forget_lead_notifications AFTER DELETE ON public.leads FOR EACH ROW EXECUTE FUNCTION forget_lead_notifications()"
+        },
+        {
           "name": "trg_leads_touch",
           "def": "CREATE TRIGGER trg_leads_touch BEFORE UPDATE ON public.leads FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+        },
+        {
+          "name": "trg_notify_lead_captured",
+          "def": "CREATE TRIGGER trg_notify_lead_captured AFTER INSERT ON public.leads FOR EACH ROW EXECUTE FUNCTION notify_lead_captured()"
+        },
+        {
+          "name": "trg_settle_lead_notifications",
+          "def": "CREATE TRIGGER trg_settle_lead_notifications AFTER UPDATE OF status ON public.leads FOR EACH ROW EXECUTE FUNCTION settle_lead_notifications()"
         }
       ]
     },
@@ -8249,6 +8261,24 @@
       "return_type": "int4",
       "arguments": "",
       "type": "FUNCTION"
+    },
+    {
+      "name": "public.notify_lead_captured",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.settle_lead_notifications",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.forget_lead_notifications",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
     }
   ],
   "enums": [
@@ -8278,6 +8308,7 @@
       "name": "auth.factor_type",
       "values": [
         "phone",
+        "recovery_code",
         "totp",
         "webauthn"
       ]

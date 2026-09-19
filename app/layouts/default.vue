@@ -9,8 +9,15 @@ await load();
 // Prospects awaiting review — queue state, live, permission-gated inside
 // the composable (it never queries for someone who cannot see /intake).
 const queue = useProspectQueue();
-onMounted(() => queue.start());
-onUnmounted(() => queue.stop());
+const leadQueue = useLeadQueue();
+onMounted(() => {
+  queue.start();
+  leadQueue.start();
+});
+onUnmounted(() => {
+  queue.stop();
+  leadQueue.stop();
+});
 
 interface NavItem {
   title: string;
@@ -69,6 +76,13 @@ const navSections = computed<NavSection[]>(() =>
           icon: "lucide:user-round-plus",
           show: can("forms.responses.view"),
           pending: { count: queue.pendingCount.value, noun: "awaiting review" },
+        },
+        {
+          title: "Leads",
+          to: "/leads",
+          icon: "lucide:megaphone",
+          show: can("leads.view"),
+          pending: { count: leadQueue.pendingCount.value, noun: "new" },
         },
         {
           title: "Forms",

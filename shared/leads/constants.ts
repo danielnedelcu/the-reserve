@@ -23,6 +23,24 @@ export const LEAD_STATUSES = ["new", "contacted", "qualified", "converted", "los
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
 /**
+ * The statuses a staff member may SET by hand. `converted` is absent on
+ * purpose: it is reached only by the conversion action (sending the
+ * intake form, phase 4), which also threads prospect_intake.lead_id —
+ * picking it from a dropdown would record a conversion that never
+ * happened. The status route refuses it and the status control never
+ * offers it, both from this one list.
+ */
+export const LEAD_MANUAL_STATUSES = ["new", "contacted", "qualified", "lost"] as const;
+export type LeadManualStatus = (typeof LEAD_MANUAL_STATUSES)[number];
+
+/** What a lead is a lead FOR, in words a staff member reads. */
+export const LEAD_INTEREST_LABELS: Record<LeadInterest, string> = {
+  membership: "Membership",
+  service: "A service",
+  inquiry: "General inquiry",
+};
+
+/**
  * The honeypot field name. A landing page renders it hidden (CSS, not
  * `type=hidden`, so a browser never fills it and a naive bot does); a
  * submission that fills it is discarded while being answered exactly like
