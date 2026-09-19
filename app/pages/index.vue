@@ -13,6 +13,7 @@ await load();
       <div class="">
         <DashboardFrontDeskToday />
         <DashboardKpiCards class="mt-6" />
+        <DashboardBookingsChart class="mt-6" />
       </div>
 
       <!-- Right column: week calendar -->
