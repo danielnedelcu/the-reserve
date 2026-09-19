@@ -147,6 +147,18 @@ established (what survives unchanged):
   active + bookable staff (216–225), the detail dialog's content and
   actions (713–794), and the dashboard's WeekCalendar as a second consumer
   of the same shape;
+  **[UPDATED 2026-09-19, piece 2]** — the loading half of this item is no
+  longer true. As inventoried: one query per active view (a day, a week,
+  or the month grid), keyed by view + range, re-run on every view change.
+  As built: the query ALWAYS fetches the six-week month grid around the
+  selected date, keyed on that range alone (`fetchRangeKey`), and view
+  switching is a pure in-memory filter through `apptsByDay` — no fetch.
+  Only moving the selected date into a month grid that is not loaded
+  queries. See "Decisions made during the build" below for why. The grid
+  half changed too: the hour scale is no longer one pixel per minute but
+  a percentage of the day over a body that fills the card, with the old
+  720px as its floor (`pctOfDay`/`hourTop`); minutes are still decided
+  exactly as before, only expressed differently;
 - the availability calculation — server-side ONLY, in
   `GET /api/appointments/slots` (rules − exceptions + extra_shift − staff
   busy ∩ free room, 15-minute grid, location timezone via localToUtc),
@@ -165,7 +177,12 @@ established (what survives unchanged):
   RLS (246–295), each followed by a refetch;
 - realtime: NONE (parked, above) — the refresh behaviour that exists is
   `refreshAppointments` after the page's own mutations, and the
-  useAsyncData watch on selectedDate/view;
+  useAsyncData watch on selectedDate/view.
+  **[UPDATED 2026-09-19, piece 2 — refetch trigger only, still NO
+  realtime]**: the watch is now on the fetch-range key rather than on
+  selectedDate/view, so a date move within the loaded grid does not
+  refetch and a view switch never does. Nothing pushes changes to the
+  page; realtime stays parked;
 - the DATE-HANDLING SCARS — `toDateStr` = en-CA local keys
   (schedule.vue:19–21, WeekCalendar.vue:4–6); the noon anchor
   `T12:00:00` at schedule.vue:26, 47, 58–59, 75, 86, 803 and
@@ -183,6 +200,49 @@ established (what survives unchanged):
   else.
 
 The inventory is the contract: every item is re-verified after each piece.
+Where a piece changes an item on purpose, the item stays in the list with
+its original wording and an [UPDATED] note, so the record shows both what
+was inventoried and what was decided.
+
+## Decisions made during the build
+
+### Load the month grid for every view (2026-09-19, piece 2)
+
+**Decision.** The appointments query fetches the six-week month grid
+(whole weeks, six rows) around the selected date, for all three views.
+Day and week are always inside that range, so switching views never
+fetches; each view filters `apptsByDay` for the days it shows. The query
+is keyed on the range string, so moving the selected date within the
+loaded grid does not query either. Only landing on a date whose grid is
+not loaded does.
+
+**Why.** The inventoried model — a query per view, re-run on view
+change — produced a visible flicker: useAsyncData keeps the previous
+key's rows until the new query resolves, so for ~150ms after a switch
+the new view rendered stale data from the old range. Day view drew a
+whole week of appointments into today's lanes at their hour (its lane
+filter was by staff only; fixed separately by reading through the
+date-keyed map — one predicate for all three views). Week view drew
+today's cards first and popped the rest of the week in when its query
+landed. A superset in memory removes the second failure at the root:
+there is no new query to wait for, so there is nothing stale to show.
+Verified by sampling the DOM every 4ms through each of the four
+transitions: the complete, correct set is on the first rendered frame,
+zero foreign cards on any frame.
+
+**What it costs.** Up to six weeks of appointment rows per load instead
+of one day's. Each row carries its client name, service snapshot and
+resource, so this is a wider query, not just a longer one.
+
+**Scale caveat — revisit if this changes.** Correct at the current
+scale: one location, one appointments table in the hundreds of rows per
+six weeks. Revisit if the club goes multi-location (the range would then
+be six weeks × locations unless the query is location-scoped) or if
+volume grows to where a six-week fetch is thousands of rows. The
+alternatives then are a per-view range with the previous data cleared
+(accepting a blank flash instead of a stale one) or a per-view range
+where the new view renders only once its own query has resolved, with
+the old view shown until then. Neither was worth its complexity today.
 
 ## Fragile — the seam the inventory found
 

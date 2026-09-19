@@ -135,31 +135,34 @@ interface Appt {
 // fix is the location timezone on this side, not the browser's on the
 // other). Until then, keep this behaviour exactly as it is: the redesign
 // redraws these cards and must not "fix" it in passing.
+/**
+ * ONE range for all three views: the month grid (whole weeks, six rows)
+ * around the selected date. Day and week are always inside it, so
+ * switching views never fetches and never shows a partial set — the
+ * range used to follow the view, and a day-to-week switch drew today's
+ * cards first and popped the rest of the week in ~150ms later when the
+ * week query landed. Now only navigating into a different month grid
+ * loads anything; each view just filters apptsByDay for the days it
+ * shows. Cost: up to six weeks of rows per load instead of one day.
+ */
 const fetchRange = computed(() => {
-  if (view.value === "day") {
-    return {
-      from: new Date(`${selectedDate.value}T00:00:00`).toISOString(),
-      to: new Date(`${selectedDate.value}T23:59:59`).toISOString(),
-    };
-  }
-  if (view.value === "week") {
-    const start = startOfWeek(selectedDate.value);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
-    return { from: start.toISOString(), to: end.toISOString() };
-  }
   const { gridStart, gridEnd } = monthGrid.value;
   const end = new Date(gridEnd);
   end.setDate(end.getDate() + 1);
   return { from: gridStart.toISOString(), to: end.toISOString() };
 });
+// Watched as a string so moving the selected date WITHIN the loaded grid
+// (next day, next week) does not re-run the query.
+const fetchRangeKey = computed(
+  () => `schedule-${fetchRange.value.from}-${fetchRange.value.to}`,
+);
 
 const {
   data: appointments,
   refresh: refreshAppointments,
   error: apptError,
 } = await useAsyncData(
-  () => `schedule-${view.value}-${fetchRange.value.from}`,
+  () => fetchRangeKey.value,
   async () => {
     const { data, error } = await supabase
       .from("appointments")
@@ -173,7 +176,7 @@ const {
     if (error) throw error;
     return (data ?? []) as unknown as Appt[];
   },
-  { watch: [selectedDate, view] },
+  { watch: [fetchRangeKey] },
 );
 
 const apptsByDay = computed(() => {
@@ -239,8 +242,21 @@ const { data: staffList } = await useAsyncData("schedule-staff", async () => {
   return data ?? [];
 });
 
+/**
+ * A provider's lane for the SELECTED DAY — read through apptsByDay, the
+ * same date-keyed map the week and month views use, so all three views
+ * decide "is this appointment on screen" in one place. Filtering the raw
+ * list by staff alone assumed the list held only today, which is false
+ * for the moment after a view switch: useAsyncData keeps the previous
+ * range's rows until the new query resolves, and a whole week of
+ * appointments flickered into today's lanes at their hour before the
+ * day query landed. Keyed by date, stale rows are at worst a superset
+ * that filters down correctly.
+ */
 function blocksFor(staffId: string) {
-  return (appointments.value ?? []).filter((a) => a.staff_id === staffId);
+  return (apptsByDay.value[selectedDate.value] ?? []).filter(
+    (a) => a.staff_id === staffId,
+  );
 }
 
 // ---------------------------------------------------------------------------
