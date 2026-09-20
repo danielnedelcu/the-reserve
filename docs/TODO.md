@@ -289,20 +289,30 @@ QUEUED (in order):
 
 ## Pre-launch checklist
 
-- Rotate Resend API key and DB password (exposed in chat during dev;
-  Supabase service key already rotated after the push-protection catch)
+- Rotate the Resend API key and the DB password (exposed in chat during
+  dev).
 - Rotate the Supabase SECRET key (`sb_secret_…`, the value in `.env`
-  today) — PRUDENT, NOT URGENT, and the evidence is recorded so nobody
-  re-litigates it: the 2026-09-20 public-repo history audit found it in
-  `.env.example` in two commits made 2026-08-22 21:59 and rebased away
-  at 22:01, before the next push; `origin/main` never pointed at either
-  (remote-tracking reflog), and anonymous web, API and `git fetch`-by-SHA
-  probes of the public repo all report the objects absent — while a
-  control commit force-pushed away the same day IS served, proving the
-  probe. So: never public, a local-only remnant in this clone's reflog.
-  Rotate at a convenient moment; then verify the new key works and the
-  old one is refused. OPTIONAL: expire the reflog and prune to remove the
-  local remnant (discards local recovery history — owner's call).
+  today) — OUTSTANDING. An earlier version of this list said the
+  Supabase service key was "already rotated after the push-protection
+  catch". That was WRONG, and here is how it was settled (2026-09-20) so
+  it is not re-litigated: the push-protection catch was THIS key, on
+  2026-08-22 — it was committed in `.env.example` at 21:59, removed at
+  21:59:46, and rebased out of the branch at 22:01 before the next push;
+  no JWT-shaped key has ever existed in any commit, reachable or
+  reflog-only, so there was no second, legacy credential to have rotated
+  instead. And the key in `.env` today is byte-identical to the one in
+  that commit — a rotated key cannot equal its predecessor — so it was
+  never rotated. Exposure: NONE PUBLIC, proven — `origin/main` never
+  pointed at either commit (remote-tracking reflog), and anonymous web,
+  API and `git fetch`-by-SHA probes of the public repo all report the
+  objects absent, while a control commit force-pushed away the same day
+  IS served, so the probe is sound. It is a local-only remnant in this
+  clone's reflog. PRUDENT, NOT URGENT: rotate at a convenient moment in
+  the Supabase dashboard (Project Settings → API keys: create new secret
+  key, revoke old), update `.env`, then verify the new key works and the
+  old one is refused. OPTIONAL after that: expire the reflog and prune
+  to remove the local remnant (discards local recovery history — owner's
+  call).
 - FORM_IP_PEPPER must be set in the production environment, and it is a
   DIFFERENT value per environment. It keys the HMAC over visitor IPs on
   the public intake form, so rotating it re-anonymises history: existing
