@@ -6,7 +6,6 @@ useSeoMeta({ title: "Messages — The Reserve" });
 const supabase = useSupabaseClient();
 const route = useRoute();
 const toast = useToast();
-const picked = useToggleSet();
 
 const { data: myStaffId } = await useAsyncData("msg-me", async () => {
   const { data } = await supabase.rpc("current_staff_id");
@@ -268,8 +267,20 @@ function onComposerKeydown(e: KeyboardEvent) {
 // New conversation (DM or ad-hoc group)
 // ---------------------------------------------------------------------------
 const newOpen = ref(false);
-const groupName = ref("");
-const creating = ref(false);
+
+// Selection + one-vs-many creation, shared with the rail's directory
+// (docs/design/messaging-enhancements.md, reuse point 1). The template
+// keeps its `picked` / `groupName` / `creating` / `startConversation`
+// names; they now come from the one shared definition.
+const starter = useStartConversation({
+  onStarted: async (conversationId) => {
+    newOpen.value = false;
+    await refreshList();
+    navigateTo(`/messages/${conversationId}`);
+  },
+});
+const { picked, groupName, creating } = starter;
+const startConversation = () => starter.start();
 
 const { data: staffList } = await useAsyncData("msg-staff", async () => {
   const { data } = await supabase
@@ -282,27 +293,6 @@ const { data: staffList } = await useAsyncData("msg-staff", async () => {
 const pickableStaff = computed(() =>
   (staffList.value ?? []).filter((s) => s.id !== myStaffId.value),
 );
-
-async function startConversation() {
-  const ids = [...picked.set.value];
-  const [firstId] = ids;
-  if (!firstId) return;
-  creating.value = true;
-  const { data: conversationId, error } =
-    ids.length === 1
-      ? await supabase.rpc("find_or_create_dm", { p_other_staff_id: firstId })
-      : await supabase.rpc("create_group_conversation", {
-          p_name: groupName.value,
-          p_staff_ids: ids,
-        });
-  creating.value = false;
-  if (error) return toast.error("Could not start conversation", error.message);
-  newOpen.value = false;
-  picked.clear();
-  groupName.value = "";
-  await refreshList();
-  navigateTo(`/messages/${conversationId}`);
-}
 
 const leaveOpen = ref(false);
 
