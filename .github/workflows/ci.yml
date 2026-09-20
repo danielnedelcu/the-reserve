@@ -1,0 +1,49 @@
+# The gate. A change that breaks the typecheck or a unit test cannot
+# merge once main requires the "typecheck + tests" check. Lint runs too
+# but is advisory (continue-on-error) until the existing 48 problems are
+# swept — gating on a red suite is how the test graveyard happened.
+#
+# Deliberately NOT here: the verify:* harnesses. They write to a live
+# database and need the service-role key and a dev server; running them
+# from CI means a dedicated Supabase project for CI, which is its own
+# piece of work. Until then they stay the local pre-merge step for
+# database-touching changes.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  lint:
+    name: lint (advisory until the sweep lands)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
