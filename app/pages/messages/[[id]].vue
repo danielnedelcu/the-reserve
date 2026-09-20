@@ -71,9 +71,19 @@ function isUnread(conversation: Conversation) {
 }
 
 const listSearch = ref("");
+
+// All / Unread filter above the list (messaging-enhancements.md, feature
+// 3). Membership and the counts come from isUnread — the SAME predicate
+// that draws the badge — so the filter can never disagree with the dots
+// it sits above (reuse point 2). Search applies on top of the filter.
+const listFilter = ref<"all" | "unread">("all");
+const unreadCount = computed(
+  () => (conversations.value ?? []).filter((c) => isUnread(c)).length,
+);
 const visibleConversations = computed(() => {
   const q = listSearch.value.trim().toLowerCase();
-  const list = conversations.value ?? [];
+  let list = conversations.value ?? [];
+  if (listFilter.value === "unread") list = list.filter((c) => isUnread(c));
   if (!q) return list;
   return list.filter((c) => conversationName(c).toLowerCase().includes(q));
 });
@@ -375,6 +385,30 @@ function listTime(conversation: Conversation) {
         </UiTooltip>
       </div>
 
+      <!-- All / Unread, with counts from the shared unread predicate.
+           ui-thing tabs in their default pill look: muted track, the
+           active tab lifted to the card colour — no filled button, no
+           outer border — and the two tabs share the width. -->
+      <UiTabs v-model="listFilter" class="mb-2 shrink-0">
+        <UiTabsList
+          pill
+          class="w-full"
+          aria-label="Filter conversations"
+          data-list-filter
+        >
+          <UiTabsTrigger value="all" pill class="flex-1 gap-1.5">
+            All
+            <span class="tabular-nums opacity-70">{{
+              conversations?.length ?? 0
+            }}</span>
+          </UiTabsTrigger>
+          <UiTabsTrigger value="unread" pill class="flex-1 gap-1.5">
+            Unread
+            <span class="tabular-nums opacity-70">{{ unreadCount }}</span>
+          </UiTabsTrigger>
+        </UiTabsList>
+      </UiTabs>
+
       <div class="min-h-0 flex-1 overflow-y-auto">
         <NuxtLink
           v-for="conversation in visibleConversations"
@@ -438,7 +472,13 @@ function listTime(conversation: Conversation) {
           v-if="!visibleConversations.length"
           class="text-muted-foreground p-4 text-sm"
         >
-          {{ listSearch ? "No matches." : "No conversations yet — start one." }}
+          {{
+            listSearch
+              ? "No matches."
+              : listFilter === "unread"
+                ? "Nothing unread."
+                : "No conversations yet — start one."
+          }}
         </p>
       </div>
     </aside>
