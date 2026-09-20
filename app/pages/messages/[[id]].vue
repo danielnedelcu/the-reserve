@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { RailPerson } from "~/components/messages/RailContext.vue";
+
 // /messages and /messages/<conversationId> — one page, optional param.
 definePageMeta({ key: "messages" });
 useSeoMeta({ title: "Messages — The Reserve" });
@@ -166,14 +168,7 @@ const groupedThread = computed(() => {
   return groups;
 });
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part.charAt(0))
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
+// initials() is app/utils/initials.ts (auto-imported), shared with the rail.
 function messageTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -285,10 +280,28 @@ const startConversation = () => starter.start();
 const { data: staffList } = await useAsyncData("msg-staff", async () => {
   const { data } = await supabase
     .from("staff")
-    .select("id, display_name, avatar_url")
+    // title / email / phone / pronouns feed the rail's contact card, so the
+    // rail needs no query of its own (docs/design/messaging-enhancements.md).
+    .select("id, display_name, avatar_url, title, email, phone, pronouns")
     .eq("active", true)
     .order("display_name");
   return data ?? [];
+});
+
+// Rail context: everyone in the open conversation except me, resolved to
+// the loaded staff records (falling back to the participant's own name +
+// avatar if a member is no longer in the active staff list).
+const railPeople = computed<RailPerson[]>(() => {
+  if (!activeConversation.value) return [];
+  const byId = new Map((staffList.value ?? []).map((s) => [s.id, s]));
+  return others(activeConversation.value).map(
+    (p) =>
+      byId.get(p.staff_id) ?? {
+        id: p.staff_id,
+        display_name: p.staff?.display_name ?? "Staff",
+        avatar_url: p.staff?.avatar_url ?? null,
+      },
+  );
 });
 const pickableStaff = computed(() =>
   (staffList.value ?? []).filter((s) => s.id !== myStaffId.value),
@@ -329,7 +342,18 @@ function listTime(conversation: Conversation) {
 </script>
 
 <template>
-  <div class="grid h-[calc(100svh-3rem)] grid-cols-1 md:grid-cols-[300px_1fr]">
+  <div
+    class="grid h-[calc(100svh-3rem)] grid-cols-1 md:grid-cols-[300px_minmax(480px,1fr)_436px]"
+  >
+    <!-- Three fixed columns in one bounded-height row: conversation list |
+         chat thread | right rail (docs/design/messaging-enhancements.md).
+         The rail is a FIXED 436px (the dashboard right rail's width); the
+         thread absorbs width changes, floored at 480px so a narrow laptop
+         window cannot collapse three columns into slivers — desktop-only
+         means a floor, not a responsive system. Height: every column is a
+         min-h-0 flex column inside this h-[calc(100svh-3rem)] grid row, so
+         whatever scrolls, scrolls INSIDE its column; nothing here uses a
+         pixel cap. -->
     <!-- LEFT: conversation list -->
     <aside
       class="px-3"
@@ -584,6 +608,28 @@ function listTime(conversation: Conversation) {
         Pick a conversation, or start a new one.
       </div>
     </section>
+
+    <!-- RIGHT RAIL (piece 1: the shell). `hidden md:flex` is not a
+         responsive feature — it only keeps the two existing columns'
+         mobile stacking exactly as it was (a third stacked row would
+         squeeze the bounded height). min-h-0 is what bounds the rail so
+         the ScrollFrame inside has a share to fill and scrolls within it
+         instead of stretching past the viewport. -->
+    <aside class="hidden min-h-0 md:flex md:flex-col">
+      <!-- Piece 2: who the conversation is with (display-only, shrink-0). -->
+      <MessagesRailContext
+        :kind="activeConversation?.kind ?? null"
+        :name="activeConversation ? conversationName(activeConversation) : ''"
+        :people="railPeople"
+      />
+      <!-- Piece 3: the directory, sharing the dialog's selection + creation. -->
+      <MessagesRailDirectory
+        v-model:group-name="groupName"
+        class="m-3 min-h-0 flex-1 rounded-md p-3"
+        :staff="pickableStaff"
+        :starter="starter"
+      />
+    </aside>
 
     <!-- New conversation dialog -->
     <UiDialog v-model:open="newOpen">
