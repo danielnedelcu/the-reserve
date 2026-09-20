@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isConversationUnread } from "~~/shared/messaging/unread";
 import type { RailPerson } from "~/components/messages/RailContext.vue";
 
 // /messages and /messages/<conversationId> — one page, optional param.
@@ -62,17 +63,11 @@ function conversationName(conversation: Conversation) {
   );
   return names.join(", ") || "Conversation";
 }
-function myParticipant(conversation: Conversation) {
-  return conversation.conversation_participants.find(
-    (p) => p.staff_id === myStaffId.value,
-  );
-}
+// The unread predicate is shared/messaging/unread.ts — one definition for
+// the badge here and for the All/Unread filter (messaging-enhancements.md,
+// reuse point 2). Lifted unchanged; the test file holds its edge cases.
 function isUnread(conversation: Conversation) {
-  const last = conversation.messages[0];
-  const mine = myParticipant(conversation);
-  if (!last || !mine) return false;
-  if (last.sender_staff_id === myStaffId.value) return false;
-  return Date.parse(last.created_at) > Date.parse(mine.last_read_at);
+  return isConversationUnread(conversation, myStaffId.value ?? null);
 }
 
 const listSearch = ref("");

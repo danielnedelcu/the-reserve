@@ -133,6 +133,8 @@ describe("dateKey and isRealDate agree (the datepicker bridge)", () => {
     new Date(1990, 0, 1, 0, 0), // midnight on the first
     new Date(1953, 6, 4, 12, 0), // a plausible date of birth
     new Date(2000, 2, 1, 1, 0), // the day after a non-leap Feb 28
+    new Date(2026, 2, 8, 0, 30), // US DST starts this day — the 2am hour vanishes
+    new Date(2026, 10, 1, 23, 30), // US DST ends this day — the 1am hour repeats
   ];
 
   it.each(awkward)("%s formats to a key the server accepts", (d) => {
@@ -152,6 +154,31 @@ describe("dateKey and isRealDate agree (the datepicker bridge)", () => {
       d.getMonth(),
       d.getDate(),
     ]);
+  });
+
+  it("holds fourteen hours ahead of UTC, where the local day is often UTC's tomorrow", () => {
+    // The suite inherits the machine's zone; this case pins one that is not
+    // it. process.env.TZ takes effect for Dates created after it is set.
+    const previous = process.env.TZ;
+    process.env.TZ = "Pacific/Auckland";
+    try {
+      for (const d of awkward) {
+        const key = dateKey(d);
+        const back = parseDateKey(key);
+        expect(back && dateKey(back)).toBe(key);
+        expect([back!.getFullYear(), back!.getMonth(), back!.getDate()]).toEqual([
+          d.getFullYear(),
+          d.getMonth(),
+          d.getDate(),
+        ]);
+      }
+      // and the evening case that a UTC slice would put on tomorrow
+      const evening = new Date(2026, 8, 19, 23, 30);
+      expect(dateKey(evening)).toBe("2026-09-19");
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
   });
 
   it("refuses what isRealDate refuses, so a bad key cannot become a Date", () => {
