@@ -1,7 +1,8 @@
-# The gate. A change that breaks the typecheck or a unit test cannot
-# merge once main requires the "typecheck + tests" check. Lint runs too
-# but is advisory (continue-on-error) until the existing 48 problems are
-# swept — gating on a red suite is how the test graveyard happened.
+# The gate. A change that breaks the typecheck, a unit test, or lint
+# cannot merge: main requires the "typecheck + tests" and "lint" checks.
+# Lint was advisory until the sweep took it to zero (PR #1); it is
+# blocking from then on — gating on a red suite is how the test
+# graveyard happened, so it was never gated while red.
 #
 # Deliberately NOT here: the verify:* harnesses. They write to a live
 # database and need the service-role key and a dev server; running them
@@ -35,10 +36,9 @@ jobs:
       - run: npm test
 
   lint:
-    name: lint (advisory until the sweep lands)
+    name: lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
