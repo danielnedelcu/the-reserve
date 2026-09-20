@@ -158,17 +158,6 @@ const noteBody = ref("");
 const noteKind = ref<"preference" | "internal" | "health">("preference");
 const savingNote = ref(false);
 
-const kindOptions = computed(() => {
-  const opts: { value: string; label: string }[] = [
-    { value: "preference", label: "Preference" },
-    { value: "internal", label: "Internal" },
-  ];
-  if (can("clients.notes.health.create")) {
-    opts.push({ value: "health", label: "Health (restricted)" });
-  }
-  return opts;
-});
-
 async function addNote() {
   if (!noteBody.value.trim()) return;
   savingNote.value = true;
@@ -368,7 +357,9 @@ const kindBadge: Record<string, string> = {
                 :key="answer.label"
                 class="grid grid-cols-1 gap-0.5 sm:grid-cols-3 sm:gap-3"
               >
-                <dt class="text-muted-foreground text-sm">{{ answer.label }}</dt>
+                <dt class="text-muted-foreground text-sm">
+                  {{ answer.label }}
+                </dt>
                 <dd class="text-sm sm:col-span-2">
                   {{ displayAnswer(answer.value) }}
                 </dd>

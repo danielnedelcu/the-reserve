@@ -436,7 +436,11 @@ const METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
 };
 
-function txnClient(txn: Record<string, any>) {
+// One transaction as the ledger query returns it — inferred from the
+// select, so the shape cannot drift from the fetch.
+type Txn = NonNullable<typeof ledger.value>[number];
+
+function txnClient(txn: Txn) {
   return txn.clients
     ? `${txn.clients.first_name} ${txn.clients.last_name}`
     : "Walk-in";
@@ -449,10 +453,10 @@ function txnWhen(iso: string) {
     minute: "2-digit",
   });
 }
-function txnItemsSummary(txn: Record<string, any>) {
+function txnItemsSummary(txn: Txn) {
   const names = (txn.transaction_items ?? [])
-    .filter((item: any) => !["tip", "discount"].includes(item.kind))
-    .map((item: any) => item.name_snapshot);
+    .filter((item) => !["tip", "discount"].includes(item.kind))
+    .map((item) => item.name_snapshot);
   if (!names.length) return "—";
   return names.length > 2
     ? `${names[0]} +${names.length - 1} more`
@@ -461,7 +465,7 @@ function txnItemsSummary(txn: Record<string, any>) {
 
 const filteredTransactions = computed(() => {
   const q = search.value.trim().toLowerCase();
-  const rows = (ledger.value ?? []) as Record<string, any>[];
+  const rows = ledger.value ?? [];
   if (!q) return rows;
   return rows.filter((txn) => {
     const haystack = [
@@ -469,10 +473,9 @@ const filteredTransactions = computed(() => {
       txn.cashier?.display_name ?? "",
       txn.note ?? "",
       (txn.total_cents / 100).toFixed(2),
-      ...(txn.transaction_items ?? []).map((item: any) => item.name_snapshot),
+      ...(txn.transaction_items ?? []).map((item) => item.name_snapshot),
       ...(txn.payments ?? []).map(
-        (p: any) =>
-          `${METHOD_LABELS[p.method] ?? p.method} ${p.reference ?? ""}`,
+        (p) => `${METHOD_LABELS[p.method] ?? p.method} ${p.reference ?? ""}`,
       ),
     ]
       .join(" ")
@@ -486,8 +489,6 @@ const filteredTransactions = computed(() => {
 // ---------------------------------------------------------------------------
 const { can } = usePermissions();
 const toast = useToast();
-
-type Txn = Record<string, any>;
 
 const txnColumns = [
   {
@@ -584,7 +585,7 @@ const utilColumns = [
 // ids of transactions already refunded (within the loaded period)
 const refundedIds = computed(() => {
   const ids = new Set<string>();
-  for (const txn of (ledger.value ?? []) as Txn[]) {
+  for (const txn of ledger.value ?? []) {
     if (txn.refunds_transaction_id) ids.add(txn.refunds_transaction_id);
   }
   return ids;
@@ -631,14 +632,14 @@ async function refundTxn() {
 function printReceipt(txn: Txn) {
   const rows = (txn.transaction_items ?? [])
     .map(
-      (item: Txn) =>
+      (item) =>
         `<tr><td style="padding:4px 0;">${item.name_snapshot}${item.quantity > 1 ? ` × ${item.quantity}` : ""}</td>
          <td style="padding:4px 0;text-align:right;">${dollars(item.total_cents + item.tax_cents)}</td></tr>`,
     )
     .join("");
   const pays = (txn.payments ?? [])
     .map(
-      (p: Txn) =>
+      (p) =>
         `<tr><td style="padding:2px 0;color:#666;">${METHOD_LABELS[p.method] ?? p.method}${p.reference ? ` · ${p.reference}` : ""}</td>
          <td style="padding:2px 0;text-align:right;color:#666;">${dollars(p.amount_cents)}</td></tr>`,
     )
@@ -653,7 +654,7 @@ function printReceipt(txn: Txn) {
       <table style="width:100%;border-collapse:collapse;font-size:14px;border-top:1px solid #ddd;border-bottom:1px solid #ddd;margin:12px 0;">${rows}</table>
       <table style="width:100%;border-collapse:collapse;font-size:13px;">${pays}</table>
       <p style="text-align:right;font-size:16px;margin-top:8px;">Total: <strong>${dollars(txn.total_cents)}</strong></p>
-      <script>window.print();<\/script>
+      <script>window.print();</scr${""}ipt>
     </body></html>`);
   win.document.close();
 }
@@ -989,7 +990,7 @@ function printReceipt(txn: Txn) {
             <span class="text-muted-foreground">
               {{
                 (row.original.payments ?? [])
-                  .map((p: any) => METHOD_LABELS[p.method] ?? p.method)
+                  .map((p) => METHOD_LABELS[p.method] ?? p.method)
                   .join(" + ") || "—"
               }}
             </span>

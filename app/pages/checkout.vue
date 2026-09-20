@@ -56,7 +56,7 @@ const { data: context } = await useAsyncData("checkout-context", async () => {
 });
 
 if (context.value) {
-  const appt = context.value as Record<string, any>;
+  const appt = context.value;
   appointmentId.value = appt.id;
   clientId.value = appt.client_id;
   serviceStaffId.value = appt.staff_id;
