@@ -1,7 +1,7 @@
 // @vitest-environment nuxt
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mountSuspended, mockNuxtImport } from "@nuxt/test-utils/runtime";
-import StaffPage from "~/pages/staff.vue";
+import StaffPage from "~/pages/staff/index.vue";
 
 // ---- Mocks -----------------------------------------------------------------
 

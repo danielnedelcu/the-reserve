@@ -120,6 +120,7 @@ describe("clients list page", () => {
     ]);
     const wrapper = await mountSuspended(ClientsPage);
     expect(wrapper.text()).toContain("New client");
-    expect(wrapper.text()).toContain("Edit");
+    // Edit is an icon button now; its accessible name is "Edit <First> <Last>"
+    expect(wrapper.find('[aria-label^="Edit "]').exists()).toBe(true);
   });
 });

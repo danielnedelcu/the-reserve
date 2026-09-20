@@ -26,8 +26,16 @@ export function usePermissions() {
 
     const { data, error } = await supabase.rpc("get_my_permissions");
     if (error) {
+      // A failed load is NOT cached. Leaving the state null keeps `ready`
+      // false and lets the next plain load() retry — which is what the
+      // invite-acceptance race needs (the first load can run before the
+      // session has settled). Caching [] here made that race permanent:
+      // every can() denied for the rest of the session until a hard
+      // reload. Bounded: every caller is a setup or route middleware that
+      // awaits load() once, so a persistently failing RPC costs one retry
+      // per navigation, never a loop, and can() denies in the meantime.
       console.error("Failed to load permissions:", error.message);
-      permissions.value = [];
+      permissions.value = null;
       return;
     }
     permissions.value = (data ?? []) as string[];
