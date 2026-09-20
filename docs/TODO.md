@@ -162,6 +162,15 @@ QUEUED (in order):
     week a 500% "surge". Pass it as `minBaseline` in cents.
   Either way the placeholder `minBaseline: 1` goes away, and the card
   comment in KpiCards.vue that points here comes out with it.
+- @vee-validate/zod is a Zod 3 adapter on a Zod 4 project (found
+  2026-09-20 by the first CI run): its peer is zod ^3.24 and it reads
+  `issue.unionErrors` on invalid_union, which Zod 4 does not set, so any
+  `.or()` / `z.union()` in a form schema throws an uncaught TypeError
+  from the adapter on every invalid value. The only union (clients
+  email) was rewritten as a refine; nothing stops the next one. Fix for
+  real: drop the adapter for vee-validate's Standard Schema support once
+  a release accepts a Zod 4 schema directly, or pin a Zod-4-aware
+  adapter. Until then: no unions in form schemas, refine instead.
 - requirePermission helper adoption in checkout + refund routes
   (server/utils/requireUser.ts:23 does auth+permission in one call)
 - receiptEmail return-shape consistency ({subject,html} object like the

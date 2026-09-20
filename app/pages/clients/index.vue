@@ -113,7 +113,16 @@ const clientColumns = [
 const ClientSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  email: z.email("Enter a valid email").or(z.literal("")),
+  // Not `.or(z.literal(""))`: @vee-validate/zod 4.15 is a Zod 3 adapter
+  // (peer ^3.24) and reads `issue.unionErrors` on invalid_union, which Zod
+  // 4 no longer sets — every invalid email threw an uncaught TypeError from
+  // the adapter (the message still rendered, but the suite counted the
+  // rejection and CI failed). A refine expresses the same rule with no
+  // union issue to mishandle. Tracked in docs/TODO.md: the adapter/Zod
+  // mismatch bites any future union.
+  email: z.string().refine((v) => v === "" || z.email().safeParse(v).success, {
+    message: "Enter a valid email",
+  }),
   phone: z.string().optional(),
   dateOfBirth: z.string().optional(),
   pronouns: z.string().optional(),
