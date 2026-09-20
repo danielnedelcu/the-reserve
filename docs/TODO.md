@@ -1,6 +1,6 @@
 # The Reserve — live board
 
-Last updated: 2026-09-18. This is the working state of the project — what's
+Last updated: 2026-09-20. This is the working state of the project — what's
 done, what's queued, what's blocked on whom. Update when the board changes.
 
 ## Phase status
@@ -12,7 +12,66 @@ notifications · settings · theming · email (Resend) · docs pipeline (tbls) �
 gauntlet-verified; migration 4b: Stripe card-on-file with consent, charging,
 refund-to-card, card removal, webhook — mini-gauntlet-verified, test mode) ·
 §6 form engine + prospective onboarding THROUGH `approved` (2026-09-06/07,
-detail below; the enroll → activate tail is QUEUED item 2, not done).
+detail below; the enroll → activate tail is QUEUED item 2, not done) ·
+§8 lead capture (2026-09-13 → 18, QUEUED item 4 has the detail) ·
+§9 messaging enhancements (2026-09-20, below) · scheduler reskin pieces
+1–2 + collision layout + the CI gate (2026-09-19 → 20, below).
+
+### 2026-09-19 → 20 — what shipped, as the code shows it
+
+- **Scheduler reskin, pieces 1–2 (docs/design/scheduler-redesign.md).**
+  One card component for every view (`app/components/schedule/
+  AppointmentCard.vue`: tint fill + provider-colour edge, no_show dimmed,
+  cancelled never fetched); all three views fill the window and scroll
+  under pinned headings; the hour scale stretches (percent of day, 720px
+  floor). Loading moved to ONE six-week query for all views (decision
+  recorded in the design doc with its scale caveat). **Collision layout
+  BUILT** — parked item 4 no longer parked: week view width-splits
+  time-chained clusters, density drops service then time, provider colour
+  never dropped. Commits 8d49fdb · dabe07f · fdaa835.
+- **Dashboard.** Bookings-by-day chart (this month over last, aligned by
+  day of month, ApexCharts, gated on appointments.view.any, computed
+  footer) · one shared `trend.ts` rule with a baseline floor (no
+  percentage under 10 in the prior period; the KPI cards use it — two
+  placeholder floors remain, punch list) · Today card's button hierarchy
+  kept and made legible · one `DashboardScrollFrame` for the three list
+  cards. Commits 036eca1 · db0670b · 5977dbd · 74cb2b8.
+- **§9 messaging enhancements — DONE (docs/design/messaging-enhancements.md).**
+  Right rail: DM contact card / group avatar stack (display-only), staff
+  directory with per-row menu (chat / profile) and checkmark multi-select
+  whose "Start conversation" REUSES the dialog's `useStartConversation`
+  (one definition; a rail-made group is row-for-row identical to a
+  dialog-made one — verified). All/Unread filter above the list, counts
+  and membership from the ONE unread predicate, now
+  `shared/messaging/unread.ts`. Messaging scars untouched (realtime
+  channel naming, single-instance page, DM dedup, leave/GC). Commits
+  0007702 · 9f51cd2 · 88adf9d · ffc36a1.
+- **Tests.** Coverage triage → unit tests for the pure logic that matters
+  (unread predicate, trend, useToggleSet, useStartConversation, DST +
+  far-east-zone date cases); four rotted Aug-14 tests resolved (two
+  fixed, one deleted, one was a REAL auth bug — see next); the suite runs
+  green with exit 0 for the first time (18 files, 200 tests). Testing
+  CONVENTION codified in CLAUDE.md: pure logic gets a unit test as
+  built, DB-rule features get harness coverage as shipped, presentational
+  components get neither; grep for the symbol before calling a module
+  covered. Commits 2bbb62f · 212a49c · 84d2964.
+- **Auth fix.** `usePermissions` cached a FAILED load as empty-and-ready,
+  so the invite-acceptance race left a new staff member with a dead UI
+  until hard reload — live since Aug 14, caught by the test that had
+  never run. Failure now leaves state null and the next load retries;
+  bounded to one retry per navigation. Commit 84d2964.
+- **CI gate — ON.** `.github/workflows/ci.yml` runs typecheck + tests
+  and lint on every PR and push to main. Branch protection on `main`:
+  required checks `typecheck + tests` AND `lint`, pull request required,
+  "do not allow bypassing" ON (the owner is gated too). **"Require
+  approvals" is deliberately OFF** — a single collaborator cannot approve
+  their own PR; turn it on the day the backend engineer joins. The lint
+  sweep (real types for the ledger rows, dead vars, `Ui/**` override
+  for CLI-written files) went through the gate as PR #1; lint was
+  promoted to required in PR #2. First CI run also caught a live bug
+  (the Zod adapter, punch list). Repo is PUBLIC as of 2026-09-20 (branch
+  protection needs it on the free plan) — history audited, see the
+  pre-launch item.
 
 ### §6 — what shipped, as the code shows it (2026-09-06 → 07)
 
@@ -167,10 +226,35 @@ QUEUED (in order):
   `issue.unionErrors` on invalid_union, which Zod 4 does not set, so any
   `.or()` / `z.union()` in a form schema throws an uncaught TypeError
   from the adapter on every invalid value. The only union (clients
-  email) was rewritten as a refine; nothing stops the next one. Fix for
+  email) was rewritten as a refine in f0d6945; nothing stops the next
+  one — this entry exists for the day a union schema is added. Fix for
   real: drop the adapter for vee-validate's Standard Schema support once
   a release accepts a Zod 4 schema directly, or pin a Zod-4-aware
   adapter. Until then: no unions in form schemas, refine instead.
+- verify:messages harness — DEFERRED batch 4 of the 2026-09-20 test
+  triage, its own task, in the verify-leads.mjs shape (both directions,
+  non-vacuous): find_or_create_dm dedups by pair in both orders;
+  create_group_conversation membership; leave_conversation garbage-
+  collects ONLY when the last participant leaves; mark_conversation_read
+  clears the reader's bell; and the DB's notion of unread agrees with
+  `shared/messaging/unread.ts` across its eight tested edges (the
+  two-paths rule at that seam). Plus one assertion that belongs nowhere
+  else: `UNDECIDED_STATUSES` in useProspectQueue.ts equals the
+  prospect_intake status check constraint (verify:leads already does
+  this for leads; prospects have no such guard).
+- Dedicated CI Supabase project so the verify:* harnesses can run in CI
+  — the long-term shape for gating DB-behaviour tests. They write rows
+  and need the service-role key, so they must never point at production
+  from a runner; until a CI project with its own secrets exists they stay
+  the local pre-merge step for database-touching changes (stated in
+  ci.yml's header).
+- Scheduler parked features (docs/design/scheduler-redesign.md "Parked"):
+  grid availability / time-off shading, realtime live updates, richer
+  per-status styling — each its own future project. Collision layout was
+  the fourth and is BUILT (2026-09-20).
+- First-run dashboard nudge — parked on docs/design/ui-polish.md
+  (2026-09-20, after the sparse-data acceptance pass); pairs with the
+  empty-states audit there.
 - requirePermission helper adoption in checkout + refund routes
   (server/utils/requireUser.ts:23 does auth+permission in one call)
 - receiptEmail return-shape consistency ({subject,html} object like the
@@ -178,7 +262,8 @@ QUEUED (in order):
 - Message thread pagination — designed, not built: keyset desc limit 50
   reversed, scroll-top older-page fetch with scrollHeight-delta
   preservation, dedupe by id. Current loadThread loads OLDEST 200 —
-  latent bug at volume.
+  latent bug at volume. Spec in docs/design/messaging-as-built.md; the
+  2026-09-20 rail work deliberately did not touch loadThread.
 - Tax on discounted base (GA taxes the discounted price; current math
   taxes pre-discount — matters only for discounted taxable retail)
 - /settings title field: DB trigger blocks provider self-edit; settings
@@ -206,6 +291,18 @@ QUEUED (in order):
 
 - Rotate Resend API key and DB password (exposed in chat during dev;
   Supabase service key already rotated after the push-protection catch)
+- Rotate the Supabase SECRET key (`sb_secret_…`, the value in `.env`
+  today) — PRUDENT, NOT URGENT, and the evidence is recorded so nobody
+  re-litigates it: the 2026-09-20 public-repo history audit found it in
+  `.env.example` in two commits made 2026-08-22 21:59 and rebased away
+  at 22:01, before the next push; `origin/main` never pointed at either
+  (remote-tracking reflog), and anonymous web, API and `git fetch`-by-SHA
+  probes of the public repo all report the objects absent — while a
+  control commit force-pushed away the same day IS served, proving the
+  probe. So: never public, a local-only remnant in this clone's reflog.
+  Rotate at a convenient moment; then verify the new key works and the
+  old one is refused. OPTIONAL: expire the reflog and prune to remove the
+  local remnant (discards local recovery history — owner's call).
 - FORM_IP_PEPPER must be set in the production environment, and it is a
   DIFFERENT value per environment. It keys the HMAC over visitor IPs on
   the public intake form, so rotating it re-anonymises history: existing
@@ -216,9 +313,16 @@ QUEUED (in order):
 - Production Stripe webhook endpoint registration (dashboard) — the CLI
   whsec\_ is dev-only; prod gets its own signing secret
 - Live Stripe keys swap + a small real-money verification pass
-- Enable GitHub Secret Scanning on the repo (offered; one click)
-- CI: GitHub Action running nuxt typecheck + vitest on PRs (before the
-  backend engineer's first PR)
+- Enable GitHub Secret Scanning on the repo (offered; one click — the
+  repo is public now, so push protection may already be on; verify)
+- ~~CI: GitHub Action running nuxt typecheck + vitest on PRs (before the
+  backend engineer's first PR)~~ DONE 2026-09-20 — see the 09-19 → 20
+  block: typecheck + tests AND lint required, PR required, bypass off.
+- When the backend engineer joins: turn ON "require approvals" in the
+  main branch rule (off today because a single collaborator cannot
+  self-approve), and move the repo into a GitHub Team organisation — the
+  collaboration home; branch protection already works because the repo
+  is public, the org is about people and review, not enforcement.
 
 ## Verification debts (runtime checks owed)
 
