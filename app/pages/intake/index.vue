@@ -22,7 +22,7 @@ interface ProspectRow {
 }
 
 const showAll = ref(false);
-const { data, pending, refresh } = await useFetch<{ prospects: ProspectRow[] }>(
+const { data, pending } = await useFetch<{ prospects: ProspectRow[] }>(
   "/api/prospects",
   { query: computed(() => ({ status: showAll.value ? "all" : "pending" })) },
 );

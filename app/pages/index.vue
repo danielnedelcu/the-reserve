@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import { useAppStore } from "~/stores/appStore";
-
-const appStore = useAppStore();
 const { can, load } = usePermissions();
 await load();
 </script>

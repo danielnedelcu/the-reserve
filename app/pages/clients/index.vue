@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { z } from "zod";
 import { toTypedSchema } from "@vee-validate/zod";
-import type { TablesUpdate, TablesInsert } from "~~/shared/types/database";
+import type { TablesInsert } from "~~/shared/types/database";
 
 definePageMeta({ middleware: "can", permission: "clients.view" });
 useSeoMeta({ title: "Clients — The Reserve" });
