@@ -83,3 +83,10 @@
 - Types: npx nuxt typecheck must stay at 0; payloads feeding insert+update
   typed as Omit<TablesInsert<"t">, "organization_id">
 - Every new table: organization_id + org-scoped RLS (see docs/design/multi-tenancy-status.md)
+- Tests, by what the code is: a new pure-logic utility or composable
+  gets a unit test as it is built (tests/ mirrors the source path);
+  a new feature whose rules live in Postgres gets harness coverage as
+  it ships, in the verify-*.mjs shape (both directions, non-vacuous);
+  presentational components (cards, frames, rails) get no unit test —
+  they are proven by driving the page. A test file that sits beside a
+  module is not evidence the module is covered; grep for the symbol.
