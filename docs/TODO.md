@@ -289,8 +289,12 @@ QUEUED (in order):
 
 ## Pre-launch checklist
 
-- Rotate the Resend API key and the DB password (exposed in chat during
-  dev).
+Deployment shape, the env-by-env matrix and the deploy checklist live in
+**docs/deployment.md** — that doc is authoritative; the items below that
+overlap it are pointers, not restatements (one fact, one place).
+
+- Rotate the Resend API key and the DB password (chat-exposed during dev)
+  — see docs/deployment.md, deploy checklist + env matrix (RESEND_API_KEY).
 - ~~Rotate the Supabase SECRET key~~ DONE 2026-09-20. New `sb_secret_`
   key active; old key revoked in the dashboard. Verified both directions
   the same day: the new key serves service-role reads from scripts and
@@ -309,16 +313,12 @@ QUEUED (in order):
   credential, and it is now rotated. OPTIONAL, cosmetic now: expire the
   reflog and prune to drop the dead value from the clone (discards local
   recovery history — owner's call).
-- FORM_IP_PEPPER must be set in the production environment, and it is a
-  DIFFERENT value per environment. It keys the HMAC over visitor IPs on
-  the public intake form, so rotating it re-anonymises history: existing
-  form_submission_attempts rows stop matching new hashes, which resets
-  rate-limit counters rather than corrupting anything. Absent, the public
-  submission route refuses to serve — fail-closed on purpose, so a missing
-  secret shows up as an outage, not as silently weaker hashing.
-- Production Stripe webhook endpoint registration (dashboard) — the CLI
-  whsec\_ is dev-only; prod gets its own signing secret
-- Live Stripe keys swap + a small real-money verification pass
+- FORM_IP_PEPPER: a fresh, prod-specific value — see docs/deployment.md
+  (env matrix; the fail-closed and re-anonymisation behaviour is
+  explained there).
+- Stripe: live keys, the prod webhook endpoint + its own signing secret,
+  and the small real-money pass — see docs/deployment.md (deploy
+  checklist; the CLI whsec_ is dev-only).
 - Enable GitHub Secret Scanning on the repo (offered; one click — the
   repo is public now, so push protection may already be on; verify)
 - ~~CI: GitHub Action running nuxt typecheck + vitest on PRs (before the
