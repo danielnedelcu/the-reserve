@@ -10,17 +10,20 @@ const clientId = route.params.id as string;
 // ---------------------------------------------------------------------------
 // Client (with preferred provider name)
 // ---------------------------------------------------------------------------
-const { data: client } = await useAsyncData(`client-${clientId}`, async () => {
-  const { data, error } = await supabase
-    .from("clients")
-    .select(
-      "*, preferred_staff:staff!clients_preferred_staff_id_fkey(display_name)",
-    )
-    .eq("id", clientId)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-});
+const { data: client, refresh: refreshClient } = await useAsyncData(
+  `client-${clientId}`,
+  async () => {
+    const { data, error } = await supabase
+      .from("clients")
+      .select(
+        "*, preferred_staff:staff!clients_preferred_staff_id_fkey(display_name)",
+      )
+      .eq("id", clientId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+);
 
 useSeoMeta({
   title: () =>
@@ -313,6 +316,18 @@ const kindBadge: Record<string, string> = {
           </p>
         </div>
       </section>
+
+      <!-- Communication preferences (phase 1 of the communications
+           lifecycle): two settings staff may edit, one record they may only
+           read. Saves under clients_update RLS; refetch on save. -->
+      <ClientCommunicationPrefs
+        class="mt-8"
+        :client-id="clientId"
+        :channel="client.communication_channel"
+        :opted-in="client.communication_opted_in"
+        :waiver-used="client.late_cancellation_waiver_used"
+        @saved="refreshClient"
+      />
 
       <!-- Appointments (lights up when the calendar ships) -->
       <section class="mt-8">
