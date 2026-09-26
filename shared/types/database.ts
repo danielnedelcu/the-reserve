@@ -421,6 +421,48 @@ export type Database = {
           },
         ]
       }
+      cancellation_tokens: {
+        Row: {
+          appointment_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          organization_id: string
+          used_at: string | null
+        }
+        Insert: {
+          appointment_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          used_at?: string | null
+        }
+        Update: {
+          appointment_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cancellation_tokens_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cancellation_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_consents: {
         Row: {
           captured_by: string
@@ -585,6 +627,8 @@ export type Database = {
           address_line1: string | null
           address_line2: string | null
           city: string | null
+          communication_channel: string
+          communication_opted_in: boolean
           created_at: string
           date_of_birth: string | null
           email: string | null
@@ -594,6 +638,7 @@ export type Database = {
           flags: Json
           id: string
           last_name: string
+          late_cancellation_waiver_used: boolean
           marketing_opt_in: boolean
           marketing_opt_in_at: string | null
           no_show_count: number
@@ -613,6 +658,8 @@ export type Database = {
           address_line1?: string | null
           address_line2?: string | null
           city?: string | null
+          communication_channel?: string
+          communication_opted_in?: boolean
           created_at?: string
           date_of_birth?: string | null
           email?: string | null
@@ -622,6 +669,7 @@ export type Database = {
           flags?: Json
           id?: string
           last_name: string
+          late_cancellation_waiver_used?: boolean
           marketing_opt_in?: boolean
           marketing_opt_in_at?: string | null
           no_show_count?: number
@@ -641,6 +689,8 @@ export type Database = {
           address_line1?: string | null
           address_line2?: string | null
           city?: string | null
+          communication_channel?: string
+          communication_opted_in?: boolean
           created_at?: string
           date_of_birth?: string | null
           email?: string | null
@@ -650,6 +700,7 @@ export type Database = {
           flags?: Json
           id?: string
           last_name?: string
+          late_cancellation_waiver_used?: boolean
           marketing_opt_in?: boolean
           marketing_opt_in_at?: string | null
           no_show_count?: number
@@ -677,6 +728,61 @@ export type Database = {
             columns: ["preferred_staff_id"]
             isOneToOne: false
             referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      communications_sent: {
+        Row: {
+          appointment_id: string | null
+          channel: string
+          client_id: string
+          id: string
+          kind: string
+          metadata: Json | null
+          organization_id: string
+          sent_at: string
+        }
+        Insert: {
+          appointment_id?: string | null
+          channel: string
+          client_id: string
+          id?: string
+          kind: string
+          metadata?: Json | null
+          organization_id: string
+          sent_at?: string
+        }
+        Update: {
+          appointment_id?: string | null
+          channel?: string
+          client_id?: string
+          id?: string
+          kind?: string
+          metadata?: Json | null
+          organization_id?: string
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communications_sent_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communications_sent_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communications_sent_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]

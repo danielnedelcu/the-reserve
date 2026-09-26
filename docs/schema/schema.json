@@ -1726,6 +1726,27 @@
           "type": "text",
           "nullable": true,
           "comment": "Stripe Customer id (cus_...). Created lazily by the setup-intent route on first card save. Single platform Stripe account; a future Connect retrofit would add an account dimension here."
+        },
+        {
+          "name": "communication_channel",
+          "type": "text",
+          "nullable": false,
+          "default": "'email'::text",
+          "comment": "HOW to reach the client: email | sms | both. text + check, not an enum type. SMS delivery is DEFERRED — every sender treats sms and both as email until the SMS phase lands (each delivery call carries a TODO) — but the preference is recorded from day one so no migration is needed then. Set by staff on the profile today; the public portal will read and write the same field."
+        },
+        {
+          "name": "communication_opted_in",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "comment": "Covers NON-TRANSACTIONAL communications only (birthday, post-visit follow-up). Transactional ones — confirmation, day-before reminder, cancellation notice, intake reminder — fire regardless of this flag; a client cannot opt out of being told about their own appointment. Default true; settable by staff and, later, by the client."
+        },
+        {
+          "name": "late_cancellation_waiver_used",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false",
+          "comment": "One lifetime waiver per client. Set on first forgiven late cancellation; never reset. See client-communications-design.md. It is a RECORD, not a setting: staff can read it on the profile but there is no UI to clear it, and the fee engine (phase 4) is its only writer. Not consumed when the fee could not be charged for lack of a card on file — the client did not receive the benefit."
         }
       ],
       "indexes": [
@@ -1766,6 +1787,16 @@
         }
       ],
       "constraints": [
+        {
+          "name": "clients_communication_channel_check",
+          "type": "CHECK",
+          "def": "CHECK ((communication_channel = ANY (ARRAY['email'::text, 'sms'::text, 'both'::text])))",
+          "table": "public.clients",
+          "referenced_table": "",
+          "columns": [
+            "communication_channel"
+          ]
+        },
         {
           "name": "clients_preferred_contact_method_check",
           "type": "CHECK",
@@ -5794,6 +5825,252 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.cancellation_tokens",
+      "type": "BASE TABLE",
+      "comment": "Single-use tokens for the public cancel-via-link flow. Created at booking, claimed atomically at cancellation. See client-communications-design.md. One per appointment: the confirmation and reminder emails carry /cancel/\u003cid\u003e; expires_at is the appointment start (no cancelling via link once it has begun); used_at is set by the cancel route in the same statement that checks it is null, so two clicks cannot both succeed. Same token-gated shape as the public intake submit: anon holds no policy here, staff never browse tokens, and the route reads and writes under the service role — NO authenticated policies exist, and that absence is the design. Cascades with its appointment.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "appointment_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "comment": "The appointment's starts_at at creation time. Past this, the link is dead even if unused."
+        },
+        {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "cancellation_tokens_pkey",
+          "def": "CREATE UNIQUE INDEX cancellation_tokens_pkey ON public.cancellation_tokens USING btree (id)",
+          "table": "public.cancellation_tokens",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "cancellation_tokens_appointment",
+          "def": "CREATE INDEX cancellation_tokens_appointment ON public.cancellation_tokens USING btree (appointment_id)",
+          "table": "public.cancellation_tokens",
+          "columns": [
+            "appointment_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "cancellation_tokens_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.cancellation_tokens",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "cancellation_tokens_appointment_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE",
+          "table": "public.cancellation_tokens",
+          "referenced_table": "public.appointments",
+          "columns": [
+            "appointment_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "cancellation_tokens_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.cancellation_tokens",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.communications_sent",
+      "type": "BASE TABLE",
+      "comment": "Append-only log of every communication sent. Checked before sending (dedup guard) and queryable as an audit trail. kind is the communication type; metadata carries template-specific context (service name, appointment time, etc.). Written only by the sending jobs and routes under the service role; staff holding clients.view read it for the profile's communication history (phase 5). No authenticated insert/update/delete policies exist and none will: a row here means a message left the building, and that fact is never edited. channel records what was actually used (email | sms), never the preference 'both'. appointment_id is nullable because birthday messages have no appointment, and it survives an appointment's deletion as null so the history stays whole.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "appointment_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": false,
+          "comment": "confirmation | day_before_reminder | intake_reminder | cancellation_notice | post_visit_followup | birthday. text + check; adding a touchpoint is a constraint swap."
+        },
+        {
+          "name": "channel",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "metadata",
+          "type": "jsonb",
+          "nullable": true,
+          "comment": "Template context at send time (service name, appointment time, waiver/fee outcome for a cancellation notice). Snapshot, not a reference: it says what the client was TOLD."
+        }
+      ],
+      "indexes": [
+        {
+          "name": "communications_sent_pkey",
+          "def": "CREATE UNIQUE INDEX communications_sent_pkey ON public.communications_sent USING btree (id)",
+          "table": "public.communications_sent",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "communications_sent_client_kind_sent",
+          "def": "CREATE INDEX communications_sent_client_kind_sent ON public.communications_sent USING btree (client_id, kind, sent_at DESC)",
+          "table": "public.communications_sent",
+          "columns": [
+            "client_id",
+            "kind",
+            "sent_at"
+          ]
+        },
+        {
+          "name": "communications_sent_appointment",
+          "def": "CREATE INDEX communications_sent_appointment ON public.communications_sent USING btree (appointment_id)",
+          "table": "public.communications_sent",
+          "columns": [
+            "appointment_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "communications_sent_channel_check",
+          "type": "CHECK",
+          "def": "CHECK ((channel = ANY (ARRAY['email'::text, 'sms'::text])))",
+          "table": "public.communications_sent",
+          "referenced_table": "",
+          "columns": [
+            "channel"
+          ]
+        },
+        {
+          "name": "communications_sent_kind_check",
+          "type": "CHECK",
+          "def": "CHECK ((kind = ANY (ARRAY['confirmation'::text, 'day_before_reminder'::text, 'intake_reminder'::text, 'cancellation_notice'::text, 'post_visit_followup'::text, 'birthday'::text])))",
+          "table": "public.communications_sent",
+          "referenced_table": "",
+          "columns": [
+            "kind"
+          ]
+        },
+        {
+          "name": "communications_sent_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.communications_sent",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "communications_sent_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "table": "public.communications_sent",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "communications_sent_appointment_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL",
+          "table": "public.communications_sent",
+          "referenced_table": "public.appointments",
+          "columns": [
+            "appointment_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "communications_sent_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.communications_sent",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
     }
   ],
   "relations": [
@@ -6966,6 +7243,71 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.cancellation_tokens",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.cancellation_tokens",
+      "columns": [
+        "appointment_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.appointments",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.communications_sent",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.communications_sent",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.communications_sent",
+      "columns": [
+        "appointment_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.appointments",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL"
     }
   ],
   "functions": [
