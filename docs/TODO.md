@@ -231,6 +231,23 @@ QUEUED (in order):
   real: drop the adapter for vee-validate's Standard Schema support once
   a release accepts a Zod 4 schema directly, or pin a Zod-4-aware
   adapter. Until then: no unions in form schemas, refine instead.
+- Revoke TRUNCATE on append-only / access-by-token tables, project-wide
+  (found 2026-09-26 inspecting the phase-1 communications tables live):
+  Supabase's default grants leave TRUNCATE for `authenticated` and `anon`
+  on every table in public, and TRUNCATE bypasses row-level security.
+  PostgREST does not expose it today, so the gap is theoretical — but for
+  tables whose contract is that rows never disappear it is a real gap,
+  not a style point. Small follow-up migration: `revoke truncate on
+  <table> from authenticated, anon` for communications_sent,
+  cancellation_tokens, audit_log, the ledger (transactions,
+  transaction_items, payments), stripe_events, ask_queries,
+  form_submission_attempts, and any other table whose integrity depends
+  on rows never disappearing — enumerate by reading each table's
+  append-only comment, not from memory. Model: the explicit
+  `revoke insert, update, delete on communications_sent` in
+  20260926160705, which states the intent as well as omitting the
+  policy. Verify afterwards from pg: no TRUNCATE grant remains for
+  either role on the named tables.
 - verify:messages harness — DEFERRED batch 4 of the 2026-09-20 test
   triage, its own task, in the verify-leads.mjs shape (both directions,
   non-vacuous): find_or_create_dm dedups by pair in both orders;
