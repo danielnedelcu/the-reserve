@@ -122,6 +122,10 @@ export default defineNuxtConfig({
         // communications, phase 4): reached from an email by a client with
         // no account; the token is the authorization.
         "/cancel/**",
+        // /unsubscribe/** is the one-click unsubscribe page in every
+        // marketing campaign email (marketing-campaigns-design.md): same
+        // token-only door as /cancel/**.
+        "/unsubscribe/**",
         "/forgot-password",
         "/reset-password",
       ],

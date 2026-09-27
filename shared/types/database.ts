@@ -421,6 +421,170 @@ export type Database = {
           },
         ]
       }
+      campaign_recipients: {
+        Row: {
+          campaign_id: string
+          clicked_at: string | null
+          client_id: string
+          id: string
+          opened_at: string | null
+          organization_id: string
+          resend_message_id: string | null
+          sent_at: string | null
+          unsubscribed_at: string | null
+        }
+        Insert: {
+          campaign_id: string
+          clicked_at?: string | null
+          client_id: string
+          id?: string
+          opened_at?: string | null
+          organization_id: string
+          resend_message_id?: string | null
+          sent_at?: string | null
+          unsubscribed_at?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          clicked_at?: string | null
+          client_id?: string
+          id?: string
+          opened_at?: string | null
+          organization_id?: string
+          resend_message_id?: string | null
+          sent_at?: string | null
+          unsubscribed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_recipients_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_recipients_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaign_unsubscribe_tokens: {
+        Row: {
+          campaign_id: string
+          client_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          used_at: string | null
+        }
+        Insert: {
+          campaign_id: string
+          client_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          used_at?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_unsubscribe_tokens_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_unsubscribe_tokens_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_unsubscribe_tokens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          audience_filter: Json | null
+          body_html: string
+          body_text: string
+          created_at: string
+          id: string
+          organization_id: string
+          recipient_count: number | null
+          sent_at: string | null
+          sent_by: string
+          status: string
+          subject: string
+        }
+        Insert: {
+          audience_filter?: Json | null
+          body_html: string
+          body_text: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          recipient_count?: number | null
+          sent_at?: string | null
+          sent_by: string
+          status?: string
+          subject: string
+        }
+        Update: {
+          audience_filter?: Json | null
+          body_html?: string
+          body_text?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          recipient_count?: number | null
+          sent_at?: string | null
+          sent_by?: string
+          status?: string
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cancellation_tokens: {
         Row: {
           appointment_id: string
@@ -2422,6 +2586,7 @@ export type Database = {
       find_or_create_dm: { Args: { p_other_staff_id: string }; Returns: string }
       get_my_permissions: { Args: never; Returns: string[] }
       has_permission: { Args: { perm: string }; Returns: boolean }
+      is_admin: { Args: never; Returns: boolean }
       is_conversation_participant: {
         Args: { p_conversation_id: string }
         Returns: boolean
