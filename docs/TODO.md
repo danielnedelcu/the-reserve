@@ -248,6 +248,18 @@ QUEUED (in order):
   20260926160705, which states the intent as well as omitting the
   policy. Verify afterwards from pg: no TRUNCATE grant remains for
   either role on the named tables.
+- A dedicated system/bot staff row for service-role jobs that need a
+  staff_id reference (found 2026-09-26 building the phase-3 communication
+  jobs): form_links.issued_by is NOT NULL and references staff, and
+  audit_log wants an actor — but a scheduled job has no staff identity.
+  The intake reminder currently issues its form link on behalf of the
+  staff member who BOOKED the appointment, which is meaningful provenance
+  but not precise: it reads as if that person sent the reminder. A single
+  system@thereserve staff record (inactive, non-login, never bookable) as
+  the actor for automated actions would be accurate and make audit
+  queries cleaner ("everything the system did" becomes one predicate).
+  Small migration: the row, seeded per organisation, plus a helper that
+  returns its id; then the jobs use it for issued_by and for audit rows.
 - verify:messages harness — DEFERRED batch 4 of the 2026-09-20 test
   triage, its own task, in the verify-leads.mjs shape (both directions,
   non-vacuous): find_or_create_dm dedups by pair in both orders;

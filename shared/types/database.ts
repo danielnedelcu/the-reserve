@@ -2437,6 +2437,7 @@ export type Database = {
       purge_form_submission_attempts: { Args: never; Returns: number }
       purge_leads: { Args: never; Returns: number }
       purge_prospect_intake: { Args: never; Returns: number }
+      run_communication_job: { Args: { p_job: string }; Returns: number }
       submit_form_response: {
         Args: {
           p_answers: Json

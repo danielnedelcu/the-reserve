@@ -226,3 +226,140 @@ export function receiptEmail(options: {
   // Wrap in the same brand shell the other templates use:
   return shell(body);
 }
+
+// ---------------------------------------------------------------------------
+// Client communications, phase 3 — the four scheduled touchpoints
+// (docs/design/client-communications-design.md). Content is what the doc
+// specifies; styling is placeholder until the owner refines copy and
+// design. Plain, warm language: this reaches members, often older.
+// ---------------------------------------------------------------------------
+
+function whenLabel(startsAtIso: string, timezone: string): string {
+  return new Date(startsAtIso).toLocaleString("en-US", {
+    timeZone: timezone,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function dayBeforeReminderEmail(options: {
+  clientFirstName: string;
+  serviceName: string;
+  staffName: string;
+  startsAtIso: string;
+  timezone: string;
+  location: { name: string; phone?: string | null };
+  /** Null when the booking predates cancel tokens (phase 2). */
+  cancelUrl: string | null;
+  /** 24 hours before the start — after this a fee applies. */
+  feeCutoffIso: string;
+}): { subject: string; html: string } {
+  const when = whenLabel(options.startsAtIso, options.timezone);
+  const cutoff = new Date(options.feeCutoffIso).toLocaleString("en-US", {
+    timeZone: options.timezone,
+    weekday: "long",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return {
+    subject: `Your appointment is tomorrow — ${when}`,
+    html: shell(`
+        <p style="margin:0 0 16px;">Hi ${options.clientFirstName},</p>
+        <p style="margin:0 0 16px;">A reminder that your appointment is tomorrow:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+               style="background-color:${COLORS.cream};border-radius:8px;margin:8px 0 20px;">
+          <tr><td style="padding:18px 20px;">
+            <p style="margin:0 0 6px;font-size:16px;"><strong>${options.serviceName}</strong></p>
+            <p style="margin:0 0 4px;color:${COLORS.soft};">${when}</p>
+            <p style="margin:0 0 4px;color:${COLORS.soft};">with ${options.staffName}</p>
+            <p style="margin:0;color:${COLORS.soft};">${options.location.name}${
+              options.location.phone ? ` · ${options.location.phone}` : ""
+            }</p>
+          </td></tr>
+        </table>
+        ${
+          options.cancelUrl
+            ? `<p style="margin:0 0 16px;">If you can no longer make it, please cancel with the button below.</p>
+        ${button(options.cancelUrl, "CANCEL THIS APPOINTMENT")}`
+            : `<p style="margin:0 0 16px;">If you can no longer make it, please call us as early as you can.</p>`
+        }
+        <p style="margin:0;font-size:13px;color:${COLORS.soft};">
+          Cancellations after ${cutoff} will incur a $50 late cancellation fee.
+          Your first late cancellation is waived as a courtesy; later ones
+          will be charged.
+        </p>
+      `),
+  };
+}
+
+export function intakeReminderEmail(options: {
+  clientFirstName: string;
+  serviceName: string;
+  startsAtIso: string;
+  timezone: string;
+  formUrl: string;
+  formName: string;
+}): { subject: string; html: string } {
+  const when = whenLabel(options.startsAtIso, options.timezone);
+  return {
+    subject: `Before your ${options.serviceName} — a short form to complete`,
+    html: shell(`
+        <p style="margin:0 0 16px;">Hi ${options.clientFirstName},</p>
+        <p style="margin:0 0 16px;">
+          Your ${options.serviceName} is coming up on ${when}. Before then, we
+          need you to complete a short form — it takes a couple of minutes.
+        </p>
+        ${button(options.formUrl, `OPEN ${options.formName.toUpperCase()}`)}
+        <p style="margin:0 0 16px;font-size:13px;">
+          If the button does not work, copy this address into your browser:<br />
+          <span style="word-break:break-all;">${options.formUrl}</span>
+        </p>
+        <p style="margin:0;font-size:12px;color:${COLORS.soft};">
+          This link works once. If you have any trouble, call us and we will
+          help.
+        </p>
+      `),
+  };
+}
+
+export function postVisitFollowupEmail(options: {
+  clientFirstName: string;
+  serviceName: string;
+  rebookUrl: string;
+}): { subject: string; html: string } {
+  return {
+    subject: "Thank you for visiting The Reserve",
+    html: shell(`
+        <p style="margin:0 0 16px;">Hi ${options.clientFirstName},</p>
+        <p style="margin:0 0 16px;">
+          Thank you for your visit — we hope you enjoyed your
+          ${options.serviceName}.
+        </p>
+        <p style="margin:0 0 16px;">
+          Whenever you are ready for your next one, we would love to see you
+          again.
+        </p>
+        ${button(options.rebookUrl, "BOOK YOUR NEXT VISIT")}
+      `),
+  };
+}
+
+export function birthdayEmail(options: { clientFirstName: string }): {
+  subject: string;
+  html: string;
+} {
+  return {
+    subject: `Happy birthday, ${options.clientFirstName}`,
+    html: shell(`
+        <p style="margin:0 0 16px;">Hi ${options.clientFirstName},</p>
+        <p style="margin:0 0 16px;">
+          Everyone at The Reserve wishes you a very happy birthday. We hope
+          your day is restful and that we see you soon.
+        </p>
+        <p style="margin:0;color:${COLORS.soft};">Warmly,<br />The Reserve</p>
+      `),
+  };
+}

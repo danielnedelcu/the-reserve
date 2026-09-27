@@ -8678,6 +8678,12 @@
       "return_type": "form_links",
       "arguments": "p_lead_id uuid, p_form_version_id uuid, p_delivery_email text, p_expires_at timestamp with time zone",
       "type": "FUNCTION"
+    },
+    {
+      "name": "public.run_communication_job",
+      "return_type": "int8",
+      "arguments": "p_job text",
+      "type": "FUNCTION"
     }
   ],
   "enums": [
@@ -8750,6 +8756,14 @@
         "phone_change_token",
         "reauthentication_token",
         "recovery_token"
+      ]
+    },
+    {
+      "name": "net.request_status",
+      "values": [
+        "ERROR",
+        "PENDING",
+        "SUCCESS"
       ]
     },
     {
