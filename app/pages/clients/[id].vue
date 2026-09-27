@@ -329,6 +329,10 @@ const kindBadge: Record<string, string> = {
         @saved="refreshClient"
       />
 
+      <!-- Communication history (phase 5): what has actually been sent,
+           newest first, read straight from the append-only sent log. -->
+      <ClientCommunicationHistory class="mt-8" :client-id="clientId" />
+
       <!-- Appointments (lights up when the calendar ships) -->
       <section class="mt-8">
         <h2 class="font-medium">Appointments</h2>
