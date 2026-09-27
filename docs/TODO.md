@@ -15,7 +15,12 @@ refund-to-card, card removal, webhook — mini-gauntlet-verified, test mode) ·
 detail below; the enroll → activate tail is QUEUED item 2, not done) ·
 §8 lead capture (2026-09-13 → 18, QUEUED item 4 has the detail) ·
 §9 messaging enhancements (2026-09-20, below) · scheduler reskin pieces
-1–2 + collision layout + the CI gate (2026-09-19 → 20, below).
+1–2 + collision layout + the CI gate (2026-09-19 → 20, below) ·
+client communications lifecycle, ALL FIVE PHASES (2026-09-26 → 27,
+docs/design/client-communications-design.md, PRs #7–#11): preferences +
+waiver record, booking confirmation with cancel link, the four scheduled
+touchpoints on pg_cron, cancel-via-link + the fee engine, and the
+communication history + confirmation resend on the client profile.
 
 ### 2026-09-19 → 20 — what shipped, as the code shows it
 
@@ -172,10 +177,13 @@ QUEUED (in order):
    `/leads/:id`, notes, status control) with the arrival-alert nav dot
    and bell; and conversion — "send intake form" issues the §6 link
    through `convert_lead()` in one transaction and threads
-   `prospect_intake.lead_id` at submit. `verify:leads` 72/72. What
-   remains of §8 beyond lead capture (campaigns, marketing consent
-   policy, landing pages themselves — which live on the marketing site)
-   is not designed. Known residuals recorded in the design doc:
+   `prospect_intake.lead_id` at submit. `verify:leads` 72/72.
+   Marketing campaigns — DESIGNED 2026-09-26, NOT BUILT: the in-app
+   campaign composer + send with server-side one-click unsubscribe, then
+   webhook-backed analytics — see docs/design/marketing-campaigns-design.md.
+   Still not designed: the marketing consent policy and the landing pages
+   themselves (which live on the marketing site). Known residuals
+   recorded in the leads design doc:
    per-IP limiting is evaded by distributed bots (CAPTCHA is the
    escalation, keyed to observed abuse); the marketing-consent POLICY is
    owner/legal-adjacent, the columns are ready for it.
