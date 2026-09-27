@@ -427,103 +427,104 @@
 <!-- public.transaction_items -->
 <g id="node2" class="node">
 <title>public.transaction_items</title>
-<polygon fill="#efefef" stroke="none" points="1359.06,-2141.6 1359.06,-2187.6 3077.58,-2187.6 3077.58,-2141.6 1359.06,-2141.6"/>
-<polygon fill="none" stroke="black" points="1359.06,-2141.6 1359.06,-2187.6 3077.58,-2187.6 3077.58,-2141.6 1359.06,-2141.6"/>
-<text text-anchor="start" x="2067.85" y="-2165.4" font-family="Arial Bold" font-size="18.00">public.transaction_items</text>
-<text text-anchor="start" x="2244.3" y="-2165.4" font-family="Arial" font-size="14.00">    </text>
-<text text-anchor="start" x="2275.42" y="-2165.4" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
-<text text-anchor="start" x="1366.06" y="-2151" font-family="Arial" font-size="14.00" fill="#333333">Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history). kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting.</text>
-<polygon fill="none" stroke="black" points="1359.06,-2110.8 1359.06,-2141.6 3077.58,-2141.6 3077.58,-2110.8 1359.06,-2110.8"/>
-<text text-anchor="start" x="1366.06" y="-2123" font-family="Arial" font-size="14.00">id </text>
-<text text-anchor="start" x="1380.84" y="-2123" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="1359.06,-2080 1359.06,-2110.8 3077.58,-2110.8 3077.58,-2080 1359.06,-2080"/>
-<text text-anchor="start" x="1366.06" y="-2092.2" font-family="Arial" font-size="14.00">transaction_id </text>
-<text text-anchor="start" x="1457.11" y="-2092.2" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="1359.06,-2049.2 1359.06,-2080 3077.58,-2080 3077.58,-2049.2 1359.06,-2049.2"/>
-<text text-anchor="start" x="1366.06" y="-2061.4" font-family="Arial" font-size="14.00">kind </text>
-<text text-anchor="start" x="1395.63" y="-2061.4" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
-<polygon fill="none" stroke="black" points="1359.06,-2018.4 1359.06,-2049.2 3077.58,-2049.2 3077.58,-2018.4 1359.06,-2018.4"/>
-<text text-anchor="start" x="1366.06" y="-2030.6" font-family="Arial" font-size="14.00">appointment_id </text>
-<text text-anchor="start" x="1465.68" y="-2030.6" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1987.6 1359.06,-2018.4 3077.58,-2018.4 3077.58,-1987.6 1359.06,-1987.6"/>
-<text text-anchor="start" x="1366.06" y="-1999.8" font-family="Arial" font-size="14.00">product_id </text>
-<text text-anchor="start" x="1435.32" y="-1999.8" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1956.8 1359.06,-1987.6 3077.58,-1987.6 3077.58,-1956.8 1359.06,-1956.8"/>
-<text text-anchor="start" x="1366.06" y="-1969" font-family="Arial" font-size="14.00">gift_card_id </text>
-<text text-anchor="start" x="1442.32" y="-1969" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1926 1359.06,-1956.8 3077.58,-1956.8 3077.58,-1926 1359.06,-1926"/>
-<text text-anchor="start" x="1366.06" y="-1938.2" font-family="Arial" font-size="14.00">staff_id </text>
-<text text-anchor="start" x="1415.08" y="-1938.2" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1895.2 1359.06,-1926 3077.58,-1926 3077.58,-1895.2 1359.06,-1895.2"/>
-<text text-anchor="start" x="1366.06" y="-1907.4" font-family="Arial" font-size="14.00">name_snapshot </text>
-<text text-anchor="start" x="1469.57" y="-1907.4" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1864.4 1359.06,-1895.2 3077.58,-1895.2 3077.58,-1864.4 1359.06,-1864.4"/>
-<text text-anchor="start" x="1366.06" y="-1876.6" font-family="Arial" font-size="14.00">quantity </text>
-<text text-anchor="start" x="1418.98" y="-1876.6" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1833.6 1359.06,-1864.4 3077.58,-1864.4 3077.58,-1833.6 1359.06,-1833.6"/>
-<text text-anchor="start" x="1366.06" y="-1845.8" font-family="Arial" font-size="14.00">unit_price_cents </text>
-<text text-anchor="start" x="1471.9" y="-1845.8" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1802.8 1359.06,-1833.6 3077.58,-1833.6 3077.58,-1802.8 1359.06,-1802.8"/>
-<text text-anchor="start" x="1366.06" y="-1815" font-family="Arial" font-size="14.00">taxable </text>
-<text text-anchor="start" x="1415.09" y="-1815" font-family="Arial" font-size="14.00" fill="#666666">[boolean]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1772 1359.06,-1802.8 3077.58,-1802.8 3077.58,-1772 1359.06,-1772"/>
-<text text-anchor="start" x="1366.06" y="-1784.2" font-family="Arial" font-size="14.00">tax_cents </text>
-<text text-anchor="start" x="1429.87" y="-1784.2" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1741.2 1359.06,-1772 3077.58,-1772 3077.58,-1741.2 1359.06,-1741.2"/>
-<text text-anchor="start" x="1366.06" y="-1753.4" font-family="Arial" font-size="14.00">total_cents </text>
-<text text-anchor="start" x="1437.66" y="-1753.4" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
-<polygon fill="none" stroke="black" points="1359.06,-1710.4 1359.06,-1741.2 3077.58,-1741.2 3077.58,-1710.4 1359.06,-1710.4"/>
-<text text-anchor="start" x="1366.06" y="-1722.6" font-family="Arial" font-size="14.00">discount_reason </text>
-<text text-anchor="start" x="1472.68" y="-1722.6" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<polygon fill="#efefef" stroke="none" points="167.4,-2141.6 167.4,-2187.6 3475.24,-2187.6 3475.24,-2141.6 167.4,-2141.6"/>
+<polygon fill="none" stroke="black" points="167.4,-2141.6 167.4,-2187.6 3475.24,-2187.6 3475.24,-2141.6 167.4,-2141.6"/>
+<text text-anchor="start" x="1670.85" y="-2165.4" font-family="Arial Bold" font-size="18.00">public.transaction_items</text>
+<text text-anchor="start" x="1847.3" y="-2165.4" font-family="Arial" font-size="14.00">    </text>
+<text text-anchor="start" x="1878.42" y="-2165.4" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
+<text text-anchor="start" x="969.06" y="-2151" font-family="Arial" font-size="14.00" fill="#333333">Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history). kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting.</text>
+<polygon fill="none" stroke="black" points="167.4,-2110.8 167.4,-2141.6 3475.24,-2141.6 3475.24,-2110.8 167.4,-2110.8"/>
+<text text-anchor="start" x="174.4" y="-2123" font-family="Arial" font-size="14.00">id </text>
+<text text-anchor="start" x="189.18" y="-2123" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="167.4,-2080 167.4,-2110.8 3475.24,-2110.8 3475.24,-2080 167.4,-2080"/>
+<text text-anchor="start" x="174.4" y="-2092.2" font-family="Arial" font-size="14.00">transaction_id </text>
+<text text-anchor="start" x="265.45" y="-2092.2" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="167.4,-2049.2 167.4,-2080 3475.24,-2080 3475.24,-2049.2 167.4,-2049.2"/>
+<text text-anchor="start" x="174.4" y="-2061.4" font-family="Arial" font-size="14.00">kind </text>
+<text text-anchor="start" x="203.97" y="-2061.4" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<text text-anchor="start" x="234.32" y="-2061.4" font-family="Arial" font-size="14.00"> service | product | gift_card | tip | discount | late_cancellation_fee. kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting; kind=late_cancellation_fee is a POSITIVE line for the $50 fee charged to a card on file under the cancellation policy, with appointment attribution and no tax — revenue, but not service or retail revenue, so it stays out of the &quot;services + retail&quot; reporting sums by kind.</text>
+<polygon fill="none" stroke="black" points="167.4,-2018.4 167.4,-2049.2 3475.24,-2049.2 3475.24,-2018.4 167.4,-2018.4"/>
+<text text-anchor="start" x="174.4" y="-2030.6" font-family="Arial" font-size="14.00">appointment_id </text>
+<text text-anchor="start" x="274.03" y="-2030.6" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="167.4,-1987.6 167.4,-2018.4 3475.24,-2018.4 3475.24,-1987.6 167.4,-1987.6"/>
+<text text-anchor="start" x="174.4" y="-1999.8" font-family="Arial" font-size="14.00">product_id </text>
+<text text-anchor="start" x="243.67" y="-1999.8" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="167.4,-1956.8 167.4,-1987.6 3475.24,-1987.6 3475.24,-1956.8 167.4,-1956.8"/>
+<text text-anchor="start" x="174.4" y="-1969" font-family="Arial" font-size="14.00">gift_card_id </text>
+<text text-anchor="start" x="250.67" y="-1969" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="167.4,-1926 167.4,-1956.8 3475.24,-1956.8 3475.24,-1926 167.4,-1926"/>
+<text text-anchor="start" x="174.4" y="-1938.2" font-family="Arial" font-size="14.00">staff_id </text>
+<text text-anchor="start" x="223.43" y="-1938.2" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="167.4,-1895.2 167.4,-1926 3475.24,-1926 3475.24,-1895.2 167.4,-1895.2"/>
+<text text-anchor="start" x="174.4" y="-1907.4" font-family="Arial" font-size="14.00">name_snapshot </text>
+<text text-anchor="start" x="277.91" y="-1907.4" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<polygon fill="none" stroke="black" points="167.4,-1864.4 167.4,-1895.2 3475.24,-1895.2 3475.24,-1864.4 167.4,-1864.4"/>
+<text text-anchor="start" x="174.4" y="-1876.6" font-family="Arial" font-size="14.00">quantity </text>
+<text text-anchor="start" x="227.32" y="-1876.6" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
+<polygon fill="none" stroke="black" points="167.4,-1833.6 167.4,-1864.4 3475.24,-1864.4 3475.24,-1833.6 167.4,-1833.6"/>
+<text text-anchor="start" x="174.4" y="-1845.8" font-family="Arial" font-size="14.00">unit_price_cents </text>
+<text text-anchor="start" x="280.24" y="-1845.8" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
+<polygon fill="none" stroke="black" points="167.4,-1802.8 167.4,-1833.6 3475.24,-1833.6 3475.24,-1802.8 167.4,-1802.8"/>
+<text text-anchor="start" x="174.4" y="-1815" font-family="Arial" font-size="14.00">taxable </text>
+<text text-anchor="start" x="223.43" y="-1815" font-family="Arial" font-size="14.00" fill="#666666">[boolean]</text>
+<polygon fill="none" stroke="black" points="167.4,-1772 167.4,-1802.8 3475.24,-1802.8 3475.24,-1772 167.4,-1772"/>
+<text text-anchor="start" x="174.4" y="-1784.2" font-family="Arial" font-size="14.00">tax_cents </text>
+<text text-anchor="start" x="238.21" y="-1784.2" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
+<polygon fill="none" stroke="black" points="167.4,-1741.2 167.4,-1772 3475.24,-1772 3475.24,-1741.2 167.4,-1741.2"/>
+<text text-anchor="start" x="174.4" y="-1753.4" font-family="Arial" font-size="14.00">total_cents </text>
+<text text-anchor="start" x="246" y="-1753.4" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
+<polygon fill="none" stroke="black" points="167.4,-1710.4 167.4,-1741.2 3475.24,-1741.2 3475.24,-1710.4 167.4,-1710.4"/>
+<text text-anchor="start" x="174.4" y="-1722.6" font-family="Arial" font-size="14.00">discount_reason </text>
+<text text-anchor="start" x="281.03" y="-1722.6" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
 </g>
 <!-- public.transaction_items&#45;&gt;public.transactions -->
 <g id="edge2" class="edge">
 <title>public.transaction_items:transaction_id&#45;&gt;public.transactions:id</title>
-<path fill="none" stroke="black" d="M3087.47,-2090.12C3123.93,-2043.24 3108.21,-1699.24 3077.58,-1667.2 3019.31,-1606.23 2377.87,-1691.96 2319.38,-1631.2 2286.21,-1596.74 2270.55,-1523.6 2318.38,-1523.6"/>
-<polygon fill="black" stroke="black" points="3087.47,-2090.12 3076.57,-2091.36 3082.88,-2092.85 3079.16,-2095.06 3079.16,-2095.06 3079.16,-2095.06 3082.88,-2092.85 3081.17,-2099.1 3087.47,-2090.12"/>
-<text text-anchor="start" x="3085.58" y="-2105.4" font-family="Arial" font-size="10.00">FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT</text>
+<path fill="none" stroke="black" d="M3485.13,-2090.12C3521.63,-2043.2 3506.13,-1698.99 3475.24,-1667.2 3385.7,-1575.04 2409.24,-1723.04 2319.38,-1631.2 2285.93,-1597.02 2270.55,-1523.6 2318.38,-1523.6"/>
+<polygon fill="black" stroke="black" points="3485.12,-2090.12 3474.23,-2091.36 3480.54,-2092.85 3476.82,-2095.06 3476.82,-2095.06 3476.82,-2095.06 3480.54,-2092.85 3478.83,-2099.1 3485.12,-2090.12"/>
+<text text-anchor="start" x="3483.24" y="-2105.4" font-family="Arial" font-size="10.00">FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT</text>
 </g>
 <!-- public.payments -->
 <g id="node3" class="node">
 <title>public.payments</title>
-<polygon fill="#efefef" stroke="none" points="3182.48,-2049.2 3182.48,-2095.2 4606.16,-2095.2 4606.16,-2049.2 3182.48,-2049.2"/>
-<polygon fill="none" stroke="black" points="3182.48,-2049.2 3182.48,-2095.2 4606.16,-2095.2 4606.16,-2049.2 3182.48,-2049.2"/>
-<text text-anchor="start" x="3772.84" y="-2073" font-family="Arial Bold" font-size="18.00">public.payments</text>
-<text text-anchor="start" x="3891.31" y="-2073" font-family="Arial" font-size="14.00">    </text>
-<text text-anchor="start" x="3922.43" y="-2073" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
-<text text-anchor="start" x="3238.43" y="-2058.6" font-family="Arial" font-size="14.00" fill="#333333">How each transaction settled. Multiple rows = split tender (&quot;$80 gift card + rest on card&quot;). card_external = charged on the spa&#39;s existing physical terminal and recorded here; in&#45;app charging arrives with Stripe (4b).</text>
-<polygon fill="none" stroke="black" points="3182.48,-2018.4 3182.48,-2049.2 4606.16,-2049.2 4606.16,-2018.4 3182.48,-2018.4"/>
-<text text-anchor="start" x="3189.48" y="-2030.6" font-family="Arial" font-size="14.00">id </text>
-<text text-anchor="start" x="3204.27" y="-2030.6" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="3182.48,-1987.6 3182.48,-2018.4 4606.16,-2018.4 4606.16,-1987.6 3182.48,-1987.6"/>
-<text text-anchor="start" x="3189.48" y="-1999.8" font-family="Arial" font-size="14.00">transaction_id </text>
-<text text-anchor="start" x="3280.54" y="-1999.8" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="3182.48,-1956.8 3182.48,-1987.6 4606.16,-1987.6 4606.16,-1956.8 3182.48,-1956.8"/>
-<text text-anchor="start" x="3189.48" y="-1969" font-family="Arial" font-size="14.00">method </text>
-<text text-anchor="start" x="3240.07" y="-1969" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
-<polygon fill="none" stroke="black" points="3182.48,-1926 3182.48,-1956.8 4606.16,-1956.8 4606.16,-1926 3182.48,-1926"/>
-<text text-anchor="start" x="3189.48" y="-1938.2" font-family="Arial" font-size="14.00">amount_cents </text>
-<text text-anchor="start" x="3281.32" y="-1938.2" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
-<polygon fill="none" stroke="black" points="3182.48,-1895.2 3182.48,-1926 4606.16,-1926 4606.16,-1895.2 3182.48,-1895.2"/>
-<text text-anchor="start" x="3189.48" y="-1907.4" font-family="Arial" font-size="14.00">gift_card_id </text>
-<text text-anchor="start" x="3265.75" y="-1907.4" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
-<polygon fill="none" stroke="black" points="3182.48,-1864.4 3182.48,-1895.2 4606.16,-1895.2 4606.16,-1864.4 3182.48,-1864.4"/>
-<text text-anchor="start" x="3189.48" y="-1876.6" font-family="Arial" font-size="14.00">reference </text>
-<text text-anchor="start" x="3252.52" y="-1876.6" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
-<polygon fill="none" stroke="black" points="3182.48,-1833.6 3182.48,-1864.4 4606.16,-1864.4 4606.16,-1833.6 3182.48,-1833.6"/>
-<text text-anchor="start" x="3189.48" y="-1845.8" font-family="Arial" font-size="14.00">created_at </text>
-<text text-anchor="start" x="3259.53" y="-1845.8" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
-<polygon fill="none" stroke="black" points="3182.48,-1802.8 3182.48,-1833.6 4606.16,-1833.6 4606.16,-1802.8 3182.48,-1802.8"/>
-<text text-anchor="start" x="3189.48" y="-1815" font-family="Arial" font-size="14.00">stripe_payment_intent_id </text>
-<text text-anchor="start" x="3349.81" y="-1815" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
-<text text-anchor="start" x="3380.15" y="-1815" font-family="Arial" font-size="14.00"> Set on method=stripe_card rows (pi_...). The refund route calls stripe.refunds.create against this. The sync charge flow guarantees it: ledger rows are written only after the PaymentIntent succeeds.</text>
+<polygon fill="#efefef" stroke="none" points="3579.48,-2049.2 3579.48,-2095.2 5003.16,-2095.2 5003.16,-2049.2 3579.48,-2049.2"/>
+<polygon fill="none" stroke="black" points="3579.48,-2049.2 3579.48,-2095.2 5003.16,-2095.2 5003.16,-2049.2 3579.48,-2049.2"/>
+<text text-anchor="start" x="4169.84" y="-2073" font-family="Arial Bold" font-size="18.00">public.payments</text>
+<text text-anchor="start" x="4288.31" y="-2073" font-family="Arial" font-size="14.00">    </text>
+<text text-anchor="start" x="4319.43" y="-2073" font-family="Arial" font-size="14.00" fill="#666666">[BASE TABLE]</text>
+<text text-anchor="start" x="3635.43" y="-2058.6" font-family="Arial" font-size="14.00" fill="#333333">How each transaction settled. Multiple rows = split tender (&quot;$80 gift card + rest on card&quot;). card_external = charged on the spa&#39;s existing physical terminal and recorded here; in&#45;app charging arrives with Stripe (4b).</text>
+<polygon fill="none" stroke="black" points="3579.48,-2018.4 3579.48,-2049.2 5003.16,-2049.2 5003.16,-2018.4 3579.48,-2018.4"/>
+<text text-anchor="start" x="3586.48" y="-2030.6" font-family="Arial" font-size="14.00">id </text>
+<text text-anchor="start" x="3601.27" y="-2030.6" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="3579.48,-1987.6 3579.48,-2018.4 5003.16,-2018.4 5003.16,-1987.6 3579.48,-1987.6"/>
+<text text-anchor="start" x="3586.48" y="-1999.8" font-family="Arial" font-size="14.00">transaction_id </text>
+<text text-anchor="start" x="3677.54" y="-1999.8" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="3579.48,-1956.8 3579.48,-1987.6 5003.16,-1987.6 5003.16,-1956.8 3579.48,-1956.8"/>
+<text text-anchor="start" x="3586.48" y="-1969" font-family="Arial" font-size="14.00">method </text>
+<text text-anchor="start" x="3637.07" y="-1969" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<polygon fill="none" stroke="black" points="3579.48,-1926 3579.48,-1956.8 5003.16,-1956.8 5003.16,-1926 3579.48,-1926"/>
+<text text-anchor="start" x="3586.48" y="-1938.2" font-family="Arial" font-size="14.00">amount_cents </text>
+<text text-anchor="start" x="3678.32" y="-1938.2" font-family="Arial" font-size="14.00" fill="#666666">[integer]</text>
+<polygon fill="none" stroke="black" points="3579.48,-1895.2 3579.48,-1926 5003.16,-1926 5003.16,-1895.2 3579.48,-1895.2"/>
+<text text-anchor="start" x="3586.48" y="-1907.4" font-family="Arial" font-size="14.00">gift_card_id </text>
+<text text-anchor="start" x="3662.75" y="-1907.4" font-family="Arial" font-size="14.00" fill="#666666">[uuid]</text>
+<polygon fill="none" stroke="black" points="3579.48,-1864.4 3579.48,-1895.2 5003.16,-1895.2 5003.16,-1864.4 3579.48,-1864.4"/>
+<text text-anchor="start" x="3586.48" y="-1876.6" font-family="Arial" font-size="14.00">reference </text>
+<text text-anchor="start" x="3649.52" y="-1876.6" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<polygon fill="none" stroke="black" points="3579.48,-1833.6 3579.48,-1864.4 5003.16,-1864.4 5003.16,-1833.6 3579.48,-1833.6"/>
+<text text-anchor="start" x="3586.48" y="-1845.8" font-family="Arial" font-size="14.00">created_at </text>
+<text text-anchor="start" x="3656.53" y="-1845.8" font-family="Arial" font-size="14.00" fill="#666666">[timestamp with time zone]</text>
+<polygon fill="none" stroke="black" points="3579.48,-1802.8 3579.48,-1833.6 5003.16,-1833.6 5003.16,-1802.8 3579.48,-1802.8"/>
+<text text-anchor="start" x="3586.48" y="-1815" font-family="Arial" font-size="14.00">stripe_payment_intent_id </text>
+<text text-anchor="start" x="3746.81" y="-1815" font-family="Arial" font-size="14.00" fill="#666666">[text]</text>
+<text text-anchor="start" x="3777.15" y="-1815" font-family="Arial" font-size="14.00"> Set on method=stripe_card rows (pi_...). The refund route calls stripe.refunds.create against this. The sync charge flow guarantees it: ledger rows are written only after the PaymentIntent succeeds.</text>
 </g>
 <!-- public.payments&#45;&gt;public.transactions -->
 <g id="edge3" class="edge">
 <title>public.payments:transaction_id&#45;&gt;public.transactions:id</title>
-<path fill="none" stroke="black" d="M3171.42,-2000.29C3130.32,-1976.2 3150.65,-1798.66 3182.48,-1759.6 3357.73,-1544.58 3617.45,-1845.76 3793.26,-1631.2 3823.57,-1594.21 3842.08,-1523.6 3794.26,-1523.6"/>
-<polygon fill="black" stroke="black" points="3171.5,-2000.31 3179.99,-2007.26 3176.65,-2001.7 3180.84,-2002.83 3180.84,-2002.83 3180.84,-2002.83 3176.65,-2001.7 3182.33,-1998.57 3171.5,-2000.31"/>
-<text text-anchor="start" x="3188.48" y="-2013" font-family="Arial" font-size="10.00">FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT</text>
+<path fill="none" stroke="black" d="M3568.52,-2000.36C3528.26,-1976.85 3554.57,-1803.41 3579.48,-1759.6 3634.27,-1663.25 3738.23,-1727.4 3793.26,-1631.2 3817.01,-1589.69 3842.08,-1523.6 3794.26,-1523.6"/>
+<polygon fill="black" stroke="black" points="3568.49,-2000.35 3577.01,-2007.26 3573.65,-2001.72 3577.84,-2002.83 3577.84,-2002.83 3577.84,-2002.83 3573.65,-2001.72 3579.31,-1998.56 3568.49,-2000.35"/>
+<text text-anchor="start" x="3585.48" y="-2013" font-family="Arial" font-size="10.00">FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT</text>
 </g>
 </g>
 </svg>

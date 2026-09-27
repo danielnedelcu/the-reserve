@@ -318,6 +318,14 @@
           "columns": [
             "user_id"
           ]
+        },
+        {
+          "name": "staff_one_system_row_per_org",
+          "def": "CREATE UNIQUE INDEX staff_one_system_row_per_org ON public.staff USING btree (organization_id) WHERE (email = 'system@thereserve.local'::text)",
+          "table": "public.staff",
+          "columns": [
+            "organization_id"
+          ]
         }
       ],
       "constraints": [
@@ -3333,7 +3341,8 @@
         {
           "name": "kind",
           "type": "text",
-          "nullable": false
+          "nullable": false,
+          "comment": "service | product | gift_card | tip | discount | late_cancellation_fee. kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting; kind=late_cancellation_fee is a POSITIVE line for the $50 fee charged to a card on file under the cancellation policy, with appointment attribution and no tax — revenue, but not service or retail revenue, so it stays out of the \"services + retail\" reporting sums by kind."
         },
         {
           "name": "appointment_id",
@@ -3424,7 +3433,7 @@
         {
           "name": "transaction_items_kind_check",
           "type": "CHECK",
-          "def": "CHECK ((kind = ANY (ARRAY['service'::text, 'product'::text, 'gift_card'::text, 'tip'::text, 'discount'::text])))",
+          "def": "CHECK ((kind = ANY (ARRAY['service'::text, 'product'::text, 'gift_card'::text, 'tip'::text, 'discount'::text, 'late_cancellation_fee'::text])))",
           "table": "public.transaction_items",
           "referenced_table": "",
           "columns": [
@@ -8683,6 +8692,12 @@
       "name": "public.run_communication_job",
       "return_type": "int8",
       "arguments": "p_job text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.system_staff_id",
+      "return_type": "uuid",
+      "arguments": "p_organization_id uuid",
       "type": "FUNCTION"
     }
   ],

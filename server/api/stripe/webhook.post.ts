@@ -15,6 +15,7 @@ import type Stripe from "stripe";
 import { serverSupabaseServiceRole } from "#supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "~~/shared/types/database";
+import { notifyStaffWithPermission } from "~~/server/utils/notifyStaff";
 
 export default defineEventHandler(async (event) => {
   const stripe = useStripe();
@@ -150,29 +151,14 @@ export default defineEventHandler(async (event) => {
 });
 
 /** Notify every staff member holding pos.refund (admins+) via the notifications rail. */
-async function notifyAdmins(
+function notifyAdmins(
   admin: SupabaseClient<Database>,
   notification: { kind: string; title: string; body: string },
 ) {
-  const { data: admins, error } = await admin
-    .from("staff_roles")
-    .select("staff_id, roles!inner(role_permissions!inner(permission_key))")
-    .eq("roles.role_permissions.permission_key", "pos.refund");
-  if (error) {
-    console.error("[stripe webhook] notifyAdmins lookup failed:", error);
-    return;
-  }
-  const ids = [...new Set((admins ?? []).map((row) => row.staff_id))];
-  if (!ids.length) return;
-  const { error: insertError } = await admin.from("notifications").insert(
-    ids.map((staffId) => ({
-      staff_id: staffId,
-      kind: notification.kind,
-      title: notification.title,
-      body: notification.body,
-    })),
+  return notifyStaffWithPermission(
+    admin,
+    "pos.refund",
+    notification,
+    "[stripe webhook] notifyAdmins",
   );
-  if (insertError) {
-    console.error("[stripe webhook] notifyAdmins insert failed:", insertError);
-  }
 }

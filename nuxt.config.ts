@@ -119,8 +119,8 @@ export default defineNuxtConfig({
         "/invite/**",
         "/join/**",
         // /cancel/** is the public cancel-via-link page (client
-        // communications, phase 2 stub / phase 4 real): reached from an
-        // email by a client with no account; the token is the authorization.
+        // communications, phase 4): reached from an email by a client with
+        // no account; the token is the authorization.
         "/cancel/**",
         "/forgot-password",
         "/reset-password",

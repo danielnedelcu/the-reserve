@@ -161,7 +161,9 @@ QUEUED (in order):
    "create client" button to the review page in the meantime — the route
    and page comments say why (08baa4d). When `enrolled` is added, the
    purge's status allowlist already keeps it.
-3. Cancellation-fee engine — its enabler (consented card on file) is live.
+3. Cancellation-fee engine — DONE 2026-09-26 for the cancel-via-link path
+   (client communications phase 4); the staff-initiated path is on the
+   punch list below.
 4. Marketing (§8) — LEAD CAPTURE DONE 2026-09-13 → 09-18, all four
    phases (docs/design/leads-design.md): `leads` + `lead_notes` schema
    with the allowlist purge; the OPEN public capture endpoint
@@ -248,18 +250,25 @@ QUEUED (in order):
   20260926160705, which states the intent as well as omitting the
   policy. Verify afterwards from pg: no TRUNCATE grant remains for
   either role on the named tables.
-- A dedicated system/bot staff row for service-role jobs that need a
-  staff_id reference (found 2026-09-26 building the phase-3 communication
-  jobs): form_links.issued_by is NOT NULL and references staff, and
-  audit_log wants an actor — but a scheduled job has no staff identity.
-  The intake reminder currently issues its form link on behalf of the
-  staff member who BOOKED the appointment, which is meaningful provenance
-  but not precise: it reads as if that person sent the reminder. A single
-  system@thereserve staff record (inactive, non-login, never bookable) as
-  the actor for automated actions would be accurate and make audit
-  queries cleaner ("everything the system did" becomes one predicate).
-  Small migration: the row, seeded per organisation, plus a helper that
-  returns its id; then the jobs use it for issued_by and for audit rows.
+- ~~A dedicated system/bot staff row for service-role jobs~~ DONE
+  2026-09-26 in the phase-4 migration (20260927020350): one
+  `system@thereserve.local` staff row per organisation (inactive,
+  unbookable, no login), `system_staff_id(p_organization_id)` get-or-create
+  locked to the service role, uniqueness enforced by a partial index. The
+  cancel-via-link fee transaction and its audit row are its first users.
+  REMAINING: switch the phase-3 intake reminder's `form_links.issued_by`
+  from the booking staff member to `system_staff_id()` — small route
+  change, no schema.
+- Staff-initiated cancellation UI (client communications, phase 4
+  deferred — docs/design/client-communications-design.md, "Staff-initiated
+  cancellations"): the scheduler's cancel path still does a direct status
+  update with no fee logic. It should show the policy warning when the
+  appointment is within 24 hours, show the client's waiver status, and
+  offer an override with a reason; the fee engine itself
+  (`server/utils/cancellationPolicy.ts` + the charge/ledger sequence in
+  `server/api/public/cancel/[token].post.ts`) is ready to be called from
+  a staff route. Until then a staff cancellation applies no fee and sends
+  no cancellation notice — the link path does both.
 - verify:messages harness — DEFERRED batch 4 of the 2026-09-20 test
   triage, its own task, in the verify-leads.mjs shape (both directions,
   non-vacuous): find_or_create_dm dedups by pair in both orders;

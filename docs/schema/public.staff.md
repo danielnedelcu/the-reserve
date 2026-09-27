@@ -41,10 +41,11 @@ Employees. Linked 1:1 to auth.users via user_id. Deactivated (active=false), nev
 
 ## Indexes
 
-| Name              | Definition                                                                  |
-| ----------------- | --------------------------------------------------------------------------- |
-| staff_pkey        | CREATE UNIQUE INDEX staff_pkey ON public.staff USING btree (id)             |
-| staff_user_id_key | CREATE UNIQUE INDEX staff_user_id_key ON public.staff USING btree (user_id) |
+| Name                         | Definition                                                                                                                                     |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| staff_pkey                   | CREATE UNIQUE INDEX staff_pkey ON public.staff USING btree (id)                                                                                |
+| staff_user_id_key            | CREATE UNIQUE INDEX staff_user_id_key ON public.staff USING btree (user_id)                                                                    |
+| staff_one_system_row_per_org | CREATE UNIQUE INDEX staff_one_system_row_per_org ON public.staff USING btree (organization_id) WHERE (email = 'system@thereserve.local'::text) |
 
 ## Triggers
 
