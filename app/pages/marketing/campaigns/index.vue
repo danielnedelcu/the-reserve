@@ -258,11 +258,11 @@ async function send() {
     </div>
 
     <ul v-else class="mt-8 space-y-3">
-      <li
-        v-for="c in campaigns"
-        :key="c.id"
-        class="flex items-center justify-between gap-4 rounded-xl border p-4"
-      >
+      <li v-for="c in campaigns" :key="c.id">
+        <NuxtLink
+          :to="`/marketing/campaigns/${c.id}`"
+          class="hover:border-primary/40 flex items-center justify-between gap-4 rounded-xl border p-4 transition"
+        >
         <div class="min-w-0">
           <p class="truncate font-medium">{{ c.subject }}</p>
           <p class="text-muted-foreground text-sm">
@@ -274,6 +274,7 @@ async function send() {
           <Icon :name="STATUS[c.status]?.icon ?? 'lucide:circle'" class="size-3.5" aria-hidden="true" />
           {{ STATUS[c.status]?.text ?? c.status }}
         </UiBadge>
+        </NuxtLink>
       </li>
     </ul>
   </div>
