@@ -109,6 +109,7 @@ Several are environment-SPECIFIC (a prod value differs from dev).
 | STRIPE_SECRET_KEY | LIVE key | test key in preview only |
 | NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY | LIVE publishable | test in preview |
 | STRIPE_WEBHOOK_SECRET | PROD webhook's secret | per-endpoint; NOT the CLI whsec_ |
+| RESEND_WEBHOOK_SECRET | the PROD Resend webhook's signing secret (whsec_…) | fail-closed; per-endpoint; campaign engagement events (marketing campaigns, phase 2) |
 | ANTHROPIC_API_KEY | the-reserve project key | server-only |
 | FORM_IP_PEPPER | a DIFFERENT prod value | fail-closed; per-env; openssl rand -hex 32 |
 | LEADS_ORGANIZATION_ID | the real org id | fail-closed; empty in preview |
@@ -127,6 +128,14 @@ is in the repo or in the migration.
 |---|---|
 | `communications_site_url` | the deployed app's base URL — the SAME value as NUXT_PUBLIC_SITE_URL |
 | `communications_job_secret` | the bearer secret — the SAME value as COMMUNICATIONS_JOB_SECRET (`openssl rand -hex 32`) |
+| `resend_webhook_secret` | the Resend webhook's signing secret — the SAME value as RESEND_WEBHOOK_SECRET. Recorded here so every secret is in one place; nothing in Postgres reads it (Nitro routes cannot reach Vault, so the route reads the env var) |
+
+The Resend webhook (marketing campaigns, phase 2) is the other
+deploy-only path: Resend cannot POST to localhost, so `POST
+/api/webhooks/resend` is registered in the Resend dashboard against the
+deployed URL (events: opened, clicked, unsubscribed, complained,
+bounced) and its signing secret goes into RESEND_WEBHOOK_SECRET. Locally
+it is proven with a signed simulated POST — see the phase-2 PR.
 
 The path is pg_cron → `run_communication_job()` → pg_net → `POST
 /api/jobs/communications`. It only works once the app is DEPLOYED: pg_net

@@ -64,6 +64,9 @@ export default defineNuxtConfig({
     // from Vault (communications_job_secret). Absent => the route refuses
     // to serve — fail-closed, like the pepper and the leads org.
     communicationsJobSecret: process.env.COMMUNICATIONS_JOB_SECRET,
+    // Resend's webhook signing secret (marketing campaigns, phase 2).
+    // Fail-closed: the webhook route refuses to serve without it.
+    resendWebhookSecret: process.env.RESEND_WEBHOOK_SECRET,
     // Exact origins (comma-separated) allowed to call it from a browser —
     // the marketing site. Never `*`. Absent => no cross-origin caller.
     leadsAllowedOrigins: process.env.LEADS_ALLOWED_ORIGINS,
