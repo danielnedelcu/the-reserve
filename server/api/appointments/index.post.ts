@@ -1,5 +1,7 @@
 import { serverSupabaseServiceRole } from "#supabase/server";
 import { requirePermission, actorUserId } from "../../utils/requireUser";
+import { sendMail } from "../../utils/mailer";
+import { bookingConfirmationEmail } from "../../utils/emailTemplates";
 
 /**
  * POST /api/appointments
@@ -100,7 +102,10 @@ export default defineEventHandler(async (event) => {
       .eq("client_id", body.clientId);
 
     if (intakeError) {
-      throw createError({ statusCode: 500, statusMessage: intakeError.message });
+      throw createError({
+        statusCode: 500,
+        statusMessage: intakeError.message,
+      });
     }
     if (!count) {
       throw createError({
@@ -126,7 +131,7 @@ export default defineEventHandler(async (event) => {
   // --- Location + room --------------------------------------------------------
   const { data: location } = await client
     .from("locations")
-    .select("id")
+    .select("id, name, timezone, phone, city, state, postal_code")
     .limit(1)
     .maybeSingle();
   if (!location)
@@ -254,6 +259,114 @@ export default defineEventHandler(async (event) => {
       price_cents: price,
     },
   });
+
+  // --- Client communications, phase 2: cancel token + confirmation ----------
+  // (docs/design/client-communications-design.md). Everything from here is
+  // BEST-EFFORT and runs after the booking is a fact: the appointment,
+  // its line item and its audit row are committed above, and nothing
+  // below can fail the request — a failure is logged and the caller still
+  // gets the booking back. organization_id is service.organization_id,
+  // the same source the appointment insert used; never current_org_id(),
+  // which is null under the service role.
+  try {
+    const [{ data: recipient }, { data: provider }, { data: token }] =
+      await Promise.all([
+        admin
+          .from("clients")
+          .select("email, first_name")
+          .eq("id", body.clientId)
+          .maybeSingle(),
+        admin
+          .from("staff")
+          .select("display_name")
+          .eq("id", body.staffId)
+          .maybeSingle(),
+        admin
+          .from("cancellation_tokens")
+          .insert({
+            organization_id: service.organization_id,
+            appointment_id: appointment.id,
+            // The link is dead once the appointment begins.
+            expires_at: startsAt.toISOString(),
+          })
+          .select("id")
+          .single(),
+      ]);
+
+    if (!token) {
+      console.error(
+        "[communications] cancellation token not created for appointment",
+        appointment.id,
+      );
+    } else if (!recipient?.email) {
+      console.warn(
+        "[communications] no email on file — confirmation not sent for appointment",
+        appointment.id,
+      );
+    } else {
+      // Configured site URL in deployed environments; the request's own
+      // origin otherwise, so a link mailed from staging cannot point at
+      // production (same reasoning as the form-link email).
+      const base =
+        useRuntimeConfig(event).public.siteUrl || getRequestURL(event).origin;
+      const cancelUrl = `${base}/cancel/${token.id}`;
+      const staffName = provider?.display_name ?? "your provider";
+
+      const content = bookingConfirmationEmail({
+        clientFirstName: recipient.first_name,
+        serviceName: service.name,
+        staffName,
+        startsAtIso: startsAt.toISOString(),
+        timezone: location.timezone,
+        location: {
+          name: location.name,
+          phone: location.phone,
+          city: location.city,
+          state: location.state,
+          postalCode: location.postal_code,
+        },
+        cancelUrl,
+      });
+      // TODO(sms): communication_channel is recorded on the client but
+      // delivery is email-only until the SMS phase; sms and both are
+      // treated as email here.
+      const emailed = await sendMail({ to: recipient.email, ...content });
+
+      if (emailed) {
+        // The dedup guard and audit trail. Written ONLY when a message
+        // actually left: a row here is what phase 3's jobs consult before
+        // sending, so logging a failed send would silence every retry.
+        const { error: logError } = await admin
+          .from("communications_sent")
+          .insert({
+            organization_id: service.organization_id,
+            client_id: body.clientId,
+            appointment_id: appointment.id,
+            kind: "confirmation",
+            channel: "email",
+            metadata: {
+              service_name: service.name,
+              staff_name: staffName,
+              starts_at: startsAt.toISOString(),
+              cancel_url: cancelUrl,
+            },
+          });
+        if (logError) {
+          console.error(
+            "[communications] confirmation sent but not logged:",
+            logError.message,
+          );
+        }
+      } else {
+        console.error(
+          "[communications] confirmation email failed for appointment",
+          appointment.id,
+        );
+      }
+    }
+  } catch (error) {
+    console.error("[communications] post-booking step failed:", error);
+  }
 
   return { id: appointment.id, roomId };
 });

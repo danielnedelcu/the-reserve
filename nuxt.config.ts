@@ -65,6 +65,12 @@ export default defineNuxtConfig({
     // ...existing server-side entries...
     public: {
       stripePublishableKey: process.env.NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      // The address links in outbound email point at (the cancel link, and
+      // in phase 3 the reminders, which are sent by jobs with no request
+      // to take an origin from). Unset in dev => the route falls back to
+      // its own request origin, so a link mailed from staging cannot point
+      // at production. Set it in every deployed environment.
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL ?? "",
       // ...existing public entries...
     },
   },
@@ -107,6 +113,10 @@ export default defineNuxtConfig({
       exclude: [
         "/invite/**",
         "/join/**",
+        // /cancel/** is the public cancel-via-link page (client
+        // communications, phase 2 stub / phase 4 real): reached from an
+        // email by a client with no account; the token is the authorization.
+        "/cancel/**",
         "/forgot-password",
         "/reset-password",
       ],

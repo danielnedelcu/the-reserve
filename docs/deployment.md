@@ -100,6 +100,7 @@ Several are environment-SPECIFIC (a prod value differs from dev).
 |---|---|---|
 | NUXT_PUBLIC_SUPABASE_URL | prod project URL | public |
 | NUXT_PUBLIC_SUPABASE_KEY | publishable key | public, safe to expose |
+| NUXT_PUBLIC_SITE_URL | the deployment's own public URL | links in outbound email (cancel link, phase-3 reminders); per environment — preview gets the preview URL, never prod's |
 | NUXT_SUPABASE_SECRET_KEY | the ROTATED secret key | server-only; rotated 2026-09-20 |
 | ASK_DATABASE_URL | POOLER DSN (6543, tx mode) | NOT the direct connection — see decision 1 |
 | RESEND_API_KEY | rotate before launch | was chat-exposed; pre-launch rotation |

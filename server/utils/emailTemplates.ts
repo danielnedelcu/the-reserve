@@ -101,7 +101,30 @@ export function bookingConfirmationEmail(options: {
   staffName: string;
   startsAtIso: string;
   timezone: string;
+  /** Where the appointment is: name and whatever contact detail is set. */
+  location: {
+    name: string;
+    phone?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postalCode?: string | null;
+  };
+  /** The single-use cancel link (client communications, phase 2). */
+  cancelUrl: string;
 }): { subject: string; html: string } {
+  // Content per docs/design/client-communications-design.md touchpoint 1:
+  // service, provider, date/time, location, the cancel link, and the
+  // policy note. Placeholder styling — the owner refines copy and design
+  // before launch; what matters here is that everything required is
+  // present. Plain, warm language: this reaches members, often older.
+  const where = [
+    options.location.name,
+    [options.location.city, options.location.state, options.location.postalCode]
+      .filter(Boolean)
+      .join(", "),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const when = new Date(options.startsAtIso).toLocaleString("en-US", {
     timeZone: options.timezone,
     weekday: "long",
@@ -120,12 +143,25 @@ export function bookingConfirmationEmail(options: {
           <tr><td style="padding:18px 20px;">
             <p style="margin:0 0 6px;font-size:16px;"><strong>${options.serviceName}</strong></p>
             <p style="margin:0 0 4px;color:${COLORS.soft};">${when}</p>
-            <p style="margin:0;color:${COLORS.soft};">with ${options.staffName}</p>
+            <p style="margin:0 0 4px;color:${COLORS.soft};">with ${options.staffName}</p>
+            <p style="margin:0;color:${COLORS.soft};">${where}${
+              options.location.phone ? ` · ${options.location.phone}` : ""
+            }</p>
           </td></tr>
         </table>
+        <p style="margin:0 0 16px;">
+          If your plans change, you can cancel with the button below. Please
+          do it as early as you can, so we can offer your time to another
+          member.
+        </p>
+        ${button(options.cancelUrl, "CANCEL THIS APPOINTMENT")}
+        <p style="margin:0 0 16px;font-size:13px;">
+          If the button does not work, copy this address into your browser:<br />
+          <span style="word-break:break-all;">${options.cancelUrl}</span>
+        </p>
         <p style="margin:0;font-size:13px;color:${COLORS.soft};">
-          Need to reschedule? Please call us as early as possible so we can offer
-          your time to another guest.
+          Cancellations within 24 hours of your appointment may incur a fee.
+          Your first late cancellation is waived as a courtesy.
         </p>
       `),
   };
