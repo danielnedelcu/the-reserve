@@ -4,6 +4,7 @@ import {
 } from "#supabase/server";
 import { sendMail } from "~~/server/utils/mailer";
 import { receiptEmail } from "~~/server/utils/emailTemplates";
+import { chargeSavedCard } from "~~/server/utils/chargeSavedCard";
 
 /**
  * POST /api/checkout — the money route.
@@ -451,36 +452,21 @@ export default defineEventHandler(async (event) => {
   // Success → we record it; failure → 402, nothing written. If a write fails
   // AFTER this succeeds, the webhook's orphan reconciliation flags it loudly.
   if (stripeCharge) {
-    const stripe = useStripe();
-    try {
-      const intent = await stripe.paymentIntents.create({
-        amount: stripeCharge.amountCents,
-        currency: "usd",
-        customer: stripeCharge.stripeCustomerId,
-        payment_method: stripeCharge.paymentMethodId,
-        off_session: true,
-        confirm: true,
-        metadata: {
-          reserve_client_id: body.clientId,
-          reserve_staff_id: staffId,
-        },
-      });
-      if (intent.status !== "succeeded") {
-        throw createError({
-          statusCode: 402,
-          statusMessage: `Card charge did not complete (${intent.status})`,
-        });
-      }
-      paymentRows[stripeCharge.rowIndex]!.stripe_payment_intent_id = intent.id;
-      paymentRows[stripeCharge.rowIndex]!.reference = intent.id;
-    } catch (error: unknown) {
-      const stripeError = error as { message?: string; statusCode?: number };
-      if (stripeError.statusCode === 402) throw error; // our own throw above
-      throw createError({
-        statusCode: 402,
-        statusMessage: stripeError.message ?? "Card was declined",
-      });
+    const charged = await chargeSavedCard(useStripe(), {
+      amountCents: stripeCharge.amountCents,
+      stripeCustomerId: stripeCharge.stripeCustomerId,
+      stripePaymentMethodId: stripeCharge.paymentMethodId,
+      metadata: {
+        reserve_client_id: body.clientId,
+        reserve_staff_id: staffId,
+      },
+    });
+    if (!charged.ok) {
+      throw createError({ statusCode: 402, statusMessage: charged.message });
     }
+    paymentRows[stripeCharge.rowIndex]!.stripe_payment_intent_id =
+      charged.paymentIntentId;
+    paymentRows[stripeCharge.rowIndex]!.reference = charged.paymentIntentId;
   }
 
   // ---- writes (service role; cleanup on failure) --------------------------------

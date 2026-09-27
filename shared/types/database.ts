@@ -2449,6 +2449,7 @@ export type Database = {
         }
         Returns: string
       }
+      system_staff_id: { Args: { p_organization_id: string }; Returns: string }
       timemultirange: { Args: never; Returns: unknown }
     }
     Enums: {

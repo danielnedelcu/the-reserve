@@ -179,6 +179,20 @@ app):
    a. Card exists: charge $50 via Stripe (the existing charge-card-on-file
    route), write a ledger row (negative, kind = `late_cancellation_fee`),
    note the charge in the cancellation email.
+   [AS-BUILT] The ledger row is POSITIVE, not negative: a fee is money in,
+   and the ledger's rule is that only refunds are negative (mirrors of an
+   original via `refunds_transaction_id`). It is an ordinary transaction —
+   one `late_cancellation_fee` line, no tax, one `stripe_card` payment
+   carrying the PaymentIntent id — so every financial view reads it as
+   the sale it is, and the "services + retail" sums exclude it by kind.
+   The Stripe call itself was lifted out of checkout into
+   `server/utils/chargeSavedCard.ts` so the fee and the POS share one
+   implementation (called with an idempotency key keyed on the token, so
+   a raced or retried click cannot charge twice).
+   [AS-BUILT] The actor on the transaction (`checked_out_by`) and the
+   audit row is the organisation's system staff row — `system_staff_id()`,
+   seeded per organisation by the phase-4 migration — not a borrowed
+   person.
    b. No card: proceed with cancellation, notify staff, note in the email
    that the fee could not be charged.
 
@@ -186,6 +200,15 @@ The fee charge follows the existing money-moves-first rule: Stripe charge
 succeeds, then ledger row is written. A failed charge does not block the
 cancellation — the appointment is cancelled regardless; the fee collection
 is a separate concern.
+[AS-BUILT] Narrowed: a card that exists and DECLINES does block the
+cancellation. The route releases the token claim, cancels nothing, and
+tells the person plainly that the appointment is still booked and to call.
+"No card at all" still proceeds as written above (fee uncollected, staff
+notified). The distinction: with no card the spa's own gap is the reason,
+and the client is not punished for it; with a declined card, cancelling
+anyway would hand the client a free late cancellation on a card they
+control. The route order is: claim token (the mutex) → charge → cancel →
+ledger → waiver flag → staff notice → audit → email.
 
 ### Staff-initiated cancellations
 
@@ -266,6 +289,16 @@ Also: staff-initiated cancellation UI update (policy warning, waiver
 status, override reason). Verify: token single-use, window correctly
 applied, waiver consumed on first use, $50 charged on second, no-card
 case handled, money-moves-first.
+[AS-BUILT] Shipped: the page, `GET`/`POST /api/public/cancel/:token`,
+the fee engine, the notice email, the system staff row. All six checks
+above were driven through the real page against the live database
+(plus: two simultaneous clicks on one link → one 200, one 410; a link
+whose appointment staff had already cancelled → "already cancelled",
+no action). DEFERRED to a follow-up on the board: the staff-initiated
+cancellation UI — the staff cancel path in the scheduler is untouched
+and applies no fee. A link reached with the appointment already cancelled
+shows that state rather than the generic invalid message: the token is
+real, so nothing is confirmed to a stranger.
 
 ### Phase 5 — staff-side visibility
 

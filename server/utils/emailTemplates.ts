@@ -363,3 +363,85 @@ export function birthdayEmail(options: { clientFirstName: string }): {
       `),
   };
 }
+
+/**
+ * Touchpoint 3 — the cancellation notice (client communications, phase 4).
+ * Fires when a client cancels through their link. One template, four
+ * endings, chosen by the fee outcome the cancel route decided:
+ *   outside_window — cancelled in time, nothing owed;
+ *   waived         — late, first time: the lifetime waiver is now spent;
+ *   charge         — late, the fee was charged to the card on file;
+ *   uncollected    — late, no card on file: the fee is owed at the next visit.
+ * The ending states plainly what happened to their money; that is the
+ * whole point of the email, so it is never softened into "see policy".
+ */
+export function cancellationNoticeEmail(options: {
+  clientFirstName: string;
+  serviceName: string;
+  staffName: string;
+  startsAtIso: string;
+  timezone: string;
+  locationName: string;
+  outcome: "outside_window" | "waived" | "charge" | "uncollected";
+  /** The POLICY amount, not what was charged: the waived ending quotes it as the future fee. */
+  feeCents: number;
+  /** Last four digits of the card charged; only for outcome "charge". */
+  cardLast4?: string | null;
+}): { subject: string; html: string } {
+  const when = whenLabel(options.startsAtIso, options.timezone);
+  const fee = `$${(options.feeCents / 100).toFixed(2)}`;
+  const ending = {
+    outside_window: `
+        <p style="margin:0 0 16px;">
+          You cancelled with more than 24 hours' notice, so there is no
+          charge. Thank you for letting us know early.
+        </p>`,
+    waived: `
+        <p style="margin:0 0 16px;">
+          This cancellation was within 24 hours of your appointment. As a
+          courtesy, your first late cancellation has been waived, so there
+          is no charge this time.
+        </p>
+        <p style="margin:0 0 16px;">
+          Please note that this courtesy has now been used. Future late
+          cancellations will incur a ${fee} fee.
+        </p>`,
+    charge: `
+        <p style="margin:0 0 16px;">
+          This cancellation was within 24 hours of your appointment, and
+          your first late cancellation has already been waived, so the
+          ${fee} late cancellation fee has been charged to your card on
+          file${options.cardLast4 ? ` ending in ${options.cardLast4}` : ""}.
+        </p>`,
+    uncollected: `
+        <p style="margin:0 0 16px;">
+          This cancellation was within 24 hours of your appointment, and
+          your first late cancellation has already been waived, so a ${fee}
+          late cancellation fee applies. We do not have a card on file for
+          you, so we will settle it with you at your next visit.
+        </p>`,
+  }[options.outcome];
+
+  return {
+    subject: `Your appointment on ${when} is cancelled`,
+    html: shell(`
+        <p style="margin:0 0 16px;">Hi ${options.clientFirstName},</p>
+        <p style="margin:0 0 16px;">We have cancelled your appointment:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+               style="background-color:${COLORS.cream};border-radius:8px;margin:8px 0 20px;">
+          <tr><td style="padding:18px 20px;">
+            <p style="margin:0 0 6px;font-size:16px;"><strong>${options.serviceName}</strong></p>
+            <p style="margin:0 0 4px;color:${COLORS.soft};">${when}</p>
+            <p style="margin:0 0 4px;color:${COLORS.soft};">with ${options.staffName}</p>
+            <p style="margin:0;color:${COLORS.soft};">${options.locationName}</p>
+          </td></tr>
+        </table>
+        ${ending}
+        <p style="margin:0 0 16px;">
+          Whenever you are ready to rebook, call us or ask at the front
+          desk and we will find you a time.
+        </p>
+        <p style="margin:0;color:${COLORS.soft};">Warmly,<br />The Reserve</p>
+      `),
+  };
+}

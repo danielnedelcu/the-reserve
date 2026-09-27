@@ -284,6 +284,7 @@
 | public.forget_lead_notifications             | trigger        |                                                                                                          | FUNCTION |
 | public.convert_lead                          | form_links     | p_lead_id uuid, p_form_version_id uuid, p_delivery_email text, p_expires_at timestamp with time zone     | FUNCTION |
 | public.run_communication_job                 | int8           | p_job text                                                                                               | FUNCTION |
+| public.system_staff_id                       | uuid           | p_organization_id uuid                                                                                   | FUNCTION |
 
 ## Enums
 
