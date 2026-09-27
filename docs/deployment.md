@@ -101,6 +101,7 @@ Several are environment-SPECIFIC (a prod value differs from dev).
 | NUXT_PUBLIC_SUPABASE_URL | prod project URL | public |
 | NUXT_PUBLIC_SUPABASE_KEY | publishable key | public, safe to expose |
 | NUXT_PUBLIC_SITE_URL | the deployment's own public URL | links in outbound email (cancel link, phase-3 reminders); per environment — preview gets the preview URL, never prod's |
+| COMMUNICATIONS_JOB_SECRET | `openssl rand -hex 32` | fail-closed; the scheduled communications route refuses without it; SAME value as the Vault entry below |
 | NUXT_SUPABASE_SECRET_KEY | the ROTATED secret key | server-only; rotated 2026-09-20 |
 | ASK_DATABASE_URL | POOLER DSN (6543, tx mode) | NOT the direct connection — see decision 1 |
 | RESEND_API_KEY | rotate before launch | was chat-exposed; pre-launch rotation |
@@ -113,6 +114,26 @@ Several are environment-SPECIFIC (a prod value differs from dev).
 | LEADS_ORGANIZATION_ID | the real org id | fail-closed; empty in preview |
 | LEADS_ALLOWED_ORIGINS | the marketing site's real origin | never *; fail-closed cross-origin |
 | TBLS_DSN | NOT deployed | tooling only |
+
+### Supabase Vault entries (the scheduled communications, phase 3)
+
+Two entries, inserted by hand in the Supabase dashboard (Project Settings
+→ Vault) BEFORE the phase-3 migration is pushed — the four nightly
+communication jobs read them on every tick and fail visibly in
+`cron.job_run_details` from the first run if either is missing. Neither
+is in the repo or in the migration.
+
+| Vault name | Value |
+|---|---|
+| `communications_site_url` | the deployed app's base URL — the SAME value as NUXT_PUBLIC_SITE_URL |
+| `communications_job_secret` | the bearer secret — the SAME value as COMMUNICATIONS_JOB_SECRET (`openssl rand -hex 32`) |
+
+The path is pg_cron → `run_communication_job()` → pg_net → `POST
+/api/jobs/communications`. It only works once the app is DEPLOYED: pg_net
+cannot reach localhost from the hosted Supabase. Locally, call the route
+directly with the job secret as a Bearer token and `{"job":
+"day_before_reminder"}` (or whichever job) as the body; the same
+verification applies — check the sent-log, confirm the email.
 
 FORM_IP_PEPPER, in more detail (moved here from the board): it keys the
 HMAC over visitor IPs on the public intake form, so it must DIFFER per

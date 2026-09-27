@@ -59,6 +59,11 @@ export default defineNuxtConfig({
     // SERVER-SIDE fact set here, never a client claim. Absent => the route
     // refuses to serve.
     leadsOrganizationId: process.env.LEADS_ORGANIZATION_ID,
+    // Bearer secret the scheduled communications route requires
+    // (POST /api/jobs/communications). pg_cron presents the same value
+    // from Vault (communications_job_secret). Absent => the route refuses
+    // to serve — fail-closed, like the pepper and the leads org.
+    communicationsJobSecret: process.env.COMMUNICATIONS_JOB_SECRET,
     // Exact origins (comma-separated) allowed to call it from a browser —
     // the marketing site. Never `*`. Absent => no cross-origin caller.
     leadsAllowedOrigins: process.env.LEADS_ALLOWED_ORIGINS,

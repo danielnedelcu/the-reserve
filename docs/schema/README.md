@@ -283,6 +283,7 @@
 | public.settle_lead_notifications             | trigger        |                                                                                                          | FUNCTION |
 | public.forget_lead_notifications             | trigger        |                                                                                                          | FUNCTION |
 | public.convert_lead                          | form_links     | p_lead_id uuid, p_form_version_id uuid, p_delivery_email text, p_expires_at timestamp with time zone     | FUNCTION |
+| public.run_communication_job                 | int8           | p_job text                                                                                               | FUNCTION |
 
 ## Enums
 
@@ -297,6 +298,7 @@
 | auth.oauth_registration_type | dynamic, manual |
 | auth.oauth_response_type | code |
 | auth.one_time_token_type | confirmation_token, email_change_token_current, email_change_token_new, phone_change_token, reauthentication_token, recovery_token |
+| net.request_status | ERROR, PENDING, SUCCESS |
 | realtime.action | DELETE, ERROR, INSERT, TRUNCATE, UPDATE |
 | realtime.equality_op | eq, gt, gte, ilike, imatch, in, is, isdistinct, like, lt, lte, match, neq |
 | storage.buckettype | ANALYTICS, STANDARD, VECTOR |
