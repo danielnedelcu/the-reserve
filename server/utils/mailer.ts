@@ -18,6 +18,24 @@ export async function sendMail(options: {
   subject: string;
   html: string;
 }): Promise<boolean> {
+  return (await sendMailDetailed(options)).ok;
+}
+
+/**
+ * The same send, returning what Resend said. `id` is Resend's message
+ * id on acceptance — the key the marketing webhook (campaigns, phase 2)
+ * matches events to recipients by, so campaign sends go through here
+ * and store it. `text` is the plain-text alternative (required by
+ * CAN-SPAM for campaigns), and `headers` carries List-Unsubscribe.
+ * Never throws, same as sendMail.
+ */
+export async function sendMailDetailed(options: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  headers?: Record<string, string>;
+}): Promise<{ ok: true; id: string | null } | { ok: false }> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;
 
@@ -26,7 +44,7 @@ export async function sendMail(options: {
       "[mailer] RESEND_API_KEY or MAIL_FROM not set — email not sent:",
       options.subject,
     );
-    return false;
+    return { ok: false };
   }
 
   try {
@@ -41,17 +59,20 @@ export async function sendMail(options: {
         to: [options.to],
         subject: options.subject,
         html: options.html,
+        ...(options.text ? { text: options.text } : {}),
+        ...(options.headers ? { headers: options.headers } : {}),
       }),
     });
 
     if (!response.ok) {
       const detail = await response.text();
       console.error(`[mailer] Resend ${response.status}:`, detail);
-      return false;
+      return { ok: false };
     }
-    return true;
+    const body = (await response.json().catch(() => null)) as { id?: string } | null;
+    return { ok: true, id: body?.id ?? null };
   } catch (error) {
     console.error("[mailer] send failed:", error);
-    return false;
+    return { ok: false };
   }
 }

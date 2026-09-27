@@ -1,10 +1,11 @@
 <script setup lang="ts">
 const { can, load } = usePermissions();
+const { isAdmin, load: loadAdmin } = useIsAdmin();
 const { signOut } = useAuth();
 const user = useSupabaseUser();
 const route = useRoute();
 
-await load();
+await Promise.all([load(), loadAdmin()]);
 
 // Prospects awaiting review — queue state, live, permission-gated inside
 // the composable (it never queries for someone who cannot see /intake).
@@ -89,6 +90,14 @@ const navSections = computed<NavSection[]>(() =>
           to: "/forms",
           icon: "lucide:clipboard-list",
           show: can("forms.manage"),
+        },
+        {
+          title: "Campaigns",
+          to: "/marketing/campaigns",
+          icon: "lucide:mail",
+          // The one role-gated entry: admin + super_admin, per the
+          // campaigns design. Enforced by is_admin() in RLS and the routes.
+          show: isAdmin.value,
         },
         {
           title: "Staff",

@@ -6080,6 +6080,381 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.campaigns",
+      "type": "BASE TABLE",
+      "comment": "One row per campaign send. status tracks the send lifecycle; recipient_count is set at send time and never recomputed. Written by the send route under the service role; admins read and manage under RLS.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "body_html",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "body_text",
+          "type": "text",
+          "nullable": false,
+          "comment": "Plain-text fallback, sent alongside body_html on every message. Required by CAN-SPAM; not optional."
+        },
+        {
+          "name": "audience_filter",
+          "type": "jsonb",
+          "nullable": true,
+          "comment": "null = every opted-in client; {\"last_visit_months\": N} = opted-in clients with a completed appointment in the last N months. The snapshot of what was asked for, not a live filter."
+        },
+        {
+          "name": "recipient_count",
+          "type": "integer",
+          "nullable": true,
+          "comment": "Size of the audience list at send time. Set once, never recomputed — the list is run ONCE and sent to, so preview and send cannot disagree."
+        },
+        {
+          "name": "sent_by",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "nullable": false,
+          "default": "'draft'::text",
+          "comment": "draft | sending | sent | failed. text + check, not an enum type."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "campaigns_pkey",
+          "def": "CREATE UNIQUE INDEX campaigns_pkey ON public.campaigns USING btree (id)",
+          "table": "public.campaigns",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaigns_org_created",
+          "def": "CREATE INDEX campaigns_org_created ON public.campaigns USING btree (organization_id, created_at DESC)",
+          "table": "public.campaigns",
+          "columns": [
+            "organization_id",
+            "created_at"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "campaigns_status_check",
+          "type": "CHECK",
+          "def": "CHECK ((status = ANY (ARRAY['draft'::text, 'sending'::text, 'sent'::text, 'failed'::text])))",
+          "table": "public.campaigns",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "campaigns_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.campaigns",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaigns_sent_by_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (sent_by) REFERENCES staff(id)",
+          "table": "public.campaigns",
+          "referenced_table": "public.staff",
+          "columns": [
+            "sent_by"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaigns_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.campaigns",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.campaign_recipients",
+      "type": "BASE TABLE",
+      "comment": "Per-recipient record for a campaign send. resend_message_id links Phase 2 webhook events back to this row. opened_at/clicked_at/unsubscribed_at populated by the Phase 2 webhook. Inserted by the send route on Resend acceptance only — a row here means Resend took the message. Not fully append-only: the three event columns are updated by the webhook, under the service role.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "campaign_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "resend_message_id",
+          "type": "text",
+          "nullable": true,
+          "comment": "The id Resend returns on acceptance. Stored from phase 1 because phase 2 cannot exist without it: the webhook matches open/click/unsubscribe events to recipients by this value alone."
+        },
+        {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "clicked_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "unsubscribed_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "campaign_recipients_pkey",
+          "def": "CREATE UNIQUE INDEX campaign_recipients_pkey ON public.campaign_recipients USING btree (id)",
+          "table": "public.campaign_recipients",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_recipients_campaign",
+          "def": "CREATE INDEX campaign_recipients_campaign ON public.campaign_recipients USING btree (campaign_id)",
+          "table": "public.campaign_recipients",
+          "columns": [
+            "campaign_id"
+          ]
+        },
+        {
+          "name": "campaign_recipients_resend_message",
+          "def": "CREATE INDEX campaign_recipients_resend_message ON public.campaign_recipients USING btree (resend_message_id)",
+          "table": "public.campaign_recipients",
+          "columns": [
+            "resend_message_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "campaign_recipients_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.campaign_recipients",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_recipients_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "table": "public.campaign_recipients",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_recipients_campaign_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE",
+          "table": "public.campaign_recipients",
+          "referenced_table": "public.campaigns",
+          "columns": [
+            "campaign_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_recipients_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.campaign_recipients",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.campaign_unsubscribe_tokens",
+      "type": "BASE TABLE",
+      "comment": "Single-use tokens for the one-click unsubscribe link in every campaign email. Same pattern as cancellation_tokens: the id IS the token, minted per recipient at send time, claimed by the public unsubscribe route in the same statement that checks used_at is null. The route sets communication_opted_in = false on the token's client and nothing else — no client id is ever accepted from the request.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "campaign_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "campaign_unsubscribe_tokens_pkey",
+          "def": "CREATE UNIQUE INDEX campaign_unsubscribe_tokens_pkey ON public.campaign_unsubscribe_tokens USING btree (id)",
+          "table": "public.campaign_unsubscribe_tokens",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_unsubscribe_tokens_client",
+          "def": "CREATE INDEX campaign_unsubscribe_tokens_client ON public.campaign_unsubscribe_tokens USING btree (client_id)",
+          "table": "public.campaign_unsubscribe_tokens",
+          "columns": [
+            "client_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "campaign_unsubscribe_tokens_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "table": "public.campaign_unsubscribe_tokens",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_unsubscribe_tokens_client_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "table": "public.campaign_unsubscribe_tokens",
+          "referenced_table": "public.clients",
+          "columns": [
+            "client_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_unsubscribe_tokens_campaign_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (campaign_id) REFERENCES campaigns(id)",
+          "table": "public.campaign_unsubscribe_tokens",
+          "referenced_table": "public.campaigns",
+          "columns": [
+            "campaign_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "campaign_unsubscribe_tokens_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.campaign_unsubscribe_tokens",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
     }
   ],
   "relations": [
@@ -7317,6 +7692,110 @@
       ],
       "parent_cardinality": "zero_or_one",
       "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL"
+    },
+    {
+      "table": "public.campaigns",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.campaigns",
+      "columns": [
+        "sent_by"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.staff",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (sent_by) REFERENCES staff(id)"
+    },
+    {
+      "table": "public.campaign_recipients",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.campaign_recipients",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.campaign_recipients",
+      "columns": [
+        "campaign_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.campaigns",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.campaign_unsubscribe_tokens",
+      "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+    },
+    {
+      "table": "public.campaign_unsubscribe_tokens",
+      "columns": [
+        "client_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.clients",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+    },
+    {
+      "table": "public.campaign_unsubscribe_tokens",
+      "columns": [
+        "campaign_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.campaigns",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (campaign_id) REFERENCES campaigns(id)"
     }
   ],
   "functions": [
@@ -8698,6 +9177,12 @@
       "name": "public.system_staff_id",
       "return_type": "uuid",
       "arguments": "p_organization_id uuid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.is_admin",
+      "return_type": "bool",
+      "arguments": "",
       "type": "FUNCTION"
     }
   ],

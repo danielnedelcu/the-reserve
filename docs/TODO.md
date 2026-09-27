@@ -267,6 +267,13 @@ QUEUED (in order):
   REMAINING: switch the phase-3 intake reminder's `form_links.issued_by`
   from the booking staff member to `system_staff_id()` — small route
   change, no schema.
+- `campaign_unsubscribe_tokens.campaign_id` has no delete action (found
+  2026-09-27 cleaning up the phase-1 campaigns test send): deleting a
+  campaign is refused until its tokens are deleted by hand, while
+  `campaign_recipients` cascades. Small follow-up migration: swap the
+  constraint for `references campaigns(id) on delete cascade`, so a
+  campaign delete takes its tokens with it. A footgun for every future
+  cleanup until then.
 - Staff-initiated cancellation UI (client communications, phase 4
   deferred — docs/design/client-communications-design.md, "Staff-initiated
   cancellations"): the scheduler's cancel path still does a direct status
