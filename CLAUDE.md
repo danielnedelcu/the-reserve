@@ -10,7 +10,12 @@
   the change reviewable, the shim is an acknowledged cost, marked and
   deleted the moment typegen lands. Default is push-first; shim is the
   exception you justify.
-- After adding components/composables: npx nuxt prepare + TS server restart ("the ritual")
+- Layout: a Turborepo workspace; the app is apps/reserve (@repo/reserve) and
+  supabase/, docs/, scripts/ stay at the root. Paths in the conventions, the
+  skills and the design docs are relative to `apps/reserve/` unless they
+  begin with `supabase/`, `docs/` or `scripts/`.
+- After adding components/composables: npx nuxt prepare (from apps/reserve)
+  + TS server restart ("the ritual")
 - UI: ui-thing components (npx ui-thing@latest add <name>); lucide icons ONLY (no heroicons)
 - Money: ALL pricing math server-side in routes; ledger is append-only;
   refunds are negative mirrors; gift cards/credits are liabilities not revenue
@@ -80,7 +85,8 @@
   developer runs...", the feature is not built. Corollary: an empty state
   or a comment admitting the gap is not a mitigation; it is the gap,
   written down and shipped.
-- Types: npx nuxt typecheck must stay at 0; payloads feeding insert+update
+- Types: npm run typecheck (root, via turbo) or npx nuxt typecheck (from
+  apps/reserve) must stay at 0; payloads feeding insert+update
   typed as Omit<TablesInsert<"t">, "organization_id">
 - Every new table: organization_id + org-scoped RLS (see docs/design/multi-tenancy-status.md)
 - Tests, by what the code is: a new pure-logic utility or composable
