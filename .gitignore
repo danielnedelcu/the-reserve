@@ -27,3 +27,5 @@ coverage
 # Supabase CLI scratch: project ref, pooler host, CA cert, versions. Never
 # secret, never source — and never tracked.
 supabase/.temp/
+# Turbo
+.turbo

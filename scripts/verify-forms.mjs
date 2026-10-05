@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
 const env = Object.fromEntries(
-  readFileSync(".env", "utf8")
+  readFileSync("apps/reserve/.env", "utf8")
     .split("\n")
     .filter((l) => l.includes("="))
     .map((l) => {

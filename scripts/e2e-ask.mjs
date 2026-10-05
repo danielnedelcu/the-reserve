@@ -19,7 +19,7 @@ const require = createRequire(`${PROJECT}/package.json`);
 const { createClient } = require("@supabase/supabase-js");
 const pg = require("pg");
 
-const L = fs.readFileSync(`${PROJECT}/.env`, "utf8").split("\n");
+const L = fs.readFileSync(`${PROJECT}/apps/reserve/.env`, "utf8").split("\n");
 const g = (k) => {
   const l = L.find((x) => x.trim().startsWith(k + "=")) || "";
   return l.slice(l.indexOf("=") + 1).trim().replace(/^["']|["']$/g, "");

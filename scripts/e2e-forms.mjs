@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 const base = process.argv[2] ?? "http://localhost:3000";
 
 const env = Object.fromEntries(
-  readFileSync(".env", "utf8")
+  readFileSync("apps/reserve/.env", "utf8")
     .split("\n")
     .filter((l) => l.includes("="))
     .map((l) => {
