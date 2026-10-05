@@ -21,12 +21,12 @@ import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { LEAD_INTERESTS, LEAD_STATUSES, LEAD_HONEYPOT_FIELD } from "../shared/leads/constants.ts";
+import { LEAD_INTERESTS, LEAD_STATUSES, LEAD_HONEYPOT_FIELD } from "../apps/reserve/shared/leads/constants.ts";
 
 const base = process.argv[2] ?? "http://localhost:3000";
 
 const env = Object.fromEntries(
-  readFileSync(".env", "utf8")
+  readFileSync("apps/reserve/.env", "utf8")
     .split("\n")
     .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
     .map((l) => {
@@ -248,11 +248,11 @@ async function main() {
   // records the URL token on EVERY attempt, garbage included. Assert the
   // second half from the code that decides it, since data cannot prove a
   // negative about future prospect attempts.
-  const prospectRoute = readFileSync("server/api/public/forms/[token]/submit.post.ts", "utf8");
+  const prospectRoute = readFileSync("apps/reserve/server/api/public/forms/[token]/submit.post.ts", "utf8");
   check("the prospect route never records a null token (every recordAttempt passes `token`)",
     /recordAttempt\(/.test(prospectRoute) && !/token:\s*null/.test(prospectRoute));
   check("the lead limiter counts ONLY null-token attempts (server/utils/leadCapture.ts)",
-    readFileSync("server/utils/leadCapture.ts", "utf8").includes('.is("token", null)'));
+    readFileSync("apps/reserve/server/utils/leadCapture.ts", "utf8").includes('.is("token", null)'));
 
   // ── 6. CORS — other websites cannot use the form; the marketing site can
   console.log("\nCORS");

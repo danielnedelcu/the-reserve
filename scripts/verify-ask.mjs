@@ -20,7 +20,7 @@ const pg = createRequire(`${PROJECT}/package.json`)("pg");
 
 const env = Object.fromEntries(
   fs
-    .readFileSync(`${PROJECT}/.env`, "utf8")
+    .readFileSync(`${PROJECT}/apps/reserve/.env`, "utf8")
     .split("\n")
     .filter((l) => l.trim() && !l.trim().startsWith("#") && l.includes("="))
     .map((l) => {

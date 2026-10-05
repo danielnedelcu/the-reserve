@@ -22,7 +22,8 @@ silent, survive typecheck, and are found by a person clicking.
 
 ## The defaults
 
-- **ui-thing is the house default** (`npx ui-thing@latest add <name>`).
+- **ui-thing is the house default** (`npx ui-thing@latest add <name>`, run
+  from `apps/reserve/`, where `ui-thing.config.ts` lives).
   Native controls still in staff pages are LEGACY, not a pattern to copy.
   See `references/conversion.md` for how to move them without churn.
 - **lucide icons only** — `<Icon name="lucide:..." />`. No heroicons.
@@ -157,8 +158,9 @@ this feature shipped three "finished" flows a human could not complete.
   the result. Not "the component renders".
 - Check it at `mobile` width. The public pages are used on phones in car parks.
 - Nothing conveys meaning by colour alone — pair colour with text or an icon.
-- `npx nuxt typecheck` at 0, and the ritual after adding components or
-  composables: `npx nuxt prepare` + restart the TS server.
+- `npm run typecheck` at 0 (from the root; `npx nuxt typecheck` from
+  `apps/reserve/` is the same check), and the ritual after adding components
+  or composables: `npx nuxt prepare` in `apps/reserve/` + restart the TS server.
 
 ### Driving the browser without being fooled
 

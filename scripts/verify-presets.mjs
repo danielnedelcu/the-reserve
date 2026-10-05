@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const PROJECT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pg = createRequire(`${PROJECT}/package.json`)("pg");
 
-const L = fs.readFileSync(`${PROJECT}/.env`, "utf8").split("\n");
+const L = fs.readFileSync(`${PROJECT}/apps/reserve/.env`, "utf8").split("\n");
 const g = (k) => {
   const l = L.find((x) => x.trim().startsWith(k + "=")) || "";
   return l.slice(l.indexOf("=") + 1).trim().replace(/^["']|["']$/g, "");

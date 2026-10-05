@@ -15,7 +15,7 @@ describe("communication kinds", () => {
     // created it, so a swap that adds a kind without a label fails here.
     const sql = readFileSync(
       new URL(
-        "../../supabase/migrations/20260926160705_client_communications_phase1.sql",
+        "../../../../supabase/migrations/20260926160705_client_communications_phase1.sql",
         import.meta.url,
       ),
       "utf8",

@@ -72,17 +72,19 @@ The harnesses insert/delete against a live DB with the service role —
 they are LOCAL pre-merge / CI checks, never part of the deployed app.
 TBLS_DSN generates schema docs locally. None of this belongs in the
 Vercel runtime env or the deployed bundle. The Vercel build command is
-just the Nuxt build; confirm it does not invoke scripts/ or the harnesses.
+`turbo build --filter=@repo/reserve` with the project root at
+`apps/reserve/`; confirm it does not invoke scripts/ or the harnesses.
 
-## Sequencing: Turborepo before Vercel
+## Sequencing: Turborepo before Vercel — DONE 2026-10-05
 
-If the Turborepo restructure is happening (wrap the single app now, before
-the second/public app), do it BEFORE configuring Vercel. Vercel has
-first-class monorepo/Turborepo support (multiple apps from one repo,
-per-app build settings, remote caching). Setting up Vercel once for the
-monorepo shape beats setting it up for the single app and reconfiguring
-after the restructure. Order: Turborepo wrap (skeleton only, no premature
-shared-package extraction) -> Vercel setup for the monorepo.
+The Turborepo wrap landed before any Vercel configuration
+(docs/turborepo-migration.md): the app is the `@repo/reserve` workspace at
+`apps/reserve/`, `supabase/`, `docs/`, `scripts/` and CI stay at the root,
+and nothing is extracted into `packages/`. Vercel is therefore configured
+ONCE, for the monorepo shape: project root `apps/reserve/`, build command
+`turbo build --filter=@repo/reserve`, install command `npm ci` at the
+repo root (workspaces), output `.output` under the app. Remote caching is
+off until a second engineer makes parallel CI runs worth it.
 
 Also relevant: the marketing site (which hosts the landing pages that POST
 to the lead-capture endpoint) is a SEPARATE surface. Decide where it lives
@@ -155,8 +157,10 @@ secret shows up as an outage, not as silently weaker hashing.
 ## Deploy checklist (pre-launch)
 
 Before first production deploy:
-- [ ] Turborepo wrap done (if doing it) and Vercel configured for the
-      monorepo shape.
+- [x] Turborepo wrap done (2026-10-05, docs/turborepo-migration.md).
+- [ ] Vercel configured for the monorepo shape: root `apps/reserve/`,
+      build `turbo build --filter=@repo/reserve`, install `npm ci` at the
+      repo root.
 - [ ] Vercel function region set to match Supabase (us-west-2).
 - [ ] ASK_DATABASE_URL set to the pooler DSN (6543, tx mode), pg client
       configured for serverless; verified no connection-climb under a
@@ -174,7 +178,8 @@ Before first production deploy:
       (origin = the deployed marketing site).
 - [ ] Node version: Vercel uses .nvmrc (22.22.2) or project setting;
       postinstall (nuxt prepare) runs in the Vercel build.
-- [ ] Build command is the Nuxt build only — does not invoke harnesses.
+- [ ] Build command is `turbo build --filter=@repo/reserve` only — does not
+      invoke harnesses.
 - [ ] CI gate green on the deploying commit (it already gates PRs; confirm
       main is green before promoting a deploy).
 

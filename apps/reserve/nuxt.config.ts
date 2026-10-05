@@ -85,6 +85,10 @@ export default defineNuxtConfig({
   build: {
     transpile: ["@tanstack/vue-table"],
   },
+  // Fixed dev port. Nuxt would otherwise fall back to another port when
+  // 3000 is busy, and the Supabase redirect URLs and Stripe return URLs
+  // are registered for this one (docs/turborepo-migration.md).
+  devServer: { port: 3000 },
   compatibilityDate: "2026-07-25",
   vite: {
     plugins: [tailwindcss()],

@@ -78,7 +78,7 @@ It applies the migration to the hosted database, regenerates
 types:
 
 ```bash
-npx nuxt typecheck
+npm run typecheck    # from the root; npx nuxt typecheck from apps/reserve is the same
 ```
 
 Typecheck must stay at 0 errors — a schema change that breaks types is
@@ -340,7 +340,7 @@ Before asking for the go-ahead:
 
 After approval and `npm run db:push`:
 
-- `npx nuxt typecheck` still at 0
+- `npm run typecheck` still at 0
 - new/changed RPC signatures re-read from the regenerated
   `shared/types/database.ts` before any call site is written
 - any type shim added to bridge the gap is **deleted now**, not later
