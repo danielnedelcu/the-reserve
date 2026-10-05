@@ -4,11 +4,14 @@
 # blocking from then on — gating on a red suite is how the test
 # graveyard happened, so it was never gated while red.
 #
-# Deliberately NOT here: the verify:* harnesses. They write to a live
-# database and need the service-role key and a dev server; running them
-# from CI means a dedicated Supabase project for CI, which is its own
-# piece of work. Until then they stay the local pre-merge step for
-# database-touching changes.
+# The database job (docs/testing-design.md, PR A) runs the verify:*
+# harnesses against a LOCAL Supabase stack started in the runner and
+# rebuilt from supabase/migrations/ — never the hosted project, and with
+# no secret: the stack's keys are the CLI's fixed local ones, read at run
+# time by scripts/_env.mjs, and SUPABASE_LOCAL=true makes every harness
+# refuse anything that is not localhost. Not yet in it: verify:leads,
+# which exercises the public endpoint over HTTP and needs the built app
+# running (it joins when the app-start script lands with the e2e suite).
 name: CI
 
 on:
@@ -47,3 +50,39 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+
+  database:
+    name: database (local stack + harnesses)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # The CLI is a root devDependency, so `npx supabase` is the same
+      # pinned version here as on a laptop. postgrest and gotrue stay:
+      # the harnesses query through PostgREST and sign test staff in
+      # through GoTrue. Everything else the harnesses never touch is
+      # left out so the stack starts faster.
+      - name: Start the local Supabase stack
+        run: npx supabase start --ignore-health-check -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
+      - name: Rebuild the database from the migrations
+        run: npx supabase db reset --local
+      # The migrations make ask_readonly a login role with its read-only
+      # and timeout settings, and deliberately set no password (on the
+      # hosted project it is set by hand). A throwaway one for this run.
+      - name: Give ask_readonly a password for this run
+        run: npx supabase db query --local "alter role ask_readonly with password 'ci-test-password'"
+      - name: Export the local stack's URL and keys
+        run: npx supabase status -o env >> "$GITHUB_ENV"
+      - name: Verify harnesses against the local stack
+        run: npm run verify:forms && npm run verify:ask && npm run verify:messages
+        env:
+          SUPABASE_LOCAL: "true"
+          ASK_READONLY_PASSWORD: ci-test-password
+          # The forms harness checks the pepper is configured and uses it to
+          # hash a test IP; any 32+ hex string will do on a throwaway stack.
+          FORM_IP_PEPPER: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

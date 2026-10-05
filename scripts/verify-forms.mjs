@@ -18,27 +18,12 @@
  *   node scripts/verify-forms.mjs
  */
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { get, supabaseEnv } from "./_env.mjs";
 
-const env = Object.fromEntries(
-  readFileSync("apps/reserve/.env", "utf8")
-    .split("\n")
-    .filter((l) => l.includes("="))
-    .map((l) => {
-      const i = l.indexOf("=");
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^"|"$/g, "")];
-    }),
-);
-
-const url = env.NUXT_PUBLIC_SUPABASE_URL;
-const anonKey = env.NUXT_PUBLIC_SUPABASE_KEY;
-const serviceKey = env.NUXT_SUPABASE_SECRET_KEY;
-
-if (!url || !anonKey || !serviceKey) {
-  console.error("FATAL: need NUXT_PUBLIC_SUPABASE_URL, NUXT_PUBLIC_SUPABASE_KEY, NUXT_SUPABASE_SECRET_KEY in .env");
-  process.exit(1);
-}
+// Credentials and the SUPABASE_LOCAL guard live in scripts/_env.mjs.
+const { url, anonKey, serviceKey } = supabaseEnv();
+const env = { FORM_IP_PEPPER: get("FORM_IP_PEPPER") };
 
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 const anon = createClient(url, anonKey, { auth: { persistSession: false } });
@@ -59,7 +44,7 @@ function check(name, ok, detail = "") {
 }
 
 /** Fixtures created for this run, torn down at the end. */
-const made = { links: [], responses: [], prospects: [], definitionId: null, versionIds: [], staffId: null };
+const made = { links: [], responses: [], prospects: [], definitionId: null, versionIds: [], staffId: null, holderId: null, holderRoleId: null, clientId: null };
 
 const FIELDS = [
   { key: "first_name", label: "First name", type: "text", required: true, sensitive: false },
@@ -121,6 +106,28 @@ async function setup() {
     .single();
   if (staffErr) throw new Error(`fixture staff: ${staffErr.message}`);
   made.staffId = bystander.id;
+
+  // And a staff member who DOES hold the permission, through the seeded
+  // admin role, so the fan-out's inclusion direction is never vacuous
+  // either — a fresh stack has no staff with roles at all.
+  const { data: adminRole } = await admin
+    .from("roles").select("id").eq("organization_id", org.id).eq("name", "admin").single();
+  if (!adminRole) throw new Error("fixture: no seeded admin role in the organisation");
+  const { data: holder, error: holderErr } = await admin
+    .from("staff")
+    .insert({
+      organization_id: org.id,
+      display_name: "Verify Holder",
+      email: `verify-holder-${randomUUID().slice(0, 8)}@example.test`,
+      bookable: false,
+    })
+    .select("id")
+    .single();
+  if (holderErr) throw new Error(`fixture holder: ${holderErr.message}`);
+  made.holderId = holder.id;
+  made.holderRoleId = adminRole.id;
+  const { error: roleErr } = await admin.from("staff_roles").insert({ staff_id: holder.id, role_id: adminRole.id });
+  if (roleErr) throw new Error(`fixture holder role: ${roleErr.message}`);
 
   return { orgId: org.id, staffId: staff.id, versionId: version.id, bystanderId: bystander.id };
 }
@@ -412,7 +419,18 @@ async function main() {
   // proving only the first is the familiar mistake.
   console.log("\nretention purge (destructive in two directions)");
 
-  const { data: anyClient } = await admin.from("clients").select("id").limit(1).single();
+  // Any client will do for the waiver; a fresh stack has none, so make one.
+  let { data: anyClient } = await admin.from("clients").select("id").limit(1).maybeSingle();
+  if (!anyClient) {
+    const { data: fixtureClient, error: clientErr } = await admin
+      .from("clients")
+      .insert({ organization_id: ctx.orgId, first_name: "Verify", last_name: "Member" })
+      .select("id")
+      .single();
+    if (clientErr) throw new Error(`fixture client: ${clientErr.message}`);
+    made.clientId = fixtureClient.id;
+    anyClient = fixtureClient;
+  }
 
   const stale = await admin
     .from("prospect_intake")
@@ -535,6 +553,11 @@ async function main() {
   }
   for (const id of made.links) await admin.from("form_links").delete().eq("id", id);
   if (made.staffId) await admin.from("staff").delete().eq("id", made.staffId);
+  if (made.holderId) {
+    await admin.from("staff_roles").delete().eq("staff_id", made.holderId).eq("role_id", made.holderRoleId);
+    await admin.from("staff").delete().eq("id", made.holderId); // its notifications cascade
+  }
+  if (made.clientId) await admin.from("clients").delete().eq("id", made.clientId);
   for (const id of made.versionIds) await admin.from("form_versions").delete().eq("id", id);
   if (made.definitionId) await admin.from("form_definitions").delete().eq("id", made.definitionId);
 

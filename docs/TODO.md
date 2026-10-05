@@ -284,23 +284,42 @@ QUEUED (in order):
   `server/api/public/cancel/[token].post.ts`) is ready to be called from
   a staff route. Until then a staff cancellation applies no fee and sends
   no cancellation notice — the link path does both.
-- verify:messages harness — DEFERRED batch 4 of the 2026-09-20 test
-  triage, its own task, in the verify-leads.mjs shape (both directions,
-  non-vacuous): find_or_create_dm dedups by pair in both orders;
-  create_group_conversation membership; leave_conversation garbage-
-  collects ONLY when the last participant leaves; mark_conversation_read
-  clears the reader's bell; and the DB's notion of unread agrees with
-  `shared/messaging/unread.ts` across its eight tested edges (the
-  two-paths rule at that seam). Plus one assertion that belongs nowhere
-  else: `UNDECIDED_STATUSES` in useProspectQueue.ts equals the
-  prospect_intake status check constraint (verify:leads already does
-  this for leads; prospects have no such guard).
-- Dedicated CI Supabase project so the verify:* harnesses can run in CI
-  — the long-term shape for gating DB-behaviour tests. They write rows
-  and need the service-role key, so they must never point at production
-  from a runner; until a CI project with its own secrets exists they stay
-  the local pre-merge step for database-touching changes (stated in
-  ci.yml's header).
+- ~~verify:messages harness~~ DONE 2026-10-05 (`scripts/verify-messages.mjs`,
+  39 checks, both directions, in CI's database job): DM dedup in both
+  orders, group membership with repeats collapsed, unread derived from
+  last_read_at with one bell entry per recipient, mark-read clearing the
+  reader only, leave with garbage collection only on the last participant,
+  and the prospect_intake status constraint equal to the union of the
+  TypeScript sets (the review route's decisions and the queue's
+  undecided set). REMAINING sub-item: cross-check the DB's unread
+  derivation against `shared/messaging/unread.ts` across its eight
+  tested edges — the harness asserts the derivation directly, not
+  against the shared predicate.
+- ~~Dedicated CI Supabase project so the verify:* harnesses can run in CI~~
+  DONE 2026-10-05 the other way (docs/testing-design.md, PR A): no second
+  hosted project — the `database` CI job starts a LOCAL stack in the
+  runner, rebuilds it from supabase/migrations and runs verify:forms,
+  verify:ask and verify:messages against it with no secret. Every harness
+  reads credentials through `scripts/_env.mjs` and, under
+  SUPABASE_LOCAL, refuses any URL that is not localhost or that came
+  from the .env file. verify:leads joins when PR B's app-start script
+  lands (it exercises the public endpoint over HTTP).
+- Explicit API grants migration — DEADLINE 2026-10-30, and before the
+  first Vercel deployment. A stack built from the migrations gives anon,
+  authenticated and service_role NO SELECT/INSERT/UPDATE/DELETE on any
+  table; the hosted project works only because it is a legacy project
+  whose default privileges granted them. CI relies on
+  `auto_expose_new_tables = true` in supabase/config.toml, which the
+  CLI removes on 2026-10-30. Write a migration that states the grants
+  explicitly (and the default privileges for future tables), so the
+  schema is self-describing and a NEW hosted project — staging or
+  production — works from the migrations alone. A no-op on the current
+  hosted project. Remove the config key once it lands.
+- `scripts/` is not linted: the ESLint config moved into apps/reserve/
+  with the Turborepo migration (2026-10-05), so the root `npm run lint`
+  (turbo lint) no longer covers the harnesses or `_env.mjs`. Either a
+  root-level ESLint config for scripts/, or a `lint` script in a
+  scripts workspace.
 - Scheduler parked features (docs/design/scheduler-redesign.md "Parked"):
   grid availability / time-off shading, realtime live updates, richer
   per-status styling — each its own future project. Collision layout was

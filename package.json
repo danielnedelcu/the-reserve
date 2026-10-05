@@ -20,6 +20,7 @@
     "verify:presets": "node --experimental-strip-types scripts/verify-presets.mjs",
     "verify:forms": "node scripts/verify-forms.mjs",
     "verify:leads": "node --experimental-strip-types scripts/verify-leads.mjs",
+    "verify:messages": "node scripts/verify-messages.mjs",
     "e2e:forms": "node scripts/e2e-forms.mjs"
   },
   "devDependencies": {

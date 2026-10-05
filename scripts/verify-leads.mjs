@@ -22,22 +22,27 @@ import pg from "pg";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { LEAD_INTERESTS, LEAD_STATUSES, LEAD_HONEYPOT_FIELD } from "../apps/reserve/shared/leads/constants.ts";
+import { get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
 
 const base = process.argv[2] ?? "http://localhost:3000";
 
-const env = Object.fromEntries(
-  readFileSync("apps/reserve/.env", "utf8")
-    .split("\n")
-    .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
-    .map((l) => {
-      const i = l.indexOf("=");
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^"|"$/g, "")];
-    }),
-);
-
-for (const k of ["NUXT_PUBLIC_SUPABASE_URL", "NUXT_PUBLIC_SUPABASE_KEY", "NUXT_SUPABASE_SECRET_KEY", "LEADS_ORGANIZATION_ID", "LEADS_ALLOWED_ORIGINS", "TBLS_DSN"]) {
+// Credentials and the SUPABASE_LOCAL guard live in scripts/_env.mjs. This
+// harness also needs a direct database connection and the lead-capture
+// config, and a RUNNING app at `base` — which is why it is not in the CI
+// database job yet (it joins when the app-start script lands).
+supabaseEnv();
+guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
+const env = {
+  NUXT_PUBLIC_SUPABASE_URL: get("NUXT_PUBLIC_SUPABASE_URL"),
+  NUXT_PUBLIC_SUPABASE_KEY: get("NUXT_PUBLIC_SUPABASE_KEY"),
+  NUXT_SUPABASE_SECRET_KEY: get("NUXT_SUPABASE_SECRET_KEY"),
+  LEADS_ORGANIZATION_ID: get("LEADS_ORGANIZATION_ID"),
+  LEADS_ALLOWED_ORIGINS: get("LEADS_ALLOWED_ORIGINS"),
+  DATABASE_URL: get("DATABASE_URL"),
+};
+for (const k of Object.keys(env)) {
   if (!env[k]) {
-    console.error(`FATAL: ${k} missing from .env — cannot verify what is not configured`);
+    console.error(`FATAL: ${k} missing — cannot verify what is not configured (environment or apps/reserve/.env)`);
     process.exit(1);
   }
 }
@@ -229,7 +234,7 @@ async function main() {
 
   // ── 5. the vocabulary agrees with the database ─────────────────────
   console.log("\nshared constants == check constraints (two languages, one predicate)");
-  const c = new pg.Client({ connectionString: env.TBLS_DSN, ssl: { rejectUnauthorized: false } });
+  const c = new pg.Client({ connectionString: env.DATABASE_URL, ssl: pgSsl(env.DATABASE_URL) });
   await c.connect();
   const setFrom = async (constraint) => {
     const { rows } = await c.query(`select pg_get_constraintdef(oid) def from pg_constraint where conname = $1`, [constraint]);

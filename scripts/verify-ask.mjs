@@ -8,33 +8,44 @@
  * Harness rule: a check may only PASS if we actually connected and the
  * DATABASE made the decision. A connection failure is ERROR, never PASS.
  */
-import fs from "node:fs";
 import { createRequire } from "node:module";
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { LOCAL_MODE, get, guard, pgSsl } from "./_env.mjs";
 
 // Repo root, resolved from this file so the scripts work from any cwd.
 const PROJECT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pg = createRequire(`${PROJECT}/package.json`)("pg");
 
-const env = Object.fromEntries(
-  fs
-    .readFileSync(`${PROJECT}/apps/reserve/.env`, "utf8")
-    .split("\n")
-    .filter((l) => l.trim() && !l.trim().startsWith("#") && l.includes("="))
-    .map((l) => {
-      const i = l.indexOf("=");
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, "")];
-    }),
-);
+// Credentials and the SUPABASE_LOCAL guard live in scripts/_env.mjs.
+guard(["NUXT_PUBLIC_SUPABASE_URL"]);
+const env = {
+  NUXT_PUBLIC_SUPABASE_URL: get("NUXT_PUBLIC_SUPABASE_URL") || "",
+  ASK_DATABASE_URL: get("ASK_DATABASE_URL") || "",
+  DATABASE_URL: get("DATABASE_URL") || "",
+};
 
-const ref = (env.NUXT_PUBLIC_SUPABASE_URL || "").replace("https://", "").split(".")[0];
-const raw = env.ASK_DATABASE_URL || "";
+const ref = env.NUXT_PUBLIC_SUPABASE_URL.replace("https://", "").split(".")[0];
+const raw = env.ASK_DATABASE_URL;
 
-// Accept either a full DSN or a bare password (which is what is in .env now).
 let dsn;
-if (raw.startsWith("postgres")) {
+if (LOCAL_MODE) {
+  // The local stack: the migrations make ask_readonly a login role but
+  // deliberately set no password; the CI job sets a throwaway one
+  // (ASK_READONLY_PASSWORD) with `supabase db query` after the reset, and
+  // the DSN is built from the stack's own DB_URL host and port.
+  guard(["DATABASE_URL"]);
+  const password = process.env.ASK_READONLY_PASSWORD || "";
+  if (!password) {
+    console.error("SAFETY: SUPABASE_LOCAL is set but ASK_READONLY_PASSWORD is not — set the role's password on the local stack first.");
+    process.exit(1);
+  }
+  const local = new URL(env.DATABASE_URL);
+  dsn = `postgresql://ask_readonly:${encodeURIComponent(password)}@${local.hostname}:${local.port || 5432}${local.pathname || "/postgres"}`;
+  console.log("local stack: connecting as ask_readonly on the stack's own database\n");
+} else if (raw.startsWith("postgres")) {
+  // Accept either a full DSN or a bare password (which is what is in .env now).
   dsn = raw;
 } else if (raw) {
   dsn = `postgresql://ask_readonly.${ref}:${encodeURIComponent(raw)}@aws-1-us-west-2.pooler.supabase.com:5432/postgres`;
@@ -45,7 +56,8 @@ if (raw.startsWith("postgres")) {
 }
 
 async function connect() {
-  const c = new pg.Client({ connectionString: dsn, ssl: { rejectUnauthorized: false } });
+  // TLS for the hosted pooler; the local Postgres refuses it.
+  const c = new pg.Client({ connectionString: dsn, ssl: pgSsl(dsn) });
   await c.connect();
   return c;
 }
@@ -143,30 +155,48 @@ await mustRefuse("write refused (read-only)", "update clients set active = activ
 // Deliberately asserts BOTH directions. "B sees nothing" alone would also
 // pass if the query were simply broken and returned nothing for everyone.
 {
+  // The privileged connection: the hosted pooler DSN, or the local stack's.
   const priv = new pg.Client({
-    connectionString: env.TBLS_DSN,
-    ssl: { rejectUnauthorized: false },
+    connectionString: env.DATABASE_URL,
+    ssl: pgSsl(env.DATABASE_URL),
   });
   await priv.connect();
+
+  // The predicate needs a threaded ask and a second staff member in the
+  // same organisation. A populated database has both; a fresh stack has
+  // neither, so the harness makes its own, tagged, and removes them after.
+  // Never vacuous either way.
+  const tag = `verify-ask-${Math.random().toString(16).slice(2, 10)}`;
+  const fixture = { staff: [], asks: [] };
+  const orgId = (await priv.query(`select id from organizations order by created_at limit 1`)).rows[0]?.id;
+  if (orgId) {
+    for (const label of ["owner", "other"]) {
+      const { rows } = await priv.query(
+        `insert into staff (organization_id, display_name, email, bookable, active)
+         values ($1, $2, $3, false, true) returning id`,
+        [orgId, `${tag} ${label}`, `${tag}-${label}@verify.test`],
+      );
+      fixture.staff.push(rows[0].id);
+    }
+    const { rows } = await priv.query(
+      `insert into ask_queries (organization_id, staff_id, source, question, thread_id)
+       values ($1, $2, 'llm', $3, gen_random_uuid()) returning id`,
+      [orgId, fixture.staff[0], `${tag} question`],
+    );
+    fixture.asks.push(rows[0].id);
+  }
 
   const owner = (
     await priv.query(
       `select thread_id, staff_id, organization_id
          from ask_queries
-        where thread_id is not null
+        where thread_id is not null and staff_id = $1
         order by created_at desc limit 1`,
+      [fixture.staff[0] ?? "00000000-0000-4000-8000-000000000000"],
     )
   ).rows[0];
 
-  const other = owner
-    ? (
-        await priv.query(
-          `select id from staff
-            where organization_id = $1 and id <> $2 limit 1`,
-          [owner.organization_id, owner.staff_id],
-        )
-      ).rows[0]
-    : null;
+  const other = owner ? { id: fixture.staff[1] } : null;
 
   const asStaff = async (staffId) =>
     (
@@ -197,6 +227,8 @@ await mustRefuse("write refused (read-only)", "update clients set active = activ
         : `!! ${theirs} row(s) leaked`,
     );
   }
+  for (const id of fixture.asks) await priv.query(`delete from ask_queries where id = $1`, [id]);
+  for (const id of fixture.staff) await priv.query(`delete from staff where id = $1`, [id]);
   await priv.end();
 }
 
@@ -204,3 +236,5 @@ console.log("");
 for (const r of results) console.log(`${r.state.padEnd(5)} ${r.name}\n      ${r.detail}`);
 const bad = results.filter((r) => r.state !== "PASS").length;
 console.log(`\n${results.length - bad}/${results.length} passed${bad ? ` — ${bad} NOT passing` : ""}`);
+// A FAIL or an ERROR is a non-zero exit: CI must not read a hole as green.
+process.exit(bad ? 1 : 0);
