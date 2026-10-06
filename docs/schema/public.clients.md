@@ -51,12 +51,17 @@ Spa clients (no auth accounts). no_show_count is maintained by trigger from appo
 
 ## Indexes
 
-| Name                           | Definition                                                                                            |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| clients_pkey                   | CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (id)                                   |
-| clients_org_name               | CREATE INDEX clients_org_name ON public.clients USING btree (organization_id, last_name, first_name)  |
-| clients_org_email              | CREATE INDEX clients_org_email ON public.clients USING btree (organization_id, lower(email))          |
-| clients_stripe_customer_id_key | CREATE UNIQUE INDEX clients_stripe_customer_id_key ON public.clients USING btree (stripe_customer_id) |
+| Name                           | Definition                                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| clients_pkey                   | CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (id)                                                                                          |
+| clients_org_name               | CREATE INDEX clients_org_name ON public.clients USING btree (organization_id, last_name, first_name)                                                         |
+| clients_org_email              | CREATE INDEX clients_org_email ON public.clients USING btree (organization_id, lower(email))                                                                 |
+| clients_stripe_customer_id_key | CREATE UNIQUE INDEX clients_stripe_customer_id_key ON public.clients USING btree (stripe_customer_id)                                                        |
+| clients_first_name_trgm        | CREATE INDEX clients_first_name_trgm ON public.clients USING gin (first_name gin_trgm_ops)                                                                   |
+| clients_last_name_trgm         | CREATE INDEX clients_last_name_trgm ON public.clients USING gin (last_name gin_trgm_ops)                                                                     |
+| clients_email_trgm             | CREATE INDEX clients_email_trgm ON public.clients USING gin (email gin_trgm_ops)                                                                             |
+| clients_phone_digits_trgm      | CREATE INDEX clients_phone_digits_trgm ON public.clients USING gin (regexp_replace(COALESCE(phone, ''::text), '\D'::text, ''::text, 'g'::text) gin_trgm_ops) |
+| clients_org_active_name        | CREATE INDEX clients_org_active_name ON public.clients USING btree (organization_id, active, lower(last_name), lower(first_name))                            |
 
 ## Triggers
 

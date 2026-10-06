@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { toTypedSchema } from "@vee-validate/zod";
 import type { TablesInsert } from "~~/shared/types/database";
+import { oneOf } from "~~/shared/tables/url";
 
 definePageMeta({ middleware: "can", permission: "clients.view" });
 useSeoMeta({ title: "Clients — The Reserve" });
@@ -11,44 +12,45 @@ const { can } = usePermissions();
 const toast = useToast();
 
 // ---------------------------------------------------------------------------
-// Data
+// Data: one page at a time, from clients_page (docs/design/server-tables-design.md).
+// The URL holds the filter, sort and page; the search text stays in this
+// tab (client names are sensitive, decision 5). The database returns only
+// what the list shows — the edit sheet reads the one row it opens.
 // ---------------------------------------------------------------------------
-interface ClientRow {
+interface ClientListRow {
   id: string;
   first_name: string;
   last_name: string;
   email: string | null;
   phone: string | null;
-  date_of_birth: string | null;
-  pronouns: string | null;
-  address_line1: string | null;
-  address_line2: string | null;
-  city: string | null;
-  state: string | null;
-  postal_code: string | null;
-  emergency_contact_name: string | null;
-  emergency_contact_phone: string | null;
-  preferred_contact_method: "email" | "phone" | "sms";
-  marketing_opt_in: boolean;
-  referral_source: string | null;
-  preferred_staff_id: string | null;
-  no_show_count: number;
-  flags: Record<string, unknown>;
   active: boolean;
+  no_show_count: number;
+  requires_card_on_file: boolean;
 }
 
-const { data: clients, refresh } = await useAsyncData(
-  "clients-list",
-  async () => {
+const table = await useServerTable({
+  key: "clients-page",
+  filters: { active: oneOf("active", "inactive", "all") },
+  sorts: ["name", "contact", "no_shows", "created"] as const,
+  async load({ q, filters, page, sort, desc }, signal) {
     const { data, error } = await supabase
-      .from("clients")
-      .select("*")
-      .order("last_name")
-      .order("first_name");
-    if (error) throw error;
-    return (data ?? []) as ClientRow[];
+      .rpc("clients_page", {
+        p_q: q || undefined,
+        p_active: filters.active ?? "active",
+        p_sort: sort,
+        p_desc: desc,
+        p_page: page,
+        p_page_size: 25,
+      })
+      .abortSignal(signal);
+    return asServerPage<ClientListRow>(data, error);
   },
-);
+});
+
+const showInactive = computed({
+  get: () => table.query.value.filters.active === "all",
+  set: (on: boolean) => void table.setFilter("active", on ? "all" : null),
+});
 
 const { data: bookableStaff } = await useAsyncData(
   "clients-staff-options",
@@ -63,48 +65,17 @@ const { data: bookableStaff } = await useAsyncData(
   },
 );
 
-const search = ref("");
-const showInactive = ref(false);
-
-const visibleClients = computed(() => {
-  const q = search.value.trim().toLowerCase();
-  return (clients.value ?? []).filter((c) => {
-    if (!showInactive.value && !c.active) return false;
-    if (!q) return true;
-    return [c.first_name, c.last_name, c.email ?? "", c.phone ?? ""]
-      .join(" ")
-      .toLowerCase()
-      .includes(q);
-  });
-});
-
 // ---------------------------------------------------------------------------
-// TanStack table columns
+// TanStack table columns — sorted by the server through meta.sortKey
 // ---------------------------------------------------------------------------
 const clientColumns = [
-  {
-    id: "name",
-    accessorFn: (c: ClientRow) =>
-      `${c.last_name}, ${c.first_name}`.toLowerCase(),
-    header: "Name",
-    enableSorting: true,
-  },
-  {
-    id: "contact",
-    accessorFn: (c: ClientRow) => c.email ?? c.phone ?? "",
-    header: "Contact",
-    enableSorting: true,
-  },
-  {
-    id: "noShows",
-    accessorFn: (c: ClientRow) => c.no_show_count,
-    header: "No-shows",
-    enableSorting: true,
-  },
+  { id: "name", header: "Name", meta: { sortKey: "name" } },
+  { id: "contact", header: "Contact", meta: { sortKey: "contact" } },
+  { id: "noShows", header: "No-shows", meta: { sortKey: "no_shows" } },
   // No header at all, rather than header: "" — TanStack Table v9 renders an
   // empty string as an empty text node on the client while the server emits
   // nothing, which is a hydration mismatch on every page with this column.
-  { id: "actions", enableSorting: false },
+  { id: "actions" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -180,7 +151,17 @@ function openCreate() {
   sheetOpen.value = true;
 }
 
-function openEdit(client: ClientRow) {
+// The list carries only what it shows; the sheet needs the whole record,
+// read under RLS for the one row being edited.
+async function openEdit(row: ClientListRow) {
+  const { data: client, error } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("id", row.id)
+    .single();
+  if (error || !client) {
+    return toast.error("Could not open client", error?.message ?? "Not found");
+  }
   editingId.value = client.id;
   setValues({
     firstName: client.first_name,
@@ -198,8 +179,10 @@ function openEdit(client: ClientRow) {
     emergencyPhone: client.emergency_contact_phone ?? "",
     referralSource: client.referral_source ?? "",
   });
-  requiresCardOnFile.value = client.flags?.requires_card_on_file === true;
-  preferredContact.value = client.preferred_contact_method ?? "email";
+  const flags = (client.flags ?? {}) as { requires_card_on_file?: boolean };
+  requiresCardOnFile.value = flags.requires_card_on_file === true;
+  preferredContact.value =
+    (client.preferred_contact_method as "email" | "phone" | "sms") ?? "email";
   marketingOptIn.value = client.marketing_opt_in;
   marketingWasOptedIn.value = client.marketing_opt_in;
   preferredStaffId.value = client.preferred_staff_id ?? "";
@@ -255,7 +238,7 @@ const saveClient = handleSubmit(async (values) => {
     `${values.firstName} ${values.lastName}`,
   );
   sheetOpen.value = false;
-  await refresh();
+  await table.refresh();
 });
 </script>
 
@@ -283,11 +266,16 @@ const saveClient = handleSubmit(async (values) => {
       </UiButton>
     </div>
 
-    <div class="mt-6 flex shrink-0 flex-wrap items-center gap-4">
-      <UiInput
-        v-model="search"
+    <form
+      role="search"
+      class="mt-6 flex shrink-0 flex-wrap items-center gap-4"
+      @submit.prevent
+    >
+      <TableSearch
+        id="clients-search"
+        :value="table.query.value.q"
         placeholder="Search name, email, phone…"
-        class="max-w-xs"
+        @search="table.setSearch"
       />
       <label
         class="text-muted-foreground flex cursor-pointer items-center gap-2 text-sm"
@@ -299,7 +287,25 @@ const saveClient = handleSubmit(async (values) => {
         />
         Show inactive
       </label>
-    </div>
+      <p class="text-muted-foreground text-sm" aria-live="polite">
+        {{ table.totalExact.value ? "" : "About " }}{{ table.total.value.toLocaleString("en-US") }}
+        {{ table.total.value === 1 ? "client" : "clients" }}
+      </p>
+      <UiButton
+        v-if="table.filtering.value"
+        variant="link"
+        size="sm"
+        class="px-0"
+        @click="table.clear"
+      >
+        Clear
+      </UiButton>
+    </form>
+
+    <p v-if="table.error.value" role="alert" class="text-destructive mt-4 text-sm">
+      Could not load clients.
+      {{ (table.error.value as { message?: string }).message ?? "" }}
+    </p>
 
     <!-- The card is a flex column that may SHRINK (min-h-0, no grow): with
          more rows than fit, it takes the remaining height and the table
@@ -317,18 +323,24 @@ const saveClient = handleSubmit(async (values) => {
          No minimum height anywhere: a floor on the container padded a
          one-row list up to the floor and pushed the pager off the rows,
          which is exactly what this layout is meant to avoid. All styled
-         from the page: Ui/TanStackTable.vue stays the stock upstream
-         file. overflow-hidden clips the square sticky header cells to the
-         card's rounded corners — without it their bg-card paints over the
-         border's curve at the top corners. -->
+         from the page. overflow-hidden clips the square sticky header
+         cells to the card's rounded corners — without it their bg-card
+         paints over the border's curve at the top corners. -->
     <div
+      v-else
       class="mt-4 flex min-h-0 flex-col overflow-hidden rounded-md border bg-card [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-col [&>div:last-child]:shrink-0 **:data-[slot=table-container]:min-h-0 **:data-[slot=table-container]:overflow-y-auto **:data-[slot=table-head]:sticky **:data-[slot=table-head]:top-0 **:data-[slot=table-head]:z-10 **:data-[slot=table-head]:bg-card **:data-[slot=table-head]:shadow-[inset_0_-1px_0_var(--border)] [&_thead_tr]:border-b-0"
     >
-      <UiTanStackTable
-        :data="visibleClients"
+      <ServerTable
+        :rows="table.rows.value"
         :columns="clientColumns"
-        :show-selected-count="false"
-        :show-rows-per-page="false"
+        :total="table.total.value"
+        :page="table.query.value.page"
+        :sort="table.query.value.sort"
+        :desc="table.query.value.desc"
+        :pending="table.pending.value"
+        :empty-text="table.filtering.value ? 'No clients match.' : 'No clients yet.'"
+        @page="table.setPage"
+        @sort="table.setSort"
       >
         <template #name-cell="{ row }">
           <NuxtLink :to="`/clients/${row.original.id}`" class="hover:underline">
@@ -342,7 +354,7 @@ const saveClient = handleSubmit(async (values) => {
             </p>
           </NuxtLink>
           <p
-            v-if="row.original.flags?.requires_card_on_file"
+            v-if="row.original.requires_card_on_file"
             class="text-muted-foreground text-xs"
           >
             Card on file required
@@ -405,7 +417,7 @@ const saveClient = handleSubmit(async (values) => {
             </UiTooltip>
           </div>
         </template>
-      </UiTanStackTable>
+      </ServerTable>
     </div>
 
     <!-- Create / edit sheet (documented ui-thing convention:

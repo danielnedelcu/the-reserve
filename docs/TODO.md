@@ -191,6 +191,51 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
+- EVERY read in the app pays a cost that grows with the data: every RLS
+  policy calls current_org_id() and has_permission() PER ROW. Measured
+  2026-10-06 by the server-tables benchmark on clients: 255ms for a bare
+  count(*) over 10,000 rows, 0.7ms once the two calls are wrapped as
+  `(select current_org_id())` and `(select has_permission(…))` so
+  Postgres evaluates them once per statement — same truth value, same
+  rows. The clients policies are fixed (20261006 clients_policies_evaluate_once).
+  The transactions, transaction_items and payments policies are fixed in
+  server-tables PR 3, since its totals read them. The rest — every other
+  table's policies — is ONE dedicated sweep afterwards, proven the same
+  way: the harnesses and journeys unchanged before and after, and a
+  benchmark before and after on a seeded local stack.
+- Pickers that load every row (found by the server-tables benchmark
+  2026-10-06, when 10,000 seeded clients pushed a test client past the
+  1,000-row cap): the schedule's booking dialog loads all active clients
+  (app/pages/schedule.vue, `booking-clients`), checkout.vue loads all
+  active clients and all active products, and the command palette caps
+  clients at 500. Move each onto clients_page / products_page with a
+  search box, the way the forms page's picker was moved in PR 1.
+- Ledger integrity claim without a trigger (found by the server-tables
+  survey 2026-10-06): docs/design/migration4a-design.md says
+  `sum(payments) = transactions.total` is "asserted by trigger", and no
+  such trigger or constraint exists in any migration. Either add a
+  constraint trigger (deferred, per transaction, after the checkout and
+  refund routes' writes) or correct the doc to say it is enforced in
+  the routes only. Decide deliberately; a trigger changes what a
+  partial write can do.
+- Ask presets and prompt onto the shared revenue definition
+  (docs/design/server-tables-design.md, decision 2): `revenue_this_month`
+  groups tip, discount and late_cancellation_fee as revenue rows where
+  the UI counts only service + product; the prompt's "a plain SUM over
+  transactions … is usually what someone means by revenue" sentence
+  contradicts its own gift-card rule and should go; the prompt's kind
+  list omits late_cancellation_fee; `gift_cards_outstanding` means
+  untouched cards where the UI means the sum of active balances; Ask
+  buckets in the DB session zone (UTC, ISO Monday weeks) where the
+  convention is the location's zone with Sunday weeks. Bring them onto
+  `transactions_page` / the same definitions once PR 3 lands.
+- Owner confirmations, server-tables decision 2 (ask, do not assume):
+  (a) revenue stays GROSS of discounts with Discounts as its own figure
+  — what the cards have always shown, now written down; (b) the
+  late-cancellation fee shows as its own "Fees" card, outside revenue —
+  the column comment's intent, now visible. Each is a one-line change
+  in `transactions_page` if the answer is otherwise.
+
 - ~~LATENT CORRECTNESS BUG, fix deliberately, NOT in the scheduler reskin:
   the two-timezone seam.~~ DONE 2026-10-06: the grid's positions, the
   card labels and the dialog's slot labels use the location's zone through

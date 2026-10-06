@@ -1,3 +1,12 @@
+<!--
+  The Reserve change (docs/design/server-tables-design.md, 2026-10-06):
+  server-side tables (manualPagination and manualSorting) pass rowCount,
+  page and sortingState, so the URL drives the page count, the current
+  page and the sort — the three props Lokl added to the same component.
+  Sortable headers are buttons (keyboard) and the header cell carries
+  aria-sort (screen readers). Keep these if the component is re-added
+  with the ui-thing CLI; everything else is the stock file.
+-->
 <template>
   <div class="relative">
     <slot name="loading" :loading>
@@ -18,6 +27,15 @@
             :colspan="header.colSpan"
             :class="header.column.columnDef.meta?.class?.th"
             :style="getPinnedHeaderStyle(header.column)"
+            :aria-sort="
+              header.column.getCanSort()
+                ? header.column.getIsSorted() === 'asc'
+                  ? 'ascending'
+                  : header.column.getIsSorted() === 'desc'
+                    ? 'descending'
+                    : 'none'
+                : undefined
+            "
           >
             <template v-if="!header.isPlaceholder">
               <slot
@@ -27,12 +45,10 @@
                 :table="table"
               >
                 <div class="flex items-center gap-2">
-                  <div
+                  <button
                     v-if="header.column.getCanSort()"
-                    :class="[
-                      'flex items-center gap-2',
-                      header.column.getCanSort() ? 'cursor-pointer select-none' : '',
-                    ]"
+                    type="button"
+                    class="focus-visible:ring-ring/50 -mx-1 flex cursor-pointer items-center gap-2 rounded-md px-1 outline-none select-none focus-visible:ring-[3px]"
                     @click="header.column.getToggleSortingHandler()?.($event)"
                   >
                     <FlexRender :header="header" />
@@ -62,7 +78,7 @@
                         </span>
                       </UiTooltipContent>
                     </UiTooltip>
-                  </div>
+                  </button>
                   <div v-else class="flex items-center gap-2">
                     <FlexRender :header="header" />
                   </div>
@@ -459,6 +475,12 @@
       manualSorting?: boolean;
       /** Enable manual filtering (for server-side filtering) */
       manualFiltering?: boolean;
+      /** The Reserve: with manualPagination, the server's total row count (sets the page count). */
+      rowCount?: number;
+      /** The Reserve: with manualPagination, the current page (1-based), e.g. from the URL. */
+      page?: number;
+      /** The Reserve: with manualSorting, the current sort, e.g. from the URL. */
+      sortingState?: SortingState;
       /** Enable row pinning. */
       enableRowPinning?: boolean;
       /** Enable column pinning. */
@@ -682,9 +704,32 @@
     manualPagination: props.manualPagination,
     manualSorting: props.manualSorting,
     manualFiltering: props.manualFiltering,
-    pageCount: props.manualPagination ? props.pageCount : undefined,
+    // The Reserve: with a server total (rowCount), the page count follows it.
+    get pageCount() {
+      if (!props.manualPagination) return undefined;
+      if (props.rowCount != null) return Math.max(1, Math.ceil(props.rowCount / pagination.value.pageSize));
+      return props.pageCount;
+    },
     ...props.tableOptions,
   });
+
+  // The Reserve: a controlled page and sort (server-side tables keep them in the URL).
+  watch(
+    () => props.page,
+    (page) => {
+      if (page != null && page - 1 !== pagination.value.pageIndex) {
+        pagination.value = { ...pagination.value, pageIndex: page - 1 };
+      }
+    },
+    { immediate: true },
+  );
+  watch(
+    () => props.sortingState,
+    (state) => {
+      if (state && JSON.stringify(state) !== JSON.stringify(sorting.value)) sorting.value = state;
+    },
+    { immediate: true },
+  );
 
   const pageSize = computed({
     get() {

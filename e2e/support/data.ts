@@ -77,9 +77,17 @@ export class TestData {
   }
 
   /** A client in the seeded organisation, tagged. */
-  async client(firstName: string, lastName = this.tag): Promise<{ id: string; firstName: string; lastName: string }> {
+  async client(
+    firstName: string,
+    lastName = this.tag,
+    extra: { active?: boolean; email?: string; phone?: string } = {},
+  ): Promise<{ id: string; firstName: string; lastName: string }> {
     const row = await must(
-      this.env.db.from("clients").insert({ organization_id: this.orgId, first_name: firstName, last_name: lastName }).select("id").single(),
+      this.env.db
+        .from("clients")
+        .insert({ organization_id: this.orgId, first_name: firstName, last_name: lastName, ...extra })
+        .select("id")
+        .single(),
       `client ${firstName}`,
     );
     this.clients.push(row.id as string);

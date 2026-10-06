@@ -25,6 +25,9 @@
     "verify:forms": "node scripts/verify-forms.mjs",
     "verify:leads": "node --experimental-strip-types scripts/verify-leads.mjs",
     "verify:messages": "node scripts/verify-messages.mjs",
+    "verify:tables": "node scripts/verify-tables.mjs",
+    "seed:tables": "node scripts/seed-tables-load.mjs",
+    "bench:tables": "node scripts/bench-tables.mjs",
     "e2e:forms": "node scripts/e2e-forms.mjs"
   },
   "devDependencies": {
