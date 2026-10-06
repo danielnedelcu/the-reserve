@@ -32,7 +32,7 @@ import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { ROOT, get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, ROOT, get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
 
 const { url, anonKey, serviceKey } = supabaseEnv();
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
@@ -112,6 +112,74 @@ try {
   console.log(`CANNOT CONNECT: ${e.message}`);
   console.log("No boundary checks were run.");
   process.exit(1);
+}
+
+/**
+ * Two organisations, one approver each, one request. Everything it makes
+ * is tracked and removed in its own finally (the second organisation's
+ * role is created with is_system = false so the roles trigger lets it go).
+ */
+async function timeoffScoping() {
+  const made = { orgs: [], locations: [], roles: [], staff: [], roleRows: [], requests: [] };
+  const org = async (name, timezone) => {
+    const o = await must(admin.from("organizations").insert({ name: `${TAG} ${name}`, timezone }).select("id").single(), `org ${name}`);
+    made.orgs.push(o.id);
+    await must(admin.from("locations").insert({ organization_id: o.id, name: `${TAG} ${name} spa`, timezone }).select("id").single(), `location ${name}`)
+      .then((l) => made.locations.push(l.id));
+    const role = await must(
+      admin.from("roles").insert({ organization_id: o.id, name: `${TAG} approver`, is_system: false }).select("id").single(), `role ${name}`);
+    made.roles.push(role.id);
+    await must(admin.from("role_permissions").insert({ role_id: role.id, permission_key: "timeoff.approve" }), `role_permissions ${name}`);
+    return { id: o.id, roleId: role.id, timezone };
+  };
+  const person = async (o, label, approver) => {
+    const row = await must(
+      admin.from("staff").insert({ organization_id: o.id, display_name: `${TAG} ${label}`, email: `${TAG}-${label}@verify.test`.toLowerCase(), bookable: false, active: true }).select("id").single(),
+      `staff ${label}`);
+    made.staff.push(row.id);
+    if (approver) {
+      await must(admin.from("staff_roles").insert({ staff_id: row.id, role_id: o.roleId }), `staff_roles ${label}`);
+      made.roleRows.push({ staff_id: row.id, role_id: o.roleId });
+    }
+    return row.id;
+  };
+  try {
+    const east = await org("east", "America/New_York");
+    const west = await org("west", "America/Los_Angeles");
+    const requester = await person(east, "requester", false);
+    const eastApprover = await person(east, "east-approver", true);
+    const westApprover = await person(west, "west-approver", true);
+
+    const startsAt = "2026-11-10T19:30:00Z"; // 2:30 PM New York, 11:30 AM Los Angeles
+    const req = await must(
+      admin.from("availability_exceptions").insert({ staff_id: requester, created_by: requester, kind: "time_off", status: "requested", starts_at: startsAt, ends_at: "2026-11-10T21:30:00Z" }).select("id").single(),
+      "time-off request");
+    made.requests.push(req.id);
+
+    const bellsFor = async (staffId) =>
+      (await must(admin.from("notifications").select("body").eq("staff_id", staffId).eq("kind", "timeoff.requested"), "notifications")) ?? [];
+    const eastBells = await bellsFor(eastApprover);
+    check("the approver in the requester's organisation gets exactly one notification", eastBells.length === 1, `${eastBells.length} rows`);
+    check("the approver in the OTHER organisation gets none (non-vacuous: they hold timeoff.approve too)", (await bellsFor(westApprover)).length === 0);
+    check("the requester gets none", (await bellsFor(requester)).length === 0);
+    check("the time is formatted in the requester's organisation's zone, not the other's",
+      eastBells.length === 1 && eastBells[0].body.includes("2:30 PM") && !eastBells[0].body.includes("11:30 AM"), eastBells[0]?.body);
+  } finally {
+    for (const id of made.requests) await admin.from("availability_exceptions").delete().eq("id", id);
+    if (made.staff.length) await admin.from("notifications").delete().in("staff_id", made.staff);
+    for (const r of made.roleRows) await admin.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id);
+    if (made.staff.length) await admin.from("staff").delete().in("id", made.staff);
+    for (const id of made.roles) {
+      await admin.from("role_permissions").delete().eq("role_id", id);
+      const { error } = await admin.from("roles").delete().eq("id", id);
+      if (error) console.log(`  note  the second organisation's role could not be deleted: ${error.message}`);
+    }
+    if (made.locations.length) await admin.from("locations").delete().in("id", made.locations);
+    for (const id of made.orgs) {
+      const { error } = await admin.from("organizations").delete().eq("id", id);
+      if (error) console.log(`  note  a test organisation could not be deleted: ${error.message}`);
+    }
+  }
 }
 
 try {
@@ -245,6 +313,19 @@ try {
     check("every DB status is known to the TS (none unreachable)", dbSet.every((s) => tsSet.includes(s)));
   } finally {
     await c.end().catch(() => {});
+  }
+  // ── 6. The time-off bell is scoped to the requester's organisation ──
+  // notify_timeoff_requested() once rang every approver in every
+  // organisation (timeoff_bell_scoped_to_organization migration). Two
+  // organisations with different zones, one approver each, a request in
+  // the first: only the first's approver hears it, in the first's zone.
+  // LOCAL STACK ONLY: it creates a second organisation, which a harness
+  // must never do to the hosted project. Skipped there, counted as neither.
+  console.log("\ntime-off bell scoping (two organisations)");
+  if (!LOCAL_MODE) {
+    console.log("  skip  time-off bell scoping (needs the local stack: creates a second organisation)");
+  } else {
+    await timeoffScoping();
   }
 } catch (e) {
   failed++;

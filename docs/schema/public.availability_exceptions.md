@@ -38,10 +38,10 @@ Time off / sick / breaks (remove availability) and extra shifts (add it). reques
 
 ## Triggers
 
-| Name                         | Definition                                                                                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| trg_notify_timeoff_decision  | CREATE TRIGGER trg_notify_timeoff_decision AFTER UPDATE ON public.availability_exceptions FOR EACH ROW EXECUTE FUNCTION notify_timeoff_decision()   |
-| trg_notify_timeoff_requested | CREATE TRIGGER trg_notify_timeoff_requested AFTER INSERT ON public.availability_exceptions FOR EACH ROW EXECUTE FUNCTION notify_timeoff_requested() |
+| Name                         | Definition                                                                                                                                          | Comment                                                                                                        |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| trg_notify_timeoff_decision  | CREATE TRIGGER trg_notify_timeoff_decision AFTER UPDATE ON public.availability_exceptions FOR EACH ROW EXECUTE FUNCTION notify_timeoff_decision()   |                                                                                                                |
+| trg_notify_timeoff_requested | CREATE TRIGGER trg_notify_timeoff_requested AFTER INSERT ON public.availability_exceptions FOR EACH ROW EXECUTE FUNCTION notify_timeoff_requested() | Bell fan-out for a new time-off request. Existed on the hosted project with no migration; captured 2026-10-05. |
 
 ## Relations
 

@@ -171,7 +171,9 @@ Before first production deploy:
       the prod URL in the Stripe dashboard; its signing secret set as
       STRIPE_WEBHOOK_SECRET (prod env only); webhook route reachable,
       NOT behind preview protection; a small real-money verification pass.
-- [ ] Resend key + DB password rotated (chat-exposed; per pre-launch list)
+- [ ] DB password rotated BEFORE this deploy (chat-exposed, and echoed by a
+      failing script on 2026-10-05); then TBLS_DSN and the ask DSN updated.
+- [ ] Resend key rotated (chat-exposed; per pre-launch list)
       and MAIL_FROM's domain verified in Resend.
 - [ ] FORM_IP_PEPPER set to a fresh prod-specific value.
 - [ ] LEADS_ORGANIZATION_ID and LEADS_ALLOWED_ORIGINS set to real values

@@ -241,7 +241,12 @@ QUEUED (in order):
   real: drop the adapter for vee-validate's Standard Schema support once
   a release accepts a Zod 4 schema directly, or pin a Zod-4-aware
   adapter. Until then: no unions in form schemas, refine instead.
-- Revoke TRUNCATE on append-only / access-by-token tables, project-wide
+- ~~Revoke TRUNCATE on append-only / access-by-token tables, project-wide~~
+  DONE 2026-10-06, wider than planned: the explicit_api_grants migration
+  revokes TRUNCATE, REFERENCES and TRIGGER from anon and authenticated on
+  EVERY public table and in the default privileges for future ones, and
+  the hosted/local grants comparison confirms no API role holds TRUNCATE
+  anywhere. Original note kept for the reasoning:
   (found 2026-09-26 inspecting the phase-1 communications tables live):
   Supabase's default grants leave TRUNCATE for `authenticated` and `anon`
   on every table in public, and TRUNCATE bypasses row-level security.
@@ -304,17 +309,44 @@ QUEUED (in order):
   SUPABASE_LOCAL, refuses any URL that is not localhost or that came
   from the .env file. verify:leads joins when PR B's app-start script
   lands (it exercises the public endpoint over HTTP).
-- Explicit API grants migration — DEADLINE 2026-10-30, and before the
-  first Vercel deployment. A stack built from the migrations gives anon,
-  authenticated and service_role NO SELECT/INSERT/UPDATE/DELETE on any
-  table; the hosted project works only because it is a legacy project
-  whose default privileges granted them. CI relies on
-  `auto_expose_new_tables = true` in supabase/config.toml, which the
-  CLI removes on 2026-10-30. Write a migration that states the grants
-  explicitly (and the default privileges for future tables), so the
-  schema is self-describing and a NEW hosted project — staging or
-  production — works from the migrations alone. A no-op on the current
-  hosted project. Remove the config key once it lands.
+- ~~Explicit API grants migration~~ DONE 2026-10-06
+  (20261006002816_explicit_api_grants, pushed): every grant the API
+  roles hold is stated — select/insert/update/delete to anon and
+  authenticated, all to service_role, sequences, the seven service-role
+  functions, get_my_permissions — plus default privileges for future
+  objects, with the four append-only revokes restated after the grants.
+  `auto_expose_new_tables` is gone from supabase/config.toml; the CI
+  stack and the hosted project are built from the migrations alone.
+  Function grants made explicit the same way (20261006003546: EXECUTE
+  on all functions to the three roles, then every revoke the migrations
+  make restated, derived from their own `revoke execute` statements).
+  Comparison afterwards, hosted versus a stack rebuilt from the
+  migrations — table and sequence grants, function ACLs, default
+  privileges, triggers, policies, indexes, constraints, cron,
+  extensions: ZERO differences.
+- Schema drift found on the way (20261006002814, pushed): two functions
+  and a trigger existed only on the hosted project, written in the SQL
+  editor with no migration — get_my_permissions(), which every session's
+  usePermissions() calls, and notify_timeoff_requested() with its
+  trigger. Captured verbatim, then fixed (20261006002819): the bell
+  notified approvers in EVERY organisation and formatted times in an
+  arbitrary location's zone; now scoped to the requester's organisation,
+  proven by verify:messages' two-organisation check (local stack only).
+- Audit hand-written SQL that reached hosted outside migrations. The
+  time-off trigger was written in the SQL editor and skipped review; the
+  2026-10-06 zero-structural-difference comparison proves nothing ELSE
+  differs now, but only the drift check below keeps it that way. Look
+  through the SQL editor's history for anything run against hosted that
+  is not in supabase/migrations/, and for every hit decide: capture it
+  as a migration, or revert it.
+- Schema drift check before deploys. Before the Vercel deploy and before
+  any new hosted project (staging, production), compare hosted against a
+  stack rebuilt from the migrations — the grants + structure dumps used
+  on 2026-10-06 (tables, sequences, functions, triggers, policies,
+  indexes, constraints, default privileges, cron), or
+  `supabase db diff --linked` — and require ZERO differences. Two
+  functions and a trigger reached hosted with no migration; this is the
+  gate that stops the next one.
 - `scripts/` is not linted: the ESLint config moved into apps/reserve/
   with the Turborepo migration (2026-10-05), so the root `npm run lint`
   (turbo lint) no longer covers the harnesses or `_env.mjs`. Either a
@@ -365,8 +397,13 @@ Deployment shape, the env-by-env matrix and the deploy checklist live in
 **docs/deployment.md** — that doc is authoritative; the items below that
 overlap it are pointers, not restatements (one fact, one place).
 
-- Rotate the Resend API key and the DB password (chat-exposed during dev)
-  — see docs/deployment.md, deploy checklist + env matrix (RESEND_API_KEY).
+- Rotate the Resend API key (chat-exposed during dev) — see
+  docs/deployment.md, deploy checklist + env matrix (RESEND_API_KEY).
+- Rotate the DB password BEFORE THE VERCEL DEPLOY, not in the final
+  sweep: it surfaced again in a tool error during the 2026-10-05 grants
+  work (a connection string echoed by a failing script), on top of the
+  earlier chat exposure. Rotating it changes TBLS_DSN and the ask DSN;
+  docs/deployment.md, deploy checklist.
 - ~~Rotate the Supabase SECRET key~~ DONE 2026-09-20. New `sb_secret_`
   key active; old key revoked in the dashboard. Verified both directions
   the same day: the new key serves service-role reads from scripts and
