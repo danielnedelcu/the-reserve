@@ -1,11 +1,12 @@
 /**
  * Load seed for the server-side tables benchmark (docs/design/server-tables-design.md,
- * decision 7). Puts 10,000 clients into the seeded organisation on the
- * LOCAL stack — never anywhere else: it refuses to run without
- * SUPABASE_LOCAL=true and the localhost guard. Rows are tagged
- * referral_source = 'LOAD-SEED'; `--clean` removes them.
+ * decision 7). Puts 10,000 clients and 2,000 products into the seeded
+ * organisation on the LOCAL stack — never anywhere else: it refuses to run
+ * without SUPABASE_LOCAL=true and the localhost guard. Clients are tagged
+ * referral_source = 'LOAD-SEED', products are named 'LOAD-SEED …';
+ * `--clean` removes both.
  *
- *   npm run seed:tables            seed 10,000 (or N with --count N)
+ *   npm run seed:tables            seed 10,000 clients (or N with --count N) and 2,000 products
  *   npm run seed:tables -- --clean remove them
  */
 import { createClient } from "@supabase/supabase-js";
@@ -32,7 +33,12 @@ if (process.argv.includes("--clean")) {
     console.error(`clean failed: ${error.message}`);
     process.exit(1);
   }
-  console.log(`Removed ${count} seeded clients.`);
+  const products = await admin.from("products").delete({ count: "exact" }).like("name", `${TAG} %`);
+  if (products.error) {
+    console.error(`clean failed: ${products.error.message}`);
+    process.exit(1);
+  }
+  console.log(`Removed ${count} seeded clients and ${products.count} seeded products.`);
   process.exit(0);
 }
 
@@ -68,4 +74,34 @@ for (let start = 0; start < COUNT; start += 1_000) {
   inserted += rows.length;
   process.stdout.write(`\r${inserted} / ${COUNT}`);
 }
-console.log(`\nSeeded ${inserted} clients into "${org.data.name}" (tagged ${TAG}). Remove with --clean.`);
+console.log(`\nSeeded ${inserted} clients into "${org.data.name}" (tagged ${TAG}).`);
+
+// Products: 2,000, names unique per organisation, with and without a cost,
+// a spread of stock (out, low, plenty), a tenth inactive.
+const GOODS = ["Lavender Lotion", "Rose Oil", "Sea Salt Scrub", "Eucalyptus Balm", "Mint Lip Care", "Chamomile Mist", "Jasmine Candle", "Argan Serum", "Shea Butter", "Green Tea Toner", "Bamboo Comb", "Silk Mask", "Vanilla Soak", "Citrus Scrub", "Clay Mask", "Hemp Lotion", "Cedar Soap", "Aloe Gel", "Oat Cleanser", "Honey Balm"];
+const PRODUCT_COUNT = 2_000;
+let made = 0;
+for (let start = 0; start < PRODUCT_COUNT; start += 500) {
+  const rows = [];
+  for (let i = start; i < Math.min(start + 500, PRODUCT_COUNT); i++) {
+    const good = GOODS[i % GOODS.length];
+    rows.push({
+      organization_id: org.data.id,
+      name: `${TAG} ${good} ${i}`,
+      description: i % 3 === 0 ? `${good}, 250 ml` : null,
+      sku: `SKU-${String(i).padStart(5, "0")}`,
+      price_cents: 500 + (i % 40) * 125,
+      cost_cents: i % 5 === 0 ? null : Math.round((500 + (i % 40) * 125) * (0.3 + (i % 7) / 20)),
+      stock_quantity: i % 11 === 0 ? 0 : i % 7 === 0 ? (i % 5) + 1 : 6 + (i % 90),
+      taxable: i % 9 !== 0,
+      active: i % 10 !== 0,
+    });
+  }
+  const { error } = await admin.from("products").insert(rows);
+  if (error) {
+    console.error(`products insert failed at ${start}: ${error.message}`);
+    process.exit(1);
+  }
+  made += rows.length;
+}
+console.log(`Seeded ${made} products (named "${TAG} …"). Remove with --clean.`);

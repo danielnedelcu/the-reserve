@@ -2610,6 +2610,18 @@ export type Database = {
         Args: { p_conversation_id: string }
         Returns: undefined
       }
+      products_page: {
+        Args: {
+          p_active?: string
+          p_desc?: boolean
+          p_page?: number
+          p_page_size?: number
+          p_q?: string
+          p_sort?: string
+          p_stock?: string
+        }
+        Returns: Json
+      }
       purge_form_submission_attempts: { Args: never; Returns: number }
       purge_leads: { Args: never; Returns: number }
       purge_prospect_intake: { Args: never; Returns: number }

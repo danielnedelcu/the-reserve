@@ -2,6 +2,8 @@
 import { z } from "zod";
 import { toTypedSchema } from "@vee-validate/zod";
 import type { TablesInsert } from "~~/shared/types/database";
+import { oneOf } from "~~/shared/tables/url";
+import { stockLevel } from "~~/shared/products/stock";
 
 definePageMeta({ middleware: "can", permission: "products.view" });
 useSeoMeta({ title: "Products — The Reserve" });
@@ -9,102 +11,86 @@ useSeoMeta({ title: "Products — The Reserve" });
 const supabase = useSupabaseClient();
 const { can } = usePermissions();
 const toast = useToast();
+const manage = computed(() => can("products.manage"));
 
 // ---------------------------------------------------------------------------
-// Data
+// Data: one page at a time, from products_page (docs/design/server-tables-design.md).
+// The URL holds the search, the filters, the sort and the page — product
+// names are not sensitive, so a search is shareable here. cost_cents and
+// margin_pct are in a row only when the caller holds products.manage; the
+// edit dialog reads the one row it opens.
 // ---------------------------------------------------------------------------
-interface ProductRow {
+interface ProductListRow {
   id: string;
   name: string;
   description: string | null;
   sku: string | null;
   price_cents: number;
-  cost_cents: number | null;
   stock_quantity: number;
   taxable: boolean;
   active: boolean;
+  /** Managers only. */
+  cost_cents?: number | null;
+  /** Managers only: a whole percent, null without a cost or a price. */
+  margin_pct?: number | null;
 }
 
-const { data: products, refresh } = await useAsyncData(
-  "products-list",
-  async () => {
+const table = await useServerTable({
+  key: "products-page",
+  search: "url",
+  filters: { active: oneOf("active", "inactive", "all"), stock: oneOf("out", "low") },
+  sorts: ["name", "price", "stock", "margin"] as const,
+  async load({ q, filters, page, sort, desc }, signal) {
     const { data, error } = await supabase
-      .from("products")
-      .select(
-        "id, name, description, sku, price_cents, cost_cents, stock_quantity, taxable, active",
-      )
-      .order("name");
-    if (error) throw error;
-    return (data ?? []) as ProductRow[];
+      .rpc("products_page", {
+        p_q: q || undefined,
+        p_active: filters.active ?? "active",
+        p_stock: filters.stock ?? undefined,
+        p_sort: sort,
+        p_desc: desc,
+        p_page: page,
+        p_page_size: 25,
+      })
+      .abortSignal(signal);
+    return asServerPage<ProductListRow>(data, error);
   },
-);
+});
 
-const search = ref("");
-const showInactive = ref(false);
-const manage = computed(() => can("products.manage"));
+const showInactive = computed({
+  get: () => table.query.value.filters.active === "all",
+  set: (on: boolean) => void table.setFilter("active", on ? "all" : null),
+});
+const stockFilter = computed({
+  get: () => table.query.value.filters.stock ?? "any",
+  set: (v: string) => void table.setFilter("stock", v === "any" ? null : v),
+});
 
 // ---------------------------------------------------------------------------
-// TanStack table columns (Margin only for products.manage holders)
+// TanStack table columns — sorted by the server through meta.sortKey.
+// Margin only for products.manage holders (the function refuses the sort
+// to anyone else, 42501).
 // ---------------------------------------------------------------------------
 const productColumns = computed(() => [
-  {
-    id: "product",
-    accessorFn: (p: ProductRow) => p.name,
-    header: "Product",
-    enableSorting: true,
-  },
-  {
-    id: "price",
-    accessorFn: (p: ProductRow) => p.price_cents,
-    header: "Price",
-    enableSorting: true,
-  },
-  ...(manage.value
-    ? [
-        {
-          id: "margin",
-          accessorFn: (p: ProductRow) =>
-            p.cost_cents != null && p.price_cents > 0
-              ? (p.price_cents - p.cost_cents) / p.price_cents
-              : -1,
-          header: "Margin",
-          enableSorting: true,
-        },
-      ]
-    : []),
-  {
-    id: "stock",
-    accessorFn: (p: ProductRow) => p.stock_quantity,
-    header: "Stock",
-    enableSorting: true,
-  },
+  { id: "product", header: "Product", meta: { sortKey: "name" } },
+  { id: "price", header: "Price", meta: { sortKey: "price" } },
+  ...(manage.value ? [{ id: "margin", header: "Margin", meta: { sortKey: "margin" } }] : []),
+  { id: "stock", header: "Stock", meta: { sortKey: "stock" } },
   // No header at all, rather than header: "" — TanStack Table v9 renders an
   // empty string as an empty text node on the client while the server emits
   // nothing, which is a hydration mismatch on every page with this column.
-  { id: "actions", enableSorting: false },
+  { id: "actions" },
 ]);
-
-const visibleProducts = computed(() => {
-  const q = search.value.trim().toLowerCase();
-  return (products.value ?? []).filter((p) => {
-    if (!showInactive.value && !p.active) return false;
-    if (!q) return true;
-    return [p.name, p.sku ?? "", p.description ?? ""]
-      .join(" ")
-      .toLowerCase()
-      .includes(q);
-  });
-});
 
 const dollars = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     cents / 100,
   );
 
-function marginPct(product: ProductRow): string | null {
-  if (product.cost_cents == null || product.price_cents === 0) return null;
-  return `${Math.round(((product.price_cents - product.cost_cents) / product.price_cents) * 100)}%`;
-}
+const STOCK_BADGE = {
+  out: "border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/50 dark:text-red-400",
+  low: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+  ok: "",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Create / edit dialog
@@ -142,7 +128,17 @@ function openCreate() {
   dialogOpen.value = true;
 }
 
-function openEdit(product: ProductRow) {
+// The list carries only what it shows; the dialog needs the whole record,
+// read under RLS (products.manage, which also gates the pencil).
+async function openEdit(row: ProductListRow) {
+  const { data: product, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", row.id)
+    .single();
+  if (error || !product) {
+    return toast.error("Could not open product", error?.message ?? "Not found");
+  }
   editingId.value = product.id;
   setValues({
     name: product.name,
@@ -198,10 +194,10 @@ const saveProduct = handleSubmit(async (values) => {
     values.name,
   );
   dialogOpen.value = false;
-  await refresh();
+  await table.refresh();
 });
 
-async function toggleActive(product: ProductRow) {
+async function toggleActive(product: ProductListRow) {
   const { error } = await supabase
     .from("products")
     .update({ active: !product.active })
@@ -211,7 +207,7 @@ async function toggleActive(product: ProductRow) {
     product.active ? "Product deactivated" : "Product activated",
     product.name,
   );
-  await refresh();
+  await table.refresh();
 }
 </script>
 
@@ -238,12 +234,28 @@ async function toggleActive(product: ProductRow) {
       </UiButton>
     </div>
 
-    <div class="mt-6 flex shrink-0 flex-wrap items-center gap-4">
-      <UiInput
-        v-model="search"
+    <form
+      role="search"
+      class="mt-6 flex shrink-0 flex-wrap items-center gap-4"
+      @submit.prevent
+    >
+      <TableSearch
+        id="products-search"
+        :value="table.query.value.q"
         placeholder="Search name, SKU…"
-        class="max-w-xs"
+        @search="table.setSearch"
       />
+      <div class="flex items-center gap-2">
+        <label class="text-muted-foreground text-sm" for="stock-filter">Stock</label>
+        <UiSelect v-model="stockFilter">
+          <UiSelectTrigger id="stock-filter" class="w-32" placeholder="Any" />
+          <UiSelectContent>
+            <UiSelectItem value="any" text="Any" />
+            <UiSelectItem value="out" text="Out of stock" />
+            <UiSelectItem value="low" text="Low stock" />
+          </UiSelectContent>
+        </UiSelect>
+      </div>
       <label
         class="text-muted-foreground flex cursor-pointer items-center gap-2 text-sm"
       >
@@ -254,16 +266,41 @@ async function toggleActive(product: ProductRow) {
         />
         Show inactive
       </label>
-    </div>
+      <p class="text-muted-foreground text-sm" aria-live="polite">
+        {{ table.totalExact.value ? "" : "About " }}{{ table.total.value.toLocaleString("en-US") }}
+        {{ table.total.value === 1 ? "product" : "products" }}
+      </p>
+      <UiButton
+        v-if="table.filtering.value"
+        variant="link"
+        size="sm"
+        class="px-0"
+        @click="table.clear"
+      >
+        Clear
+      </UiButton>
+    </form>
+
+    <p v-if="table.error.value" role="alert" class="text-destructive mt-4 text-sm">
+      Could not load products.
+      {{ (table.error.value as { message?: string }).message ?? "" }}
+    </p>
 
     <div
+      v-else
       class="mt-4 flex min-h-0 flex-col overflow-hidden rounded-md border bg-card [&>div:first-child]:flex [&>div:first-child]:min-h-0 [&>div:first-child]:flex-col [&>div:last-child]:shrink-0 **:data-[slot=table-container]:min-h-0 **:data-[slot=table-container]:overflow-y-auto **:data-[slot=table-head]:sticky **:data-[slot=table-head]:top-0 **:data-[slot=table-head]:z-10 **:data-[slot=table-head]:bg-card **:data-[slot=table-head]:shadow-[inset_0_-1px_0_var(--border)] [&_thead_tr]:border-b-0"
     >
-      <UiTanStackTable
-        :data="visibleProducts"
+      <ServerTable
+        :rows="table.rows.value"
         :columns="productColumns"
-        :show-selected-count="false"
-        :show-rows-per-page="false"
+        :total="table.total.value"
+        :page="table.query.value.page"
+        :sort="table.query.value.sort"
+        :desc="table.query.value.desc"
+        :pending="table.pending.value"
+        :empty-text="table.filtering.value ? 'No products match.' : 'No products yet.'"
+        @page="table.setPage"
+        @sort="table.setSort"
       >
         <template #product-cell="{ row }">
           <p
@@ -291,7 +328,7 @@ async function toggleActive(product: ProductRow) {
 
         <template #margin-cell="{ row }">
           <span class="text-muted-foreground tabular-nums">
-            {{ marginPct(row.original) ?? "—" }}
+            {{ row.original.margin_pct != null ? `${row.original.margin_pct}%` : "—" }}
           </span>
         </template>
 
@@ -299,13 +336,7 @@ async function toggleActive(product: ProductRow) {
           <UiBadge
             variant="outline"
             class="min-w-9 justify-center rounded-full tabular-nums"
-            :class="
-              row.original.stock_quantity === 0
-                ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/50 dark:text-red-400'
-                : row.original.stock_quantity <= 5
-                  ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-400'
-                  : ''
-            "
+            :class="STOCK_BADGE[stockLevel(row.original.stock_quantity)]"
           >
             {{ row.original.stock_quantity }}
           </UiBadge>
@@ -365,7 +396,7 @@ async function toggleActive(product: ProductRow) {
             </UiTooltip>
           </div>
         </template>
-      </UiTanStackTable>
+      </ServerTable>
     </div>
 
     <!-- Create / edit dialog -->

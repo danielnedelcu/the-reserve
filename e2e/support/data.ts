@@ -38,6 +38,7 @@ export class TestData {
   private roleRows: { staff_id: string; role_id: string }[] = [];
   private clients: string[] = [];
   private services: string[] = [];
+  private products: string[] = [];
   private locationTimezone: { id: string; timezone: string } | null = null;
 
   private constructor(readonly env: TestEnv, readonly orgId: string) {}
@@ -97,6 +98,24 @@ export class TestData {
   /** Track a client the journey made through the UI, so cleanup takes it. */
   trackClient(id: string): void {
     this.clients.push(id);
+  }
+
+  /** A retail product in the seeded organisation, named with the tag (names are unique per organisation). */
+  async product(
+    name: string,
+    extra: { sku?: string; price_cents?: number; cost_cents?: number; stock_quantity?: number; active?: boolean } = {},
+  ): Promise<{ id: string; name: string }> {
+    const fullName = `${this.tag} ${name}`;
+    const row = await must(
+      this.env.db
+        .from("products")
+        .insert({ organization_id: this.orgId, name: fullName, price_cents: 1_000, ...extra })
+        .select("id")
+        .single(),
+      `product ${name}`,
+    );
+    this.products.push(row.id as string);
+    return { id: row.id as string, name: fullName };
   }
 
   /**
@@ -192,6 +211,7 @@ export class TestData {
       await step("clients", () => this.env.db.from("clients").delete().in("id", this.clients));
     }
     if (this.services.length) await step("services", () => this.env.db.from("services").delete().in("id", this.services));
+    if (this.products.length) await step("products", () => this.env.db.from("products").delete().in("id", this.products));
     for (const r of this.roleRows) {
       await step("staff_roles", () => this.env.db.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id));
     }

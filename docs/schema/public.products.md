@@ -37,6 +37,9 @@ Retail catalog (lotions, candles, ...). Stock decremented by trigger on sale. co
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | products_pkey                     | CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)                                        |
 | products_organization_id_name_key | CREATE UNIQUE INDEX products_organization_id_name_key ON public.products USING btree (organization_id, name) |
+| products_name_trgm                | CREATE INDEX products_name_trgm ON public.products USING gin (name gin_trgm_ops)                             |
+| products_sku_trgm                 | CREATE INDEX products_sku_trgm ON public.products USING gin (sku gin_trgm_ops)                               |
+| products_org_active_name          | CREATE INDEX products_org_active_name ON public.products USING btree (organization_id, active, lower(name))  |
 
 ## Triggers
 
