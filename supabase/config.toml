@@ -21,12 +21,10 @@ max_rows = 1000
 # without explicit GRANTs. When unset, new entities are NOT auto-exposed, matching the new cloud
 # default. Set to `true` to keep the legacy behaviour of auto-exposing new entities; this is
 # deprecated and the field is removed on 2026-10-30 once the always-revoked behaviour is permanent.
-# ON: the hosted project is a legacy one whose tables carry these grants, and
-# the migrations never state them, so a LOCAL stack rebuilt from the
-# migrations had tables the service role could not read (found 2026-10-05
-# building the CI database job). Set until an explicit grants migration
-# makes the schema self-describing, at which point this key can go.
-auto_expose_new_tables = true
+# NOT SET, on purpose: the explicit_api_grants migration (2026-10-06)
+# states every grant the API roles hold, so a stack built from the
+# migrations is complete without this deprecated switch.
+# auto_expose_new_tables = true
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
