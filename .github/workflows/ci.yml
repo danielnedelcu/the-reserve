@@ -9,9 +9,14 @@
 # rebuilt from supabase/migrations/ — never the hosted project, and with
 # no secret: the stack's keys are the CLI's fixed local ones, read at run
 # time by scripts/_env.mjs, and SUPABASE_LOCAL=true makes every harness
-# refuse anything that is not localhost. Not yet in it: verify:leads,
-# which exercises the public endpoint over HTTP and needs the built app
-# running (it joins when the app-start script lands with the e2e suite).
+# refuse anything that is not localhost.
+#
+# The e2e job (docs/testing-design.md, PR B) goes one step further: the
+# same stack, the app BUILT into its own folders and started on the e2e
+# port by scripts/ci-start-app.mjs, verify:leads against it (the one
+# harness that exercises a public endpoint over HTTP), then the Playwright
+# journeys in Chromium. Traces and screenshots of a failure are kept for a
+# week. Not a required check yet.
 name: CI
 
 on:
@@ -37,6 +42,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Type-check the end-to-end tests
+        run: npx tsc -p e2e
 
   lint:
     name: lint
@@ -89,3 +96,55 @@ jobs:
           # The forms harness checks the pepper is configured and uses it to
           # hash a test IP; any 32+ hex string will do on a throwaway stack.
           FORM_IP_PEPPER: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+  e2e:
+    name: e2e (built app + Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Start the local Supabase stack
+        run: npx supabase start --ignore-health-check -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
+      - name: Rebuild the database from the migrations
+        run: npx supabase db reset --local
+      - name: Export the local stack's URL and keys
+        run: npx supabase status -o env | sed -E 's/^([A-Z_0-9]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
+      - name: Build the app into its own folders
+        run: npm run build:check
+      # Starts the built server on 3300 against the stack and writes the
+      # values a harness must share with the app (the seeded organisation,
+      # the allowed origin, the pepper) to node_modules/.cache/ci-app.env.
+      - name: Start the app
+        run: npm run app:start && cat node_modules/.cache/ci-app.env >> "$GITHUB_ENV"
+        env:
+          SUPABASE_LOCAL: "true"
+      - name: verify:leads against the running app
+        run: npm run verify:leads -- "$E2E_BASE_URL"
+        env:
+          SUPABASE_LOCAL: "true"
+      - name: Playwright journeys
+        run: npm run test:e2e
+        env:
+          SUPABASE_LOCAL: "true"
+      - name: Keep the traces of a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          retention-days: 7
+      - name: App server log
+        if: failure()
+        run: tail -n 200 apps/reserve/.output-check/server.log 2>/dev/null || echo "No log."
+      - name: Stop the app
+        if: always()
+        run: npm run app:stop

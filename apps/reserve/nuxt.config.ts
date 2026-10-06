@@ -1,7 +1,17 @@
 // NPM Modules
 import tailwindcss from "@tailwindcss/vite";
 
+// `npm run build:check` (RESERVE_BUILD_CHECK=1) builds into its own folders —
+// .nuxt-check, .output-check, a separate Vite cache — so a build for the
+// e2e suite or CI never touches the .nuxt a running dev server reads (a
+// plain `nuxt build` beside a dev server breaks every page with a 500
+// until the dev server restarts; the pattern is Lokl's, docs/testing-reference.md).
+const buildCheck = process.env.RESERVE_BUILD_CHECK === "1";
+
 export default defineNuxtConfig({
+  ...(buildCheck
+    ? { buildDir: ".nuxt-check", nitro: { output: { dir: ".output-check" } } }
+    : {}),
   modules: [
     "@nuxt/eslint",
     "@nuxt/icon",
@@ -92,6 +102,7 @@ export default defineNuxtConfig({
   compatibilityDate: "2026-07-25",
   vite: {
     plugins: [tailwindcss()],
+    ...(buildCheck ? { cacheDir: "node_modules/.cache/vite-check" } : {}),
   },
   typescript: {
     strict: true,

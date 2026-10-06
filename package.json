@@ -12,6 +12,10 @@
     "lint": "turbo lint",
     "typecheck": "turbo check-types",
     "test": "turbo test",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "build:check": "node scripts/build-check.mjs",
+    "app:start": "node scripts/ci-start-app.mjs",
+    "app:stop": "node scripts/ci-start-app.mjs --stop",
     "db:types": "supabase gen types typescript --linked > apps/reserve/shared/types/database.ts",
     "db:push": "supabase db push && npm run db:types && npm run db:docs",
     "db:migrations": "supabase migration list",
@@ -24,6 +28,8 @@
     "e2e:forms": "node scripts/e2e-forms.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@supabase/ssr": "^0.12.7",
     "dotenv-cli": "^11.0.0",
     "supabase": "^2.113.0",
     "turbo": "^2.11.7"

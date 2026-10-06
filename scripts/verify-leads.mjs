@@ -100,6 +100,10 @@ async function post(body, { ip = freshIp(), origin, raw } = {}) {
 }
 
 let bystanderId = null;
+let holderId = null;
+let holderRoleId = null;
+let fixtureFormId = null;
+let fixtureVersionId = null;
 
 async function main() {
   const ping = await fetch(base).catch(() => null);
@@ -117,6 +121,21 @@ async function main() {
     .select("id").single();
   if (bystanderErr) throw new Error(`fixture staff: ${bystanderErr.message}`);
   bystanderId = bystander.id;
+
+  // And one who DOES hold leads.view, through the seeded admin role, so
+  // the inclusion direction is never vacuous either — a fresh stack has no
+  // staff with roles at all.
+  const { data: adminRole } = await admin.from("roles").select("id").eq("organization_id", ORG).eq("name", "admin").single();
+  if (!adminRole) throw new Error("fixture: no seeded admin role in the organisation");
+  const { data: holder, error: holderErr } = await admin
+    .from("staff")
+    .insert({ organization_id: ORG, display_name: "Verify Holder", email: `verify-holder-${run}@example.test`, bookable: false })
+    .select("id").single();
+  if (holderErr) throw new Error(`fixture holder: ${holderErr.message}`);
+  holderId = holder.id;
+  holderRoleId = adminRole.id;
+  const { error: holderRoleErr } = await admin.from("staff_roles").insert({ staff_id: holder.id, role_id: adminRole.id });
+  if (holderRoleErr) throw new Error(`fixture holder role: ${holderRoleErr.message}`);
 
   // ── 1. anon has no write path but the endpoint ─────────────────────
   console.log("anon privileges");
@@ -345,7 +364,28 @@ async function main() {
   // service role, without the flip — so the SUBMIT half is proved on its
   // own: a link carrying lead_id must yield a prospect carrying lead_id.
   const convLead = await admin.from("leads").insert({ organization_id: ORG, first_name: "Conv", last_name: "Lead", email: `conv-${run}${SUFFIX}`, interest: "membership", source: "verify-conversion" }).select("id").single();
-  const { data: def } = await admin.from("form_definitions").select("id").eq("organization_id", ORG).eq("key", "prospect_intake").single();
+  // The prospect intake form is DATA, made by staff in the forms editor,
+  // so a fresh stack has none; the hosted project has the real one. Use
+  // what exists, or make a minimal one for this run and remove it after.
+  let { data: def } = await admin.from("form_definitions").select("id").eq("organization_id", ORG).eq("key", "prospect_intake").maybeSingle();
+  if (!def) {
+    const made = await admin.from("form_definitions").insert({ organization_id: ORG, key: "prospect_intake", name: "Verify prospect intake" }).select("id").single();
+    if (made.error) throw new Error(`fixture intake form: ${made.error.message}`);
+    def = made.data;
+    fixtureFormId = def.id;
+    const v = await admin.from("form_versions").insert({
+      form_definition_id: def.id,
+      version: 1,
+      fields: [
+        { key: "first_name", label: "First name", type: "text", required: true, sensitive: false },
+        { key: "last_name", label: "Last name", type: "text", required: true, sensitive: false },
+        { key: "email", label: "Email", type: "email", required: true, sensitive: false },
+      ],
+      consent_text: "I agree to the terms.",
+    }).select("id").single();
+    if (v.error) throw new Error(`fixture intake version: ${v.error.message}`);
+    fixtureVersionId = v.data.id;
+  }
   const { data: ver } = await admin.from("form_versions").select("id, fields").eq("form_definition_id", def.id).order("version", { ascending: false }).limit(1).single();
   const { data: staffAny } = await admin.from("staff").select("id").eq("organization_id", ORG).eq("active", true).limit(1).single();
   const { error: bothErr } = await admin.from("form_links").insert({ organization_id: ORG, form_version_id: ver.id, client_id: (await admin.from("clients").select("id").eq("organization_id", ORG).limit(1).maybeSingle()).data?.id ?? randomUUID(), lead_id: convLead.data.id, issued_by: staffAny.id });
@@ -378,7 +418,7 @@ async function main() {
   await admin.from("leads").delete().like("email", `%${SUFFIX}`);
   const { data: orphans } = await admin.from("notifications").select("id").eq("kind", "lead.captured").eq("link", link);
   check("deleting the lead removes its notifications (no dangling bell entry)", (orphans ?? []).length === 0);
-  if (bystanderId) await admin.from("staff").delete().eq("id", bystanderId);
+  await removeFixtures();
 
   console.log(`\n${passed}/${passed + failed} passed`);
   if (failed) {
@@ -387,7 +427,31 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+/**
+ * The run's own rows, removed at the end AND after a crash: a run that
+ * throws mid-way (the app answering 503, a fixture insert failing) must
+ * not leave a "Verify Holder" with the admin role on the hosted project.
+ * It did once — 2026-10-06, a dev server mid-restart — which is why this
+ * is a function called from both exits rather than the tail of main().
+ */
+async function removeFixtures() {
+  await admin.from("leads").delete().like("email", `%${SUFFIX}`);
+  if (bystanderId) await admin.from("staff").delete().eq("id", bystanderId);
+  if (holderId) {
+    await admin.from("staff_roles").delete().eq("staff_id", holderId).eq("role_id", holderRoleId);
+    await admin.from("staff").delete().eq("id", holderId); // its notifications cascade
+  }
+  if (fixtureFormId) {
+    // The run's own intake form, after everything that pointed at it.
+    await admin.from("form_responses").delete().eq("form_version_id", fixtureVersionId);
+    await admin.from("form_links").delete().eq("form_version_id", fixtureVersionId);
+    await admin.from("form_versions").delete().eq("id", fixtureVersionId);
+    await admin.from("form_definitions").delete().eq("id", fixtureFormId);
+  }
+}
+
+main().catch(async (error) => {
   console.error(`\nHARNESS ERROR (counts as failure): ${error.message}`);
+  await removeFixtures().catch((e) => console.error(`  (fixture cleanup also failed: ${e.message})`));
   process.exit(1);
 });

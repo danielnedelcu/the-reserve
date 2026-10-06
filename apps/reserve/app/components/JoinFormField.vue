@@ -22,6 +22,20 @@ const { value, errorMessage, handleBlur, validate } = useField<unknown>(
   { validateOnValueUpdate: false },
 );
 
+// Typed views of the one untyped field value, for v-model. A cast inside
+// v-model (`value as string` as the model) compiles to an assignment to a
+// cast expression, which the dev server tolerated and the production
+// build rejected ("Cannot assign to this expression", found 2026-10-06
+// by the first build:check). Writable computeds carry the type instead.
+const text = computed<string>({
+  get: () => (value.value as string) ?? "",
+  set: (v) => (value.value = v),
+});
+const multi = computed<string[]>({
+  get: () => (value.value as string[]) ?? [],
+  set: (v) => (value.value = v),
+});
+
 /**
  * Validate on blur, explicitly.
  *
@@ -108,7 +122,7 @@ const yesNo = computed<string | undefined>({
     <UiTextarea
       v-if="field.type === 'textarea'"
       :id="field.key"
-      v-model="value as string"
+      v-model="text"
       :rows="4"
       :aria-invalid="!!errorMessage"
       :aria-describedby="describedBy"
@@ -158,7 +172,7 @@ const yesNo = computed<string | undefined>({
          still choosing. -->
     <UiSelect
       v-else-if="field.type === 'select'"
-      v-model="value as string"
+      v-model="text"
       @update:open="onSelectOpen"
     >
       <UiSelectTrigger
@@ -190,7 +204,7 @@ const yesNo = computed<string | undefined>({
     >
       <legend class="sr-only">{{ field.label }}</legend>
       <UiCheckboxGroup
-        v-model="value as string[]"
+        v-model="multi"
         orientation="vertical"
         class="space-y-2.5"
         :aria-invalid="!!errorMessage"
@@ -263,7 +277,7 @@ const yesNo = computed<string | undefined>({
     <UiInput
       v-else
       :id="field.key"
-      v-model="value as string"
+      v-model="text"
       :type="
         field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'
       "
