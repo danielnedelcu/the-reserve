@@ -1,0 +1,6 @@
+{
+  "name": "@repo/e2e",
+  "private": true,
+  "type": "module",
+  "description": "Marks the Playwright suite as ES modules, so support/env.ts can import scripts/_env.mjs (import.meta.url) natively instead of through a CommonJS transform that cannot express it. Not a workspace: no dependencies of its own."
+}

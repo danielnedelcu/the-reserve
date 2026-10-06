@@ -1,6 +1,10 @@
 # Nuxt
 .nuxt
 .output
+# build:check builds (RESERVE_BUILD_CHECK=1): the e2e suite's and CI's own
+# folders, never the dev server's
+.nuxt-check
+.output-check
 .data
 .nitro
 .cache
@@ -30,3 +34,7 @@ supabase/.temp/
 # Turbo
 .turbo
 supabase/.branches/
+
+# Playwright (npm run test:e2e)
+e2e/test-results/
+e2e/playwright-report/

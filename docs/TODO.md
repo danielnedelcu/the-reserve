@@ -324,7 +324,7 @@ QUEUED (in order):
   migrations — table and sequence grants, function ACLs, default
   privileges, triggers, policies, indexes, constraints, cron,
   extensions: ZERO differences.
-- Schema drift found on the way (20261006002814, pushed): two functions
+- ~~Schema drift found on the way~~ DONE 2026-10-06 (20261006002814, pushed): two functions
   and a trigger existed only on the hosted project, written in the SQL
   editor with no migration — get_my_permissions(), which every session's
   usePermissions() calls, and notify_timeoff_requested() with its

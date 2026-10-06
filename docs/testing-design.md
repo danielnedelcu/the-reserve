@@ -37,13 +37,14 @@ Reserve must do the same. Without it, every Playwright test that visits
 an authenticated page will see the unauthenticated state, silently. This
 is the first thing to get right and the last thing anyone would guess.
 
-The line in the start script:
+The line in the start script (scripts/ci-start-app.mjs, as built):
 
-```bash
-NUXT_PUBLIC_SUPABASE_URL=$(supabase status -o env | grep SUPABASE_URL | cut -d= -f2)
+```js
+NUXT_PUBLIC_SUPABASE_COOKIE_PREFIX: `sb-${new URL(url).hostname.split(".")[0]}-auth-token`
 ```
 
-Then start the app with that URL so the cookie name matches the stack.
+The same derivation `@supabase/ssr` uses, so the cookie the test writes and
+the cookie the app looks for have one name.
 
 ### 2. The ledger and the money journey cleanup problem
 
@@ -173,206 +174,169 @@ A failing harness does not block a typecheck-passing PR (and vice versa).
 
 ## PR B — the Playwright e2e suite
 
-### Structure
+AS BUILT 2026-10-06 (stages 1 and 2). Three things in the first draft of
+this section followed the design rather than the reference and were
+corrected while building: the suite runs against the BUILT app, not the
+dev server; sign-in goes through `@supabase/ssr` with an in-memory cookie
+jar, never a hand-built cookie; and the browser runs in a zone that is
+NOT the spa's. Each is explained where it lands below.
+
+### Stage 1 — build and start the app for tests
+
+- `RESERVE_BUILD_CHECK=1` in `apps/reserve/nuxt.config.ts` builds into
+  `.nuxt-check` and `.output-check` with a separate Vite cache, so a test
+  build never clobbers a running dev server's `.nuxt`. Both gitignored.
+  `npm run build:check` (scripts/build-check.mjs) runs it. The first
+  build:check found a real production-build bug: a `v-model` on a cast
+  expression in the public form field, which the dev server tolerated and
+  the build rejected. Fixed with typed writable computeds.
+- `npm run app:start` (scripts/ci-start-app.mjs) starts the built server
+  with `NODE_ENV=production` on **3300** (not 3000, and not Lokl's
+  3100/3101/3200/3201), assembles its env from the local stack through
+  `scripts/_env.mjs`, refuses any non-local URL, sets
+  `NUXT_PUBLIC_SUPABASE_COOKIE_PREFIX` from the local URL (the finding in
+  section 1 above), looks up the seeded organisation for lead capture,
+  records the pid, polls the port, and writes the values a harness must
+  share with the app to `node_modules/.cache/ci-app.env`.
+  `npm run app:stop` stops it. `supabase/config.toml` lists the 3300 URLs
+  among the auth redirects.
+- The `e2e` CI job: stack, reset from migrations, export, build, start,
+  `verify:leads` against the running app (it joins CI here), then
+  Playwright; traces and screenshots uploaded on failure; the app stopped
+  in `always()`. Not a required check yet.
+
+### Stage 2 — structure
 
 ```
 e2e/
+├── playwright.config.ts
+├── package.json             — `"type": "module"`: the suite loads as ES modules
+├── tsconfig.json            — `tsc -p e2e` runs in the typecheck + tests job
 ├── support/
-│   ├── auth.ts          — sign in, session management, cookie prefix fix
-│   ├── test-data.ts     — TestData fixture (run id, create, cleanup)
-│   └── db.ts            — psql helper for time-travel and state reads
-├── 01-auth.spec.ts
-├── 02-clients.spec.ts
-├── 03-scheduler.spec.ts
-├── 04-messaging.spec.ts
-├── 05-forms.spec.ts
-├── 06-leads.spec.ts
-├── 07-checkout.spec.ts
-├── 08-communications.spec.ts
-├── 09-campaigns.spec.ts
-└── ... (numbered journeys, one feature per file)
+│   ├── env.ts               — the local stack, through _env.mjs's guard
+│   ├── auth.ts              — signIn(context, email, password) via @supabase/ssr
+│   ├── data.ts              — TestData: run id, tracked ids, cleanup in order
+│   └── fixtures.ts          — test.extend with `data`, cleanup in finally
+└── journeys/
+    ├── 01-auth.spec.ts
+    ├── 02-clients.spec.ts   — stage 3 (built)
+    └── 03-scheduler.spec.ts — stage 3: written, exposes the timezone seam
+                               (below); not in the suite until that decision
 ```
 
-One `e2e/` directory at the repo root (not inside `apps/reserve/`),
-matching Lokl's pattern. The test code imports from the app's types
-where needed but nothing test-only lives in the app itself.
+At the repo root, matching Lokl. Nothing test-only lives in the app.
 
 ### The `playwright.config.ts`
 
-At the repo root:
+`testDir: ./journeys`, `fullyParallel: false`, `workers: 1` (one stack,
+one app), `retries: 0`, trace `retain-on-failure`, screenshot
+`only-on-failure`, Chromium at desktop size only until a staging site
+exists over HTTPS, `baseURL` from `E2E_BASE_URL` (3300). No `webServer`
+block: the app is started by `app:start` before the run, built, the way
+CI runs it.
 
-```typescript
-import { defineConfig, devices } from "@playwright/test";
+**The suite is ES modules** (`e2e/package.json`, `"type": "module"`).
+`support/env.ts` imports `scripts/_env.mjs`, which reads `import.meta.url`
+for the repo root. Loaded as CommonJS, Playwright's transform compiles
+that `.mjs` to CommonJS and `import.meta` cannot be expressed there:
+"Cannot use 'import.meta' outside a module", every spec file failing to
+load, "No tests found". It passed on one laptop Node (22.12) and failed
+on CI's (22.22) — found by the first CI run, reproduced locally with the
+CI version, fixed by loading the suite natively.
 
-export default defineConfig({
-  testDir: "./e2e",
-  fullyParallel: false, // sequential within each spec file
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: "html",
-  use: {
-    baseURL: "http://localhost:3000",
-    trace: "on-first-retry",
-    timezoneId: "America/New_York", // Eastern time — spa is Atlanta-based
-  },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    command: "npm run dev -w @repo/reserve",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    env: {
-      // The auth cookie prefix fix — set from the local stack URL in CI
-      NUXT_PUBLIC_SUPABASE_URL: process.env.NUXT_PUBLIC_SUPABASE_URL || "",
-      NUXT_PUBLIC_SUPABASE_KEY: process.env.NUXT_PUBLIC_SUPABASE_KEY || "",
-    },
-  },
-});
-```
+**`timezoneId: "America/Los_Angeles"`, on purpose.** The first draft said
+Eastern, the spa's own zone. That would let a page that formats by the
+browser clock pass. The browser runs in a zone that is NOT the location's,
+and every time a journey asserts is the LOCATION's, so the recorded
+scheduler seam (the grid positions by the browser clock) fails here
+rather than hides.
 
-The `timezoneId` is Eastern (`America/New_York`) rather than Lokl's
-Los Angeles, because The Reserve is an Atlanta spa. Time-dependent
-assertions (appointment times, birthday logic, day-before reminders)
-should be asserted in the timezone the spa operates in.
+### The auth helper
 
-### The auth helper (the cookie prefix fix)
-
-```typescript
-// e2e/support/auth.ts
-import { createClient } from "@supabase/supabase-js";
-import type { Page } from "@playwright/test";
-
-export async function signIn(page: Page, email: string, password: string) {
-  const client = createClient(
-    process.env.NUXT_PUBLIC_SUPABASE_URL!,
-    process.env.NUXT_PUBLIC_SUPABASE_KEY!,
-  );
-  const { data, error } = await client.auth.signInWithPassword({
-    email,
-    password,
-  });
-  if (error || !data.session)
-    throw new Error(`Sign in failed: ${error?.message}`);
-
-  // The cookie name is keyed to the Supabase project URL.
-  // Set it directly so the browser cookie matches what the app expects,
-  // regardless of which stack (local or hosted) the test runs against.
-  const cookieName = `sb-${new URL(process.env.NUXT_PUBLIC_SUPABASE_URL!).hostname.split(".")[0]}-auth-token`;
-  await page.context().addCookies([
-    {
-      name: cookieName,
-      value: JSON.stringify(data.session),
-      domain: "localhost",
-      path: "/",
-    },
-  ]);
-}
-```
-
-This is the Lokl pattern, adapted. The cookie name derives from the
-project URL at runtime, so the same auth helper works against both
-the local stack and (in future) a staging deployment.
+`signIn(context, email, password)` runs the password sign-in in the test
+code through `createServerClient` from `@supabase/ssr` — the library the
+app reads its cookies with — into an in-memory jar, waits for the library
+to write, and adds those cookies to the browser context for `localhost`
+with `SameSite=Lax`. No cookie is hand-built: if the library changes its
+name or format, both sides change together and a mismatch shows as a
+login page, never as a quiet pass. Journey 1 signs in through the real
+login form AND through the helper and must land on the same signed-in
+dashboard, which is the proof the two agree. Switching user mid-test is
+`context.clearCookies()` then `signIn` again.
 
 ### The TestData fixture
 
-```typescript
-// e2e/support/test-data.ts
-import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
+`TestData.create()` finds the seeded organisation; `staffMember(label,
+role)` is the first builder: an auth user with a password
+(`auth.admin.createUser`, confirmed), a `staff` row in that organisation,
+and a `staff_roles` row for one of the four seeded roles. `client()` and
+`trackClient()` serve journey 2; `locationInZone()`, `service()` and
+`hours()` serve journey 3 (the seeded location moved into a zone for the
+run and put back; a bookable service with no intake and no room; the
+same weekly hours every day). Every email and display name carries the
+run id. `cleanup()` deletes in dependency order (communications, appointments,
+clients, services, role rows, staff, auth users, then the location's
+zone), runs every step even when one fails, and THROWS at the end if any
+did — a row that cannot be removed fails the run instead of accumulating.
+That rule came from a run: a super_admin fixture was refused by the
+last-super-admin trigger (a fresh stack has no other), nothing reported
+it, and the row then counted as "another super admin" for every later
+run. No journey uses super_admin now.
 
-export class TestData {
-  private runId = `E2E-${randomUUID().slice(0, 8)}`;
-  private serviceClient = createClient(
-    process.env.NUXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-  private created: Array<{ table: string; id: string }> = [];
+### Journey 1 — auth (built)
 
-  tag(data: Record<string, unknown>) {
-    return { ...data, _test_run: this.runId };
-  }
+A front-desk member signs in through the login page and lands on the
+dashboard; a signed-out visit to `/clients` is sent to `/login`; an
+admin sees the Financials nav entry and a provider, who lacks
+`financials.view_summary`, does not (while still seeing Clients, which
+they hold, so the absence is not vacuous). Controls are found by role and
+accessible name.
 
-  track(table: string, id: string) {
-    this.created.push({ table, id });
-    return id;
-  }
+### Journey 2 — clients (built)
 
-  async cleanup() {
-    // Delete in reverse order (dependents before parents)
-    for (const { table, id } of [...this.created].reverse()) {
-      await this.serviceClient.from(table).delete().eq("id", id);
-    }
-  }
-}
+The front desk creates a client through the sheet, finds them through
+the search box in the list the page re-read after saving, opens the
+profile through the row's View link, changes the communication channel
+from Email to SMS in the preferences section, and reloads: the change
+must be there after a fresh load, which is the only proof it was saved
+and not merely drawn. The value before the edit is asserted too, so the
+change is a change.
+
+### Journey 3 — scheduler (written; exposes the seam)
+
+The seeded location is put in America/New_York for the run; the browser
+is in America/Los_Angeles; a provider has hours 10:00–11:00 local, one
+60-minute slot; the front desk opens the dialog, picks client, service
+and staff, and asks for times. The journey asserts the LOCATION's time,
+`10:00 AM`. The dialog offers `7:00 AM`:
+
+```
+- "10:00 AM",
++ "7:00 AM",
 ```
 
-For money journeys, the cleanup uses the test-org pattern (see the
-decision above) rather than individual row deletes. The ledger rows
-cascade with the org.
+That is the recorded two-timezone seam, exposed on the first run: the
+slot labels and the card labels format in the browser clock
+(`app/utils/appointmentTime.ts`), and the grid positions cards and builds
+its day range from it (`blockStyle`, `fetchRange` in
+`app/pages/schedule.vue`). The journey is not marked `fixme` and the
+assertion is not moved to the browser's zone; it is held out of the suite
+until the seam decision on the board is made, and it is the test that
+proves the fix when it is.
 
 ### The money journey decision (confirm before building)
 
-Before writing any journey that touches the ledger (checkout, the
-cancellation fee, campaigns), the cleanup approach must be settled.
-Recommendation is Option B (test org with cascade) for Playwright.
-This means every money-touching spec creates a fresh org, runs inside
-it, and deletes the org in `afterAll`. The org creation is a fixture;
-individual tests get a client and a staff session scoped to that org.
-
-### The Playwright CI job
-
-Runs after the `database` job (needs the local stack running):
-
-```yaml
-playwright:
-  name: e2e (Playwright)
-  runs-on: ubuntu-latest
-  needs: database
-  timeout-minutes: 30
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version-file: .nvmrc
-        cache: npm
-    - run: npm ci
-    - run: npx playwright install chromium
-    - name: Start local stack
-      run: supabase start --ignore-health-check -x realtime -x storage-api -x imgproxy -x inbucket -x postgrest -x gotrue
-    - name: Reset database from migrations
-      run: supabase db reset --local
-    - name: Export local stack env
-      run: supabase status -o env >> $GITHUB_ENV
-    - name: Run Playwright tests
-      run: npx playwright test
-    - uses: actions/upload-artifact@v4
-      if: failure()
-      with:
-        name: playwright-report
-        path: playwright-report/
-```
-
-The `supabase status -o env >> $GITHUB_ENV` line is the env assembly
-from Option A above — it exports the local stack's URL, anon key, and
-service role key into the runner's environment, which Playwright and
-the webServer pick up automatically.
-
-Note: the Playwright job starts its own stack (`supabase start` again)
-rather than sharing the `database` job's stack, because GitHub Actions
-jobs run on separate VMs. Each job that needs the stack starts it fresh.
+Unchanged: before any journey touches the ledger, settle test-org cleanup
+(recommended for Playwright) versus tagged rows (the harnesses' pattern).
+No money journey is in this PR.
 
 ### The test-timeout contention note
 
-Flagged during the Turborepo migration: the Nuxt-environment test files
-in vitest hit their 10-second setup timeout when a dev server is building
-at the same moment. In the CI pipeline:
-
-- The `check` job runs `npm test` (vitest) with no server — fine
-- The `playwright` job starts a server via `webServer` in the config
-
-These are separate jobs on separate VMs, so there is no contention. The
-issue only surfaces locally when running both at once. Worth noting in
-the dev README.
+The `check` job runs vitest with no server; the `e2e` job runs the built
+app on its own VM. No contention in CI. Locally, the Nuxt-environment
+vitest files time out when a dev server is BUILDING beside them; the
+built app on 3300 does not build, so `test:e2e` and `npm test` can run
+side by side.
 
 ## Build order
 
@@ -384,17 +348,18 @@ the dev README.
    `supabase status -o env`, then run the harnesses with those env vars
 4. Push, confirm the new CI job goes green alongside the existing `check`
 
-**PR B — the Playwright suite (its own PR after PR A):**
+**PR B — the Playwright suite (its own PR after PR A), as built:**
 
-1. Confirm the money-journey cleanup decision (test org or tagged rows)
-2. Add `playwright.config.ts` at the repo root
-3. Install Playwright: `npm install -D @playwright/test` at the root,
-   `npx playwright install chromium`
-4. Write `e2e/support/` (auth, test-data, db helpers)
-5. Write journeys starting with the simplest (auth → clients → scheduler),
-   adding money journeys after the cleanup decision is made
-6. Add the `playwright` job to the CI workflow
-7. Push, confirm green
+1. Stage 1: build-check mode, `app:start`/`app:stop`, the 3300 redirect
+   URLs, the `e2e` CI job with `verify:leads` against the running app.
+2. Stage 2: `e2e/` skeleton, `tsc -p e2e` in the check job, journey 1
+   (auth) passing locally and in CI — the cookie proof every later
+   journey depends on.
+3. Stage 3: journey 2 (clients) built and in the suite; journey 3
+   (scheduler) written, exposed the timezone seam on its first run, held
+   out until that decision — never `fixme`, never assert in the browser's
+   zone.
+4. Money journeys wait for the cleanup decision and their own PR.
 
 ## Decisions to confirm before building
 
