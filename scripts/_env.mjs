@@ -54,7 +54,9 @@ function fromFile() {
 /** The value and where it came from: "env", "file", or null when unset. */
 export function resolve(key) {
   for (const name of ALIASES[key] ?? [key]) {
-    const v = process.env[name];
+    // `supabase status -o env` quotes its values; a runner that appends
+    // them to GITHUB_ENV verbatim hands them over quotes and all.
+    const v = process.env[name]?.replace(/^["']|["']$/g, "");
     if (v !== undefined && v !== "") return { value: v, source: "env", name };
   }
   const file = fromFile();
@@ -69,13 +71,18 @@ export function get(key) {
   return resolve(key).value;
 }
 
-export function isLocalUrl(value) {
+/** The hostname a value parses to, or null when it is not a URL at all. */
+export function hostnameOf(value) {
   try {
-    const h = new URL(value).hostname;
-    return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
+    return new URL(value).hostname;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isLocalUrl(value) {
+  const h = hostnameOf(value);
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
 }
 
 /**
@@ -102,7 +109,12 @@ export function guard(keys = ["NUXT_PUBLIC_SUPABASE_URL"]) {
     const r = resolve(key);
     if (!r.value) refuse(`SUPABASE_LOCAL is set but ${key} is not in the environment (run \`supabase status -o env\` and export it).`);
     if (r.source !== "env") refuse(`SUPABASE_LOCAL is set but ${key} came from apps/reserve/.env, not the environment — refusing to fall back to a hosted value.`);
-    if (!isLocalUrl(r.value)) refuse(`SUPABASE_LOCAL is set but ${key} (${r.name}) does not point at localhost — refusing to run against a non-local database.`);
+    if (!isLocalUrl(r.value)) {
+      // Say what was parsed, never the value: a hostname is diagnosable from
+      // a CI log and leaks nothing; a key or a DSN would.
+      const host = hostnameOf(r.value);
+      refuse(`SUPABASE_LOCAL is set but ${key} points at ${host ? `host "${host}"` : "an unparseable URL"} — refusing to run against a non-local database.`);
+    }
   }
 }
 

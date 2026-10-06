@@ -76,8 +76,11 @@ jobs:
       # hosted project it is set by hand). A throwaway one for this run.
       - name: Give ask_readonly a password for this run
         run: npx supabase db query --local "alter role ask_readonly with password 'ci-test-password'"
+      # `status -o env` quotes every value; GITHUB_ENV takes a line
+      # literally, so the quotes would become part of the value and the
+      # URL would fail to parse (the first run on a runner, 2026-10-05).
       - name: Export the local stack's URL and keys
-        run: npx supabase status -o env >> "$GITHUB_ENV"
+        run: npx supabase status -o env | sed -E 's/^([A-Z_0-9]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
       - name: Verify harnesses against the local stack
         run: npm run verify:forms && npm run verify:ask && npm run verify:messages
         env:
