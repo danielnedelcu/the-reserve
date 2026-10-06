@@ -210,6 +210,7 @@ NOT the spa's. Each is explained where it lands below.
 ```
 e2e/
 ├── playwright.config.ts
+├── package.json             — `"type": "module"`: the suite loads as ES modules
 ├── tsconfig.json            — `tsc -p e2e` runs in the typecheck + tests job
 ├── support/
 │   ├── env.ts               — the local stack, through _env.mjs's guard
@@ -218,8 +219,9 @@ e2e/
 │   └── fixtures.ts          — test.extend with `data`, cleanup in finally
 └── journeys/
     ├── 01-auth.spec.ts
-    ├── 02-clients.spec.ts   — stage 3
-    └── 03-scheduler.spec.ts — stage 3
+    ├── 02-clients.spec.ts   — stage 3 (built)
+    └── 03-scheduler.spec.ts — stage 3: written, exposes the timezone seam
+                               (below); not in the suite until that decision
 ```
 
 At the repo root, matching Lokl. Nothing test-only lives in the app.
@@ -232,6 +234,15 @@ one app), `retries: 0`, trace `retain-on-failure`, screenshot
 exists over HTTPS, `baseURL` from `E2E_BASE_URL` (3300). No `webServer`
 block: the app is started by `app:start` before the run, built, the way
 CI runs it.
+
+**The suite is ES modules** (`e2e/package.json`, `"type": "module"`).
+`support/env.ts` imports `scripts/_env.mjs`, which reads `import.meta.url`
+for the repo root. Loaded as CommonJS, Playwright's transform compiles
+that `.mjs` to CommonJS and `import.meta` cannot be expressed there:
+"Cannot use 'import.meta' outside a module", every spec file failing to
+load, "No tests found". It passed on one laptop Node (22.12) and failed
+on CI's (22.22) — found by the first CI run, reproduced locally with the
+CI version, fixed by loading the suite natively.
 
 **`timezoneId: "America/Los_Angeles"`, on purpose.** The first draft said
 Eastern, the spa's own zone. That would let a page that formats by the
@@ -259,19 +270,59 @@ dashboard, which is the proof the two agree. Switching user mid-test is
 role)` is the first builder: an auth user with a password
 (`auth.admin.createUser`, confirmed), a `staff` row in that organisation,
 and a `staff_roles` row for one of the four seeded roles. `client()` and
-`trackClient()` follow for stage 3. Every email and display name carries
-the run id. `cleanup()` deletes in dependency order (clients, role rows,
-staff, auth users) and runs in the fixture's `finally`, so rows go even
-when the test fails.
+`trackClient()` serve journey 2; `locationInZone()`, `service()` and
+`hours()` serve journey 3 (the seeded location moved into a zone for the
+run and put back; a bookable service with no intake and no room; the
+same weekly hours every day). Every email and display name carries the
+run id. `cleanup()` deletes in dependency order (communications, appointments,
+clients, services, role rows, staff, auth users, then the location's
+zone), runs every step even when one fails, and THROWS at the end if any
+did — a row that cannot be removed fails the run instead of accumulating.
+That rule came from a run: a super_admin fixture was refused by the
+last-super-admin trigger (a fresh stack has no other), nothing reported
+it, and the row then counted as "another super admin" for every later
+run. No journey uses super_admin now.
 
 ### Journey 1 — auth (built)
 
 A front-desk member signs in through the login page and lands on the
-dashboard; a signed-out visit to `/clients` is sent to `/login`; a
-super_admin sees the Financials nav entry and a provider, who lacks
+dashboard; a signed-out visit to `/clients` is sent to `/login`; an
+admin sees the Financials nav entry and a provider, who lacks
 `financials.view_summary`, does not (while still seeing Clients, which
 they hold, so the absence is not vacuous). Controls are found by role and
 accessible name.
+
+### Journey 2 — clients (built)
+
+The front desk creates a client through the sheet, finds them through
+the search box in the list the page re-read after saving, opens the
+profile through the row's View link, changes the communication channel
+from Email to SMS in the preferences section, and reloads: the change
+must be there after a fresh load, which is the only proof it was saved
+and not merely drawn. The value before the edit is asserted too, so the
+change is a change.
+
+### Journey 3 — scheduler (written; exposes the seam)
+
+The seeded location is put in America/New_York for the run; the browser
+is in America/Los_Angeles; a provider has hours 10:00–11:00 local, one
+60-minute slot; the front desk opens the dialog, picks client, service
+and staff, and asks for times. The journey asserts the LOCATION's time,
+`10:00 AM`. The dialog offers `7:00 AM`:
+
+```
+- "10:00 AM",
++ "7:00 AM",
+```
+
+That is the recorded two-timezone seam, exposed on the first run: the
+slot labels and the card labels format in the browser clock
+(`app/utils/appointmentTime.ts`), and the grid positions cards and builds
+its day range from it (`blockStyle`, `fetchRange` in
+`app/pages/schedule.vue`). The journey is not marked `fixme` and the
+assertion is not moved to the browser's zone; it is held out of the suite
+until the seam decision on the board is made, and it is the test that
+proves the fix when it is.
 
 ### The money journey decision (confirm before building)
 
@@ -304,9 +355,10 @@ side by side.
 2. Stage 2: `e2e/` skeleton, `tsc -p e2e` in the check job, journey 1
    (auth) passing locally and in CI — the cookie proof every later
    journey depends on.
-3. Stage 3: journeys 2 (clients) and 3 (scheduler). If 3 exposes the
-   scheduler timezone seam, stop and report; never `fixme`, never assert
-   in the browser's zone.
+3. Stage 3: journey 2 (clients) built and in the suite; journey 3
+   (scheduler) written, exposed the timezone seam on its first run, held
+   out until that decision — never `fixme`, never assert in the browser's
+   zone.
 4. Money journeys wait for the cleanup decision and their own PR.
 
 ## Decisions to confirm before building

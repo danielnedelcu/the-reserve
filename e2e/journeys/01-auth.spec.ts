@@ -29,8 +29,11 @@ test("a signed-out visit to a staff page is sent to the login page", async ({ pa
 });
 
 test("the nav shows a permission's entry to a role that holds it and hides it from one that does not", async ({ page, context, data }) => {
-  // Financials needs financials.view_summary: super_admin holds it, provider does not.
-  const owner = await data.staffMember("owner", "super_admin");
+  // Financials needs financials.view_summary: admin holds it, provider does
+  // not. Not super_admin: a fresh stack has no staff at all, so a test
+  // super_admin is the LAST active one and the last-super-admin trigger
+  // refuses to remove it — the row would outlive the run.
+  const owner = await data.staffMember("owner", "admin");
   await signIn(context, owner.email, owner.password);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Today's appointments" })).toBeVisible();
