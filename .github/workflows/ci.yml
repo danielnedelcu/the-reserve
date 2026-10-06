@@ -89,7 +89,7 @@ jobs:
       - name: Export the local stack's URL and keys
         run: npx supabase status -o env | sed -E 's/^([A-Z_0-9]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
       - name: Verify harnesses against the local stack
-        run: npm run verify:forms && npm run verify:ask && npm run verify:messages
+        run: npm run verify:forms && npm run verify:ask && npm run verify:messages && npm run verify:tables
         env:
           SUPABASE_LOCAL: "true"
           ASK_READONLY_PASSWORD: ci-test-password

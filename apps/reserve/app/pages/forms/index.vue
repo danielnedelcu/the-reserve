@@ -301,13 +301,18 @@ async function searchClients() {
     return;
   }
   searchingClients.value = true;
-  const { data } = await supabase
-    .from("clients")
-    .select("id, first_name, last_name, email")
-    .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
-    .eq("active", true)
-    .limit(8);
-  clientResults.value = (data ?? []) as ClientOption[];
+  // The same search the /clients page runs (clients_page: name, email,
+  // phone digits; words AND, escaped), eight at a time. It replaced an
+  // .or(ilike…) filter that interpolated the typed text unescaped.
+  const { data, error } = await supabase.rpc("clients_page", {
+    p_q: q,
+    p_active: "active",
+    p_sort: "name",
+    p_desc: false,
+    p_page: 1,
+    p_page_size: 8,
+  });
+  clientResults.value = error ? [] : asServerPage<ClientOption>(data, null).rows;
   searchingClients.value = false;
 }
 

@@ -22,7 +22,7 @@ test("the front desk creates a client, finds them, and a change on the profile s
   await page.getByRole("button", { name: "Save client" }).click();
 
   // Find, through the search box, in the list the page re-read after saving.
-  await page.getByRole("textbox", { name: "Search name, email, phone…" }).fill(lastName);
+  await page.getByRole("searchbox", { name: "Search name, email, phone…" }).fill(lastName);
   await expect(page.getByRole("link", { name: `${lastName}, ${firstName}` })).toBeVisible();
 
   // Open the profile.

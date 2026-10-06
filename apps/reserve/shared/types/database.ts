@@ -2545,6 +2545,17 @@ export type Database = {
         }
         Returns: string
       }
+      clients_page: {
+        Args: {
+          p_active?: string
+          p_desc?: boolean
+          p_page?: number
+          p_page_size?: number
+          p_q?: string
+          p_sort?: string
+        }
+        Returns: Json
+      }
       convert_lead: {
         Args: {
           p_delivery_email: string
@@ -2603,6 +2614,8 @@ export type Database = {
       purge_leads: { Args: never; Returns: number }
       purge_prospect_intake: { Args: never; Returns: number }
       run_communication_job: { Args: { p_job: string }; Returns: number }
+      search_like_pattern: { Args: { p_word: string }; Returns: string }
+      search_words: { Args: { p_q: string }; Returns: string[] }
       submit_form_response: {
         Args: {
           p_answers: Json

@@ -1792,6 +1792,49 @@
           "columns": [
             "stripe_customer_id"
           ]
+        },
+        {
+          "name": "clients_first_name_trgm",
+          "def": "CREATE INDEX clients_first_name_trgm ON public.clients USING gin (first_name gin_trgm_ops)",
+          "table": "public.clients",
+          "columns": [
+            "first_name"
+          ]
+        },
+        {
+          "name": "clients_last_name_trgm",
+          "def": "CREATE INDEX clients_last_name_trgm ON public.clients USING gin (last_name gin_trgm_ops)",
+          "table": "public.clients",
+          "columns": [
+            "last_name"
+          ]
+        },
+        {
+          "name": "clients_email_trgm",
+          "def": "CREATE INDEX clients_email_trgm ON public.clients USING gin (email gin_trgm_ops)",
+          "table": "public.clients",
+          "columns": [
+            "email"
+          ]
+        },
+        {
+          "name": "clients_phone_digits_trgm",
+          "def": "CREATE INDEX clients_phone_digits_trgm ON public.clients USING gin (regexp_replace(COALESCE(phone, ''::text), '\\D'::text, ''::text, 'g'::text) gin_trgm_ops)",
+          "table": "public.clients",
+          "columns": [
+            "regexp_replace"
+          ]
+        },
+        {
+          "name": "clients_org_active_name",
+          "def": "CREATE INDEX clients_org_active_name ON public.clients USING btree (organization_id, active, lower(last_name), lower(first_name))",
+          "table": "public.clients",
+          "columns": [
+            "organization_id",
+            "active",
+            "lower",
+            "lower1"
+          ]
         }
       ],
       "constraints": [
@@ -9184,6 +9227,24 @@
       "name": "public.is_admin",
       "return_type": "bool",
       "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.search_words",
+      "return_type": "_text",
+      "arguments": "p_q text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.search_like_pattern",
+      "return_type": "text",
+      "arguments": "p_word text",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.clients_page",
+      "return_type": "jsonb",
+      "arguments": "p_q text DEFAULT NULL::text, p_active text DEFAULT 'active'::text, p_sort text DEFAULT 'name'::text, p_desc boolean DEFAULT false, p_page integer DEFAULT 1, p_page_size integer DEFAULT 25",
       "type": "FUNCTION"
     }
   ],
