@@ -1,4 +1,4 @@
-import { localToUtc } from "./timezone";
+import { localToUtc, localDateKey as zonedDateKey } from "./timezone";
 
 /**
  * The pure logic behind the four scheduled communications (client
@@ -55,9 +55,10 @@ export function deliveryChannel(_preference: string): "email" {
   return "email";
 }
 
-/** "YYYY-MM-DD" of an instant, in a timezone. */
+/** "YYYY-MM-DD" of an instant, in a timezone — the shared module's, so the
+ * jobs file an appointment under the same day the schedule draws it on. */
 export function localDateKey(at: Date, timeZone: string): string {
-  return at.toLocaleDateString("en-CA", { timeZone });
+  return zonedDateKey(at, timeZone);
 }
 
 /** Shift a "YYYY-MM-DD" key by whole days, as calendar arithmetic (no tz). */

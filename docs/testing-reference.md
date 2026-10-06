@@ -292,8 +292,9 @@ In order of value:
    this needs care; see section 4.
 7. **Timezone on purpose.** Run the browser in a zone that is not the
    location's and assert the location's times. The Reserve's scheduler
-   grid still positions by the browser clock (a recorded scar), so this
-   is exactly the journey that would make that seam fail loudly.
+   grid used to position by the browser clock (a recorded scar), and this
+   is exactly the journey that made that seam fail loudly — and then
+   proved the fix (2026-10-06).
 8. **Role-and-name locators as the accessibility check.** The Reserve's
    public pages already carry the accessibility rationale in comments;
    a journey through `/join/<token>` and `/cancel/<token>` that finds

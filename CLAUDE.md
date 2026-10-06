@@ -27,6 +27,16 @@
   so a library change can't reintroduce it). Staff identity via
   current_staff_id() RPC; permission RPC param is `perm` (NOT p_key)
 - Dates: never toISOString() for day-granular keys — toLocaleDateString("en-CA")
+- Time zones: BUSINESS time — an appointment, opening hours, which day
+  something falls on — formats and buckets in the LOCATION's zone, through
+  `shared/time/zone.ts` (one module for the slots route and the schedule,
+  so the instant a rule becomes and the pixel a card lands on come from
+  the same conversion). Every helper there takes the zone as a parameter;
+  the page reads it once via useLocationTimezone(). Never the browser's
+  clock for business time: a Los Angeles browser drew a 10:00 AM New York
+  appointment at 7:00 AM (the two-timezone seam, fixed 2026-10-06, proved
+  by e2e/journeys/03-scheduler.spec.ts). PERSONAL event time — when a
+  message was sent, when a note was written — may use the viewer's clock.
 - Silent-failure assumptions: when a change depends on something that
   produces NO error if false — a cache hits, a prefix is stable, a harness
   actually connected, an optimization fires — make verifying it a build

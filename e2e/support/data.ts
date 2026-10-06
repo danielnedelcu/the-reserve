@@ -187,7 +187,13 @@ export class TestData {
     for (const r of this.roleRows) {
       await step("staff_roles", () => this.env.db.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id));
     }
-    if (this.staff.length) await step("staff", () => this.env.db.from("staff").delete().in("id", this.staff));
+    if (this.staff.length) {
+      // What a test staff member DID is referenced by audit_log.actor_staff_id
+      // with no cascade (a booking writes one). Append-only for the app;
+      // the service role removes a test run's own rows on the local stack.
+      await step("audit_log", () => this.env.db.from("audit_log").delete().in("actor_staff_id", this.staff));
+      await step("staff", () => this.env.db.from("staff").delete().in("id", this.staff));
+    }
     for (const id of this.users) await step("auth user", () => this.env.db.auth.admin.deleteUser(id));
     if (this.locationTimezone) {
       const { id, timezone } = this.locationTimezone;

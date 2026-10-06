@@ -20,9 +20,11 @@
  *   parked project, not this component's business.
  *
  * Geometry is NOT this component's business either. The day and week
- * views position cards absolutely by the browser clock (blockStyle, with
- * its scar comment); they pass position in via `style`, and this card
- * only ever paints inside the box it is given.
+ * views position cards absolutely in the location's zone (blockStyle);
+ * they pass position in via `style`, and this card only ever paints
+ * inside the box it is given. The time it PRINTS is in that same zone,
+ * passed in as `timezone` — required, so no card can fall back to the
+ * browser's clock.
  */
 export interface CardAppointment {
   id: string;
@@ -37,6 +39,8 @@ export interface CardAppointment {
 const props = withDefaults(
   defineProps<{
     appointment: CardAppointment;
+    /** The location's IANA zone; every time on the card is formatted in it. */
+    timezone: string;
     /**
      * day — full name, service, start time (the provider-lane card)
      * week — compact: short time, "First L.", service
@@ -103,7 +107,7 @@ const dimmed = computed(() => props.appointment.status === "no_show");
 const fullText = computed(() => {
   const c = props.appointment.client;
   const name = c ? `${c.first_name} ${c.last_name}` : "Client";
-  return [name, service.value, timeLabel(props.appointment.starts_at)]
+  return [name, service.value, timeLabel(props.appointment.starts_at, props.timezone)]
     .filter(Boolean)
     .join(" · ");
 });
@@ -128,7 +132,7 @@ const fullText = computed(() => {
     @click="$emit('select')"
   >
     <template v-if="variant === 'chip'">
-      <span class="text-muted-foreground shrink-0 tabular-nums">{{ shortTime(appointment.starts_at) }}</span>
+      <span class="text-muted-foreground shrink-0 tabular-nums">{{ shortTime(appointment.starts_at, timezone) }}</span>
       <span class="truncate font-medium">{{ clientName }}</span>
     </template>
 
@@ -150,7 +154,7 @@ const fullText = computed(() => {
         {{ service }}
       </div>
       <div v-if="density !== 'minimal'" class="text-muted-foreground tabular-nums">
-        {{ variant === "day" ? timeLabel(appointment.starts_at) : shortTime(appointment.starts_at) }}
+        {{ variant === "day" ? timeLabel(appointment.starts_at, timezone) : shortTime(appointment.starts_at, timezone) }}
       </div>
     </template>
   </button>
