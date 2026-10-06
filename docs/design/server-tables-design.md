@@ -405,6 +405,32 @@ refresh during hydration is answered from the server payload (Nuxt's
 default `getCachedData`). The restore runs in `onNuxtReady` instead, and
 the tables journey's reload step is what proves it.
 
+`[AS-BUILT 2026-10-06, PR 2, products_page, 2,000 products and 10,000
+clients seeded, 20 runs a case, local stack]` The products policies were
+wrapped in the same migration as the function, so there is no "before"
+to report; every case lands well inside the budget: default page 1.7ms,
+name descending 1.7ms, price 1.3ms, stock 1.3ms, margin as a manager
+1.6ms, the common word "lotion" (100 matches) 2.3ms, a SKU 2.3ms, low
+stock 1.3ms, out of stock including inactive 1.2ms (p50; max ≤ 2.5ms), no
+sequential scans. The clients cases re-run in the same session on a quiet
+machine: p50 2.7–9.8ms, phone digits 29.9ms. One reading to know about:
+the benchmark's per-index `idx_scan` deltas come from the statistics
+collector, which flushes lazily, so a case can print "idx: none" while
+`seq_scan` stays at zero; the sequential-scan count is the budget's
+signal, and it held.
+
+`[AS-BUILT 2026-10-06, PR 2]` The low-stock threshold is one shared
+definition (`shared/products/stock.ts`, `LOW_STOCK_THRESHOLD = 5`,
+`stockLevel()`): the page's badge reads it, `verify:tables` imports it
+and asserts the function's boundary against it — a product at the
+threshold is low, one above is not, zero is out and not low — and the
+SQL literal is a commented copy, so either side moving alone fails the
+harness. The cost split is proven in both directions: a viewer with
+`products.view` only gets exactly the eight catalogue fields and 42501 on
+a margin sort; a manager gets `cost_cents` and `margin_pct`, null when
+there is no cost. The products search is in the URL (decision 5), proven
+by journey 5 through a reload.
+
 ### 8. Build order
 
 1. **`/clients`, end to end — the reference implementation.** One PR:
@@ -423,6 +449,9 @@ the tables journey's reload step is what proves it.
    form to a client found through the same function.
 2. **`/products`.** Its migration and function, the `cost_cents`
    permission split, its harness cases. Small, because the pieces exist.
+   `[AS-BUILT]` Built as PR 2 on 2026-10-06; the products policies wrapped
+   in the same migration; the stock filter (`out | low`) added with the
+   shared threshold; the edit dialog reads the one row it opens.
 3. **`/financials`.** The transactions migration and function with
    `totals`/`by_staff`; `shared/time/period.ts` and its tests; the period
    selector in the URL; the cards and the per-provider table reading

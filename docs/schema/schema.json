@@ -2941,6 +2941,32 @@
             "organization_id",
             "name"
           ]
+        },
+        {
+          "name": "products_name_trgm",
+          "def": "CREATE INDEX products_name_trgm ON public.products USING gin (name gin_trgm_ops)",
+          "table": "public.products",
+          "columns": [
+            "name"
+          ]
+        },
+        {
+          "name": "products_sku_trgm",
+          "def": "CREATE INDEX products_sku_trgm ON public.products USING gin (sku gin_trgm_ops)",
+          "table": "public.products",
+          "columns": [
+            "sku"
+          ]
+        },
+        {
+          "name": "products_org_active_name",
+          "def": "CREATE INDEX products_org_active_name ON public.products USING btree (organization_id, active, lower(name))",
+          "table": "public.products",
+          "columns": [
+            "organization_id",
+            "active",
+            "lower"
+          ]
         }
       ],
       "constraints": [
@@ -9245,6 +9271,12 @@
       "name": "public.clients_page",
       "return_type": "jsonb",
       "arguments": "p_q text DEFAULT NULL::text, p_active text DEFAULT 'active'::text, p_sort text DEFAULT 'name'::text, p_desc boolean DEFAULT false, p_page integer DEFAULT 1, p_page_size integer DEFAULT 25",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.products_page",
+      "return_type": "jsonb",
+      "arguments": "p_q text DEFAULT NULL::text, p_active text DEFAULT 'active'::text, p_stock text DEFAULT NULL::text, p_sort text DEFAULT 'name'::text, p_desc boolean DEFAULT false, p_page integer DEFAULT 1, p_page_size integer DEFAULT 25",
       "type": "FUNCTION"
     }
   ],
