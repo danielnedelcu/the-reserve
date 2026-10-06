@@ -22,9 +22,11 @@ import type { ApexOptions } from "apexcharts";
  * appointments would see their own rhythm drawn as the club's, which is
  * the misleading case this chart exists to avoid.
  *
- * Days are bucketed on the viewer's browser clock, like every other
- * day-granular read on the dashboard and the schedule (the timezone
- * seam, docs/TODO.md).
+ * Days are bucketed on the viewer's browser clock, like the dashboard's
+ * other day-granular reads (the today card, the week calendar). The
+ * schedule itself moved onto the location's zone (shared/time/zone.ts,
+ * 2026-10-06); the dashboard has not, and docs/testing-design.md lists
+ * what still reads the browser's clock.
  */
 const supabase = useSupabaseClient();
 const { can } = usePermissions();

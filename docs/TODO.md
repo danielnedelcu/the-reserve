@@ -191,8 +191,15 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
-- LATENT CORRECTNESS BUG, fix deliberately, NOT in the scheduler reskin:
-  the two-timezone seam. The schedule grid positions appointments and
+- ~~LATENT CORRECTNESS BUG, fix deliberately, NOT in the scheduler reskin:
+  the two-timezone seam.~~ DONE 2026-10-06: the grid's positions, the
+  card labels and the dialog's slot labels use the location's zone through
+  one shared module, shared/time/zone.ts, which the slots route imports
+  too — one conversion, one zone, both sides. Proved by
+  e2e/journeys/03-scheduler.spec.ts: a New York location, a Los Angeles
+  browser, 10:00 AM asserted and shown. What is still on the browser
+  clock outside the schedule is the next item. The entry as it stood:
+  The schedule grid positions appointments and
   builds its day range from the VIEWER'S browser clock
   (app/pages/schedule.vue `blockStyle`, `fetchRange`), while the slots
   route computes availability in the LOCATION'S timezone
@@ -203,6 +210,17 @@ QUEUED (in order):
   side is right); it needs its own verification across a DST boundary and
   a viewer in another zone, which is why it is not folded into a visual
   change.
+- Business time still on the browser clock, outside the schedule (the
+  seam fix of 2026-10-06 covered the schedule page, its cards and its
+  dialog only): the dashboard's today card (FrontDeskToday.vue, its own
+  time formatter and a day window built from the browser) and week
+  calendar (WeekCalendar.vue), the bookings chart's day buckets
+  (BookingsChart.vue), the client profile's appointment dates
+  (clients/[id].vue), and the communication history's timestamps
+  (ClientCommunicationHistory.vue). Move each onto the location's zone
+  through shared/time/zone.ts, with a journey or unit proof per the
+  CLAUDE.md convention: business time in the location's zone, personal
+  event time (a message's sent time) may stay on the viewer's.
 
 - KPI cards — permission gate discrepancy (owed since the dashboard
   shipped): the booking counts in app/components/dashboard/KpiCards.vue

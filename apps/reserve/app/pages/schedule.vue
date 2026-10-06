@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localDateKey, localToUtc } from "~~/shared/time/zone";
+
 definePageMeta({ middleware: "can", permission: "appointments.view.own" });
 useSeoMeta({ title: "Schedule — The Reserve" });
 
@@ -16,11 +18,24 @@ const VIEWS: { key: typeof view.value; label: string }[] = [
   { key: "month", label: "Month" },
 ];
 
+// The LOCATION's zone, known before anything is positioned or labelled.
+// Every instant on this page — an appointment, "now" — becomes a day key
+// or a grid position through it, never through the browser's clock.
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
+/**
+ * Calendar arithmetic only: a "YYYY-MM-DD" key is anchored at NOON in the
+ * browser's zone, moved by whole days or months, and read back as a key
+ * in that same zone. Noon never crosses a day under any DST shift, so the
+ * browser's zone cancels out of every key this produces. Instants go
+ * through localDateKey(…, tz()) instead.
+ */
 function toDateStr(d: Date) {
-  return d.toLocaleDateString("en-CA"); // YYYY-MM-DD local
+  return d.toLocaleDateString("en-CA"); // YYYY-MM-DD, from a noon anchor
 }
-const selectedDate = ref(toDateStr(new Date()));
-const todayStr = toDateStr(new Date());
+const selectedDate = ref(localDateKey(new Date(), tz()));
+const todayStr = localDateKey(new Date(), tz());
 
 function startOfWeek(dateStr: string): Date {
   const d = new Date(`${dateStr}T12:00:00`);
@@ -126,19 +141,18 @@ interface Appt {
   resource: { name: string } | null;
 }
 
-// SCAR — the two-timezone seam (inventory, 2026-09-19). Everything on this
-// page that turns a day key into an instant or an instant into grid
-// pixels uses the VIEWER'S BROWSER CLOCK: the day range below is built
-// from browser-local midnight, and blockStyle() positions a card from
-// `getHours()`/`getMinutes()`. The slots route computes availability in
-// the LOCATION'S timezone (server/utils/timezone.ts, localToUtc). The two
-// agree only while the viewer and the location share a zone — true today,
-// one city — and a viewer elsewhere would see cards drawn at their own
-// local hour while being offered slots computed for the spa's. Recorded
-// in docs/TODO.md as a latent correctness bug to fix DELIBERATELY (the
-// fix is the location timezone on this side, not the browser's on the
-// other). Until then, keep this behaviour exactly as it is: the redesign
-// redraws these cards and must not "fix" it in passing.
+// The two-timezone seam, closed (2026-10-06). This page used to turn day
+// keys into instants and instants into grid pixels with the VIEWER'S
+// browser clock, while the slots route computed availability in the
+// LOCATION'S zone; they agreed only while viewer and location shared a
+// zone, and a Los Angeles browser drew a 10:00 AM New York appointment
+// at 7:00 AM (e2e/journeys/03-scheduler.spec.ts, which is the proof that
+// it stays closed). Both sides now import shared/time/zone.ts: the day
+// range below is the location's midnights (localToUtc), an appointment
+// is filed under the location's day (localDateKey), and blockStyle()
+// places it by the location's minutes (minutesIntoDay). Only calendar
+// arithmetic on keys is left to the browser's zone, where it cancels out
+// (see toDateStr).
 /**
  * ONE range for all three views: the month grid (whole weeks, six rows)
  * around the selected date. Day and week are always inside it, so
@@ -151,9 +165,14 @@ interface Appt {
  */
 const fetchRange = computed(() => {
   const { gridStart, gridEnd } = monthGrid.value;
-  const end = new Date(gridEnd);
-  end.setDate(end.getDate() + 1);
-  return { from: gridStart.toISOString(), to: end.toISOString() };
+  const after = new Date(gridEnd);
+  after.setDate(after.getDate() + 1);
+  // The location's midnight opening the first grid day, to the location's
+  // midnight after the last — the same conversion the slots route makes.
+  return {
+    from: localToUtc(toDateStr(gridStart), "00:00", tz()).toISOString(),
+    to: localToUtc(toDateStr(after), "00:00", tz()).toISOString(),
+  };
 });
 // Watched as a string so moving the selected date WITHIN the loaded grid
 // (next day, next week) does not re-run the query.
@@ -186,7 +205,7 @@ const {
 const apptsByDay = computed(() => {
   const map: Record<string, Appt[]> = {};
   for (const appt of appointments.value ?? []) {
-    const key = toDateStr(new Date(appt.starts_at));
+    const key = localDateKey(appt.starts_at, tz());
     (map[key] ??= []).push(appt);
   }
   return map;
@@ -220,13 +239,10 @@ const hourTop = (h: number) => pctOfDay((h - DAY_START_HOUR) * 60);
  * left edge that says whose appointment this is).
  */
 function blockStyle(appt: Appt) {
-  // SCAR: browser-local hours — see the two-timezone seam note above
-  // fetchRange. Deliberately unchanged.
-  const start = new Date(appt.starts_at);
-  const end = new Date(appt.ends_at);
-  const startMin =
-    start.getHours() * 60 + start.getMinutes() - DAY_START_HOUR * 60;
-  const lengthMin = (end.getTime() - start.getTime()) / 60_000;
+  // The location's minutes into the day — see the seam note above fetchRange.
+  const startMin = minutesIntoDay(appt.starts_at, tz()) - DAY_START_HOUR * 60;
+  const lengthMin =
+    (Date.parse(appt.ends_at) - Date.parse(appt.starts_at)) / 60_000;
   return {
     top: pctOfDay(Math.max(startMin, 0)),
     height: pctOfDay(lengthMin),
@@ -503,7 +519,7 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
         roomId: slot.roomId ?? undefined,
       },
     });
-    toast.success("Appointment booked", timeLabel(slot.startsAt));
+    toast.success("Appointment booked", timeLabel(slot.startsAt, tz()));
     bookingOpen.value = false;
     bClientId.value = "";
     bServiceId.value = "";
@@ -574,7 +590,7 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
           <UiButton
             variant="outline"
             size="sm"
-            @click="selectedDate = toDateStr(new Date())"
+            @click="selectedDate = localDateKey(new Date(), timezone)"
           >
             Today
           </UiButton>
@@ -658,6 +674,7 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
                 v-for="appt in blocksFor(member.id)"
                 :key="appt.id"
                 :appointment="appt"
+                :timezone="timezone"
                 variant="day"
                 class="absolute inset-x-1"
                 :style="blockStyle(appt)"
@@ -742,6 +759,7 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
                 v-for="appt in apptsByDay[day.dateStr] ?? []"
                 :key="appt.id"
                 :appointment="appt"
+                :timezone="timezone"
                 variant="week"
                 :density="weekDensity(appt)"
                 class="absolute"
@@ -804,6 +822,7 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
               )"
               :key="appt.id"
               :appointment="appt"
+              :timezone="timezone"
               variant="chip"
               @click.stop
               @select="detailAppt = appt"
@@ -835,8 +854,8 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
           </UiDialogTitle>
           <UiDialogDescription>
             {{ detailAppt.appointment_services[0]?.name_snapshot }} ·
-            {{ timeLabel(detailAppt.starts_at) }}–{{
-              timeLabel(detailAppt.ends_at)
+            {{ timeLabel(detailAppt.starts_at, timezone) }}–{{
+              timeLabel(detailAppt.ends_at, timezone)
             }}
             <span v-if="detailAppt.resource">
               · {{ detailAppt.resource.name }}</span
@@ -998,7 +1017,7 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
                 :disabled="booking"
                 @click="book(slot)"
               >
-                {{ timeLabel(slot.startsAt) }}
+                {{ timeLabel(slot.startsAt, timezone) }}
               </UiButton>
             </div>
             <p v-else class="text-muted-foreground mt-2 text-sm">

@@ -220,8 +220,7 @@ e2e/
 └── journeys/
     ├── 01-auth.spec.ts
     ├── 02-clients.spec.ts   — stage 3 (built)
-    └── 03-scheduler.spec.ts — stage 3: written, exposes the timezone seam
-                               (below); not in the suite until that decision
+    └── 03-scheduler.spec.ts — stage 3 (built; the proof the timezone seam stays closed)
 ```
 
 At the repo root, matching Lokl. Nothing test-only lives in the app.
@@ -302,27 +301,34 @@ must be there after a fresh load, which is the only proof it was saved
 and not merely drawn. The value before the edit is asserted too, so the
 change is a change.
 
-### Journey 3 — scheduler (written; exposes the seam)
+### Journey 3 — scheduler (built)
 
 The seeded location is put in America/New_York for the run; the browser
 is in America/Los_Angeles; a provider has hours 10:00–11:00 local, one
 60-minute slot; the front desk opens the dialog, picks client, service
-and staff, and asks for times. The journey asserts the LOCATION's time,
-`10:00 AM`. The dialog offers `7:00 AM`:
+and staff, asks for times, books the one slot, and finds the card in the
+provider's lane. Every time the journey asserts is the LOCATION's,
+`10:00 AM`.
+
+On its first run it exposed the recorded two-timezone seam — the dialog
+offered `7:00 AM`:
 
 ```
 - "10:00 AM",
 + "7:00 AM",
 ```
 
-That is the recorded two-timezone seam, exposed on the first run: the
-slot labels and the card labels format in the browser clock
-(`app/utils/appointmentTime.ts`), and the grid positions cards and builds
-its day range from it (`blockStyle`, `fetchRange` in
-`app/pages/schedule.vue`). The journey is not marked `fixme` and the
-assertion is not moved to the browser's zone; it is held out of the suite
-until the seam decision on the board is made, and it is the test that
-proves the fix when it is.
+The slot labels and the card labels formatted in the browser clock, and
+the grid positioned cards and built its day range from it. The fix
+(2026-10-06) moved all of that onto one shared module,
+`shared/time/zone.ts`, which the slots route imports too, so the
+route's instant and the grid's pixel come from the same conversion in
+the same zone; `tests/shared/zone.test.ts` round-trips both directions
+across zones that differ from the runner's. The journey's assertions
+were not changed; it passed once the page agreed with the route, and it
+is what keeps the seam closed. Still on the browser clock, outside the
+schedule: the dashboard's today card and week calendar, the client
+profile's dates, the communication history — listed on the board.
 
 ### The money journey decision (confirm before building)
 
@@ -356,9 +362,9 @@ side by side.
    (auth) passing locally and in CI — the cookie proof every later
    journey depends on.
 3. Stage 3: journey 2 (clients) built and in the suite; journey 3
-   (scheduler) written, exposed the timezone seam on its first run, held
-   out until that decision — never `fixme`, never assert in the browser's
-   zone.
+   (scheduler) exposed the timezone seam on its first run — never
+   `fixme`, never assert in the browser's zone — and joined the suite with
+   the fix, as its proof.
 4. Money journeys wait for the cleanup decision and their own PR.
 
 ## Decisions to confirm before building
