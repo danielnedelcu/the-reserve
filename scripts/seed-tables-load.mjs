@@ -1,16 +1,18 @@
 /**
  * Load seed for the server-side tables benchmark (docs/design/server-tables-design.md,
- * decision 7). Puts 10,000 clients and 2,000 products into the seeded
+ * decision 7). Puts 10,000 clients, 2,000 products and 50,000 transactions
+ * (with their lines and payments, 3% of them refunds) into the seeded
  * organisation on the LOCAL stack — never anywhere else: it refuses to run
  * without SUPABASE_LOCAL=true and the localhost guard. Clients are tagged
- * referral_source = 'LOAD-SEED', products are named 'LOAD-SEED …';
- * `--clean` removes both.
+ * referral_source = 'LOAD-SEED', products and staff are named 'LOAD-SEED …',
+ * transactions carry note 'LOAD-SEED'; `--clean` removes them all.
  *
- *   npm run seed:tables            seed 10,000 clients (or N with --count N) and 2,000 products
+ *   npm run seed:tables            seed everything (clients: --count N; transactions: --transactions N)
  *   npm run seed:tables -- --clean remove them
  */
 import { createClient } from "@supabase/supabase-js";
-import { LOCAL_MODE, guard, supabaseEnv } from "./_env.mjs";
+import pg from "pg";
+import { LOCAL_MODE, get, guard, supabaseEnv } from "./_env.mjs";
 
 if (!LOCAL_MODE) {
   console.error("SAFETY: the load seed runs on the LOCAL stack only. Set SUPABASE_LOCAL=true with the stack's env exported.");
@@ -28,17 +30,32 @@ if (org.error || !org.data) {
 }
 
 if (process.argv.includes("--clean")) {
-  const { error, count } = await admin.from("clients").delete({ count: "exact" }).eq("referral_source", TAG);
-  if (error) {
-    console.error(`clean failed: ${error.message}`);
+  // Straight SQL on the local database: 50,000 transactions and 100,000
+  // lines are not a job for ids in a URL. The ledger first (its rows
+  // reference clients and staff): payments and lines, then refunds, then
+  // originals; then the seeded staff, clients and products.
+  guard(["DATABASE_URL"]);
+  const db = new pg.Client({ connectionString: get("DATABASE_URL") });
+  await db.connect();
+  const counts = {};
+  try {
+    await db.query("begin");
+    counts.payments = (await db.query("delete from payments p using transactions t where p.transaction_id = t.id and t.note = $1", [TAG])).rowCount;
+    counts.items = (await db.query("delete from transaction_items i using transactions t where i.transaction_id = t.id and t.note = $1", [TAG])).rowCount;
+    counts.refunds = (await db.query("delete from transactions where note = $1 and refunds_transaction_id is not null", [TAG])).rowCount;
+    counts.transactions = (await db.query("delete from transactions where note = $1", [TAG])).rowCount;
+    counts.staff = (await db.query("delete from staff where display_name like $1", [`${TAG} %`])).rowCount;
+    counts.clients = (await db.query("delete from clients where referral_source = $1", [TAG])).rowCount;
+    counts.products = (await db.query("delete from products where name like $1", [`${TAG} %`])).rowCount;
+    await db.query("commit");
+  } catch (e) {
+    await db.query("rollback");
+    console.error(`clean failed: ${e.message}`);
     process.exit(1);
+  } finally {
+    await db.end();
   }
-  const products = await admin.from("products").delete({ count: "exact" }).like("name", `${TAG} %`);
-  if (products.error) {
-    console.error(`clean failed: ${products.error.message}`);
-    process.exit(1);
-  }
-  console.log(`Removed ${count} seeded clients and ${products.count} seeded products.`);
+  console.log(`Removed ${counts.transactions} seeded transactions (${counts.refunds} refunds, ${counts.items} lines, ${counts.payments} payments), ${counts.staff} staff, ${counts.clients} clients and ${counts.products} products.`);
   process.exit(0);
 }
 
@@ -104,4 +121,79 @@ for (let start = 0; start < PRODUCT_COUNT; start += 500) {
   }
   made += rows.length;
 }
-console.log(`Seeded ${made} products (named "${TAG} …"). Remove with --clean.`);
+console.log(`Seeded ${made} products (named "${TAG} …").`);
+
+// Transactions: N over the last 365 days, each with 1–3 lines (a service
+// attributed to one of five seeded providers, often a product, sometimes a
+// tip and a discount), one payment, a tenth walk-ins, and 3% refunds
+// issued one to twenty days after their original. Headers follow the
+// checkout route's arithmetic.
+const txArg = process.argv.indexOf("--transactions");
+const TXN_COUNT = txArg > -1 ? Number(process.argv[txArg + 1]) : 50_000;
+const location = await admin.from("locations").select("id").eq("organization_id", org.data.id).order("created_at").limit(1).single();
+const clientIds = (await admin.from("clients").select("id").eq("referral_source", TAG).limit(2000)).data.map((c) => c.id);
+const productNames = (await admin.from("products").select("name").like("name", `${TAG} %`).limit(200)).data.map((p) => p.name);
+const providers = [];
+for (let i = 0; i < 5; i++) {
+  const { data: s } = await admin.from("staff").insert({ organization_id: org.data.id, display_name: `${TAG} Provider ${i + 1}`, email: `load-seed-provider-${i + 1}@load.test`, bookable: true, active: i !== 4 }).select("id").single();
+  providers.push(s.id);
+}
+const cashier = providers[0];
+const SERVICES = ["Swedish Massage", "Deep Tissue", "Signature Facial", "Hot Stone", "Body Scrub", "Express Facial"];
+const METHODS = ["card_external", "cash", "stripe_card", "gift_card"];
+const DAY = 86_400_000;
+const start = Date.now() - 365 * DAY;
+let txMade = 0;
+const originals = []; // { id, at, items, total } for the refund pass
+for (let b = 0; b < TXN_COUNT; b += 500) {
+  const headers = [];
+  const lineSets = [];
+  for (let i = b; i < Math.min(b + 500, TXN_COUNT); i++) {
+    const at = new Date(start + Math.floor((i / TXN_COUNT) * 365 * DAY) + (i % 97) * 600_000).toISOString();
+    const prov = providers[i % providers.length];
+    const items = [{ kind: "service", name: SERVICES[i % SERVICES.length], total_cents: 6000 + (i % 9) * 1500, tax_cents: 0, staff_id: prov }];
+    if (i % 3 === 0) items.push({ kind: "product", name: productNames[i % productNames.length] ?? "Lotion", total_cents: 1500 + (i % 7) * 500, tax_cents: Math.round((1500 + (i % 7) * 500) * 0.08), staff_id: null });
+    if (i % 4 === 0) items.push({ kind: "tip", name: "Tip", total_cents: 1000 + (i % 5) * 200, tax_cents: 0, staff_id: prov });
+    if (i % 10 === 0) items.push({ kind: "discount", name: "Member discount", total_cents: -1000, tax_cents: 0, staff_id: null });
+    const subtotal = items.filter((x) => ["service", "product"].includes(x.kind)).reduce((a, x) => a + x.total_cents, 0);
+    const discount = -items.filter((x) => x.kind === "discount").reduce((a, x) => a + x.total_cents, 0);
+    const tax = items.reduce((a, x) => a + x.tax_cents, 0);
+    const tip = items.filter((x) => x.kind === "tip").reduce((a, x) => a + x.total_cents, 0);
+    const total = subtotal - discount + tax + tip;
+    headers.push({ organization_id: org.data.id, location_id: location.data.id, client_id: i % 10 === 0 ? null : clientIds[i % clientIds.length], subtotal_cents: subtotal, discount_cents: discount, tax_cents: tax, tip_cents: tip, total_cents: total, checked_out_by: cashier, note: TAG, created_at: at });
+    lineSets.push({ items, total, at, method: METHODS[i % METHODS.length], ref: i % 2 === 0 ? `ref-${String(i).padStart(8, "0")}` : null, refund: i % 33 === 0 });
+  }
+  const { data: rows, error } = await admin.from("transactions").insert(headers).select("id");
+  if (error) { console.error(`transactions insert failed at ${b}: ${error.message}`); process.exit(1); }
+  const lines = [];
+  const pays = [];
+  rows.forEach((r, k) => {
+    const set = lineSets[k];
+    for (const x of set.items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: x.name, quantity: 1, unit_price_cents: x.total_cents, taxable: x.tax_cents > 0, tax_cents: x.tax_cents, total_cents: x.total_cents, staff_id: x.staff_id });
+    const method = set.method === "gift_card" ? "cash" : set.method;
+    pays.push({ transaction_id: r.id, method, amount_cents: set.total, reference: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : set.ref, stripe_payment_intent_id: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : null });
+    if (set.refund) originals.push({ id: r.id, at: set.at, items: set.items, header: headers[k] });
+  });
+  const li = await admin.from("transaction_items").insert(lines);
+  if (li.error) { console.error(`items insert failed at ${b}: ${li.error.message}`); process.exit(1); }
+  const pi = await admin.from("payments").insert(pays);
+  if (pi.error) { console.error(`payments insert failed at ${b}: ${pi.error.message}`); process.exit(1); }
+  txMade += rows.length;
+  process.stdout.write(`\rtransactions ${txMade} / ${TXN_COUNT}`);
+}
+// The refunds: negative mirrors, issued later.
+for (let b = 0; b < originals.length; b += 500) {
+  const chunk = originals.slice(b, b + 500);
+  const headers = chunk.map((o, k) => ({ ...o.header, refunds_transaction_id: o.id, subtotal_cents: -o.header.subtotal_cents, discount_cents: -o.header.discount_cents, tax_cents: -o.header.tax_cents, tip_cents: -o.header.tip_cents, total_cents: -o.header.total_cents, created_at: new Date(Date.parse(o.at) + (1 + (k % 20)) * DAY).toISOString() }));
+  const { data: rows, error } = await admin.from("transactions").insert(headers).select("id");
+  if (error) { console.error(`refunds insert failed: ${error.message}`); process.exit(1); }
+  const lines = [];
+  const pays = [];
+  rows.forEach((r, k) => {
+    for (const x of chunk[k].items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: `Refund — ${x.name}`, quantity: 1, unit_price_cents: -x.total_cents, taxable: x.tax_cents > 0, tax_cents: -x.tax_cents, total_cents: -x.total_cents, staff_id: x.staff_id });
+    pays.push({ transaction_id: r.id, method: "cash", amount_cents: -chunk[k].header.total_cents, reference: null });
+  });
+  await admin.from("transaction_items").insert(lines);
+  await admin.from("payments").insert(pays);
+}
+console.log(`\nSeeded ${txMade} transactions and ${originals.length} refunds (note "${TAG}"). Remove with --clean.`);

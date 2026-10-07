@@ -38,11 +38,12 @@ Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history).
 
 ## Indexes
 
-| Name                    | Definition                                                                                                           |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| transaction_items_pkey  | CREATE UNIQUE INDEX transaction_items_pkey ON public.transaction_items USING btree (id)                              |
-| transaction_items_txn   | CREATE INDEX transaction_items_txn ON public.transaction_items USING btree (transaction_id)                          |
-| transaction_items_staff | CREATE INDEX transaction_items_staff ON public.transaction_items USING btree (staff_id) WHERE (staff_id IS NOT NULL) |
+| Name                        | Definition                                                                                                           |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| transaction_items_pkey      | CREATE UNIQUE INDEX transaction_items_pkey ON public.transaction_items USING btree (id)                              |
+| transaction_items_txn       | CREATE INDEX transaction_items_txn ON public.transaction_items USING btree (transaction_id)                          |
+| transaction_items_staff     | CREATE INDEX transaction_items_staff ON public.transaction_items USING btree (staff_id) WHERE (staff_id IS NOT NULL) |
+| transaction_items_name_trgm | CREATE INDEX transaction_items_name_trgm ON public.transaction_items USING gin (name_snapshot gin_trgm_ops)          |
 
 ## Triggers
 

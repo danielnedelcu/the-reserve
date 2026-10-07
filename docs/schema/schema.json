@@ -3285,6 +3285,22 @@
             "client_id",
             "created_at"
           ]
+        },
+        {
+          "name": "transactions_note_trgm",
+          "def": "CREATE INDEX transactions_note_trgm ON public.transactions USING gin (note gin_trgm_ops)",
+          "table": "public.transactions",
+          "columns": [
+            "note"
+          ]
+        },
+        {
+          "name": "transactions_refund_of",
+          "def": "CREATE INDEX transactions_refund_of ON public.transactions USING btree (refunds_transaction_id) WHERE (refunds_transaction_id IS NOT NULL)",
+          "table": "public.transactions",
+          "columns": [
+            "refunds_transaction_id"
+          ]
         }
       ],
       "constraints": [
@@ -3497,6 +3513,14 @@
           "columns": [
             "staff_id"
           ]
+        },
+        {
+          "name": "transaction_items_name_trgm",
+          "def": "CREATE INDEX transaction_items_name_trgm ON public.transaction_items USING gin (name_snapshot gin_trgm_ops)",
+          "table": "public.transaction_items",
+          "columns": [
+            "name_snapshot"
+          ]
         }
       ],
       "constraints": [
@@ -3667,6 +3691,14 @@
           "table": "public.payments",
           "columns": [
             "transaction_id"
+          ]
+        },
+        {
+          "name": "payments_reference_trgm",
+          "def": "CREATE INDEX payments_reference_trgm ON public.payments USING gin (reference gin_trgm_ops)",
+          "table": "public.payments",
+          "columns": [
+            "reference"
           ]
         }
       ],
@@ -9277,6 +9309,18 @@
       "name": "public.products_page",
       "return_type": "jsonb",
       "arguments": "p_q text DEFAULT NULL::text, p_active text DEFAULT 'active'::text, p_stock text DEFAULT NULL::text, p_sort text DEFAULT 'name'::text, p_desc boolean DEFAULT false, p_page integer DEFAULT 1, p_page_size integer DEFAULT 25",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.gift_card_liability",
+      "return_type": "jsonb",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.transactions_page",
+      "return_type": "jsonb",
+      "arguments": "p_from timestamp with time zone, p_to timestamp with time zone, p_q text DEFAULT NULL::text, p_kind text DEFAULT NULL::text, p_method text DEFAULT NULL::text, p_staff_id uuid DEFAULT NULL::uuid, p_sort text DEFAULT 'when'::text, p_desc boolean DEFAULT true, p_page integer DEFAULT 1, p_page_size integer DEFAULT 25",
       "type": "FUNCTION"
     }
   ],

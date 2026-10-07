@@ -144,7 +144,8 @@ const navSections = computed<NavSection[]>(() =>
           title: "Financials",
           to: "/financials",
           icon: "lucide:chart-bar",
-          show: can("financials.view_summary"),
+          // Both keys, like the page: the figures come from the ledger.
+          show: can("financials.view_summary") && can("transactions.view"),
         },
         {
           title: "Business",

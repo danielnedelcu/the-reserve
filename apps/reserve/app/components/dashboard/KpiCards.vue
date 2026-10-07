@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import { rollingDays, shiftDays } from "~~/shared/time/period";
+import { localDateKey, localToUtc } from "~~/shared/time/zone";
+
 const supabase = useSupabaseClient();
 const { can } = usePermissions();
+// The location's zone for the revenue windows (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
 
 const dollars = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
@@ -44,14 +49,25 @@ const { data: newClients } = await useAsyncData("kpi-clients", async () => {
   return data ?? [];
 });
 
-const { data: revenueRows } = await useAsyncData("kpi-revenue", async () => {
-  if (!can("financials.view_summary")) return null;
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("created_at, transaction_items(kind, total_cents)")
-    .gte("created_at", prior7.from.toISOString());
-  if (error) throw error;
-  return data ?? [];
+// Revenue: the ONE definition, transactions_page's totals (service +
+// product, pre-tax, gross of discounts, net of refunds), asked for the
+// last 7 days ending now and the 7 before, both in the location's zone.
+// No revenue is summed here or anywhere but that function.
+const { data: revenueTotals } = await useAsyncData("kpi-revenue", async () => {
+  if (!can("financials.view_summary") || !can("transactions.view")) return null;
+  const tz = timezone.value;
+  const last = rollingDays(7, tz, now);
+  const priorFrom = localToUtc(shiftDays(localDateKey(last.from, tz), -7), "00:00", tz);
+  const revenueOf = async (from: Date, to: Date) => {
+    const { data, error } = await supabase.rpc("transactions_page", {
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+      p_page_size: 1,
+    });
+    if (error) throw error;
+    return ((data as { totals?: { revenue_cents?: number } } | null)?.totals?.revenue_cents ?? 0) as number;
+  };
+  return { last7: await revenueOf(last.from, last.to), prior7: await revenueOf(priorFrom, last.from) };
 });
 
 // ---------------------------------------------------------------------------
@@ -95,16 +111,7 @@ const clientMetrics = computed(() => {
   };
 });
 
-const revenueMetrics = computed(() => {
-  if (!revenueRows.value) return null;
-  const sum = (window: { from: Date; to: Date }) =>
-    revenueRows
-      .value!.filter((txn) => within(txn.created_at, window))
-      .flatMap((txn) => txn.transaction_items ?? [])
-      .filter((item) => ["service", "product"].includes(item.kind))
-      .reduce((total, item) => total + item.total_cents, 0);
-  return { last7: sum(last7), prior7: sum(prior7) };
-});
+const revenueMetrics = computed(() => revenueTotals.value);
 
 // ---------------------------------------------------------------------------
 // Trends — the shared rule in app/utils/trend.ts (direction = arrow,

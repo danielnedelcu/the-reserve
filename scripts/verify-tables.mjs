@@ -25,7 +25,18 @@
  *     manager and NOT a viewer (both directions), the margin sort is
  *     refused to a viewer, and the low-stock boundary matches the ONE
  *     shared definition, LOW_STOCK_THRESHOLD (the SQL literal is a copy —
- *     this is what holds the two together).
+ *     this is what holds the two together);
+ *   - transactions_page: the totals equal hand-computed figures over a
+ *     ledger fixture (a sale with a discount and a tip, a gift-card sale,
+ *     a late-cancellation fee, a walk-in, and refunds issued in a LATER
+ *     period), do not change with the page size, and come back the same
+ *     with p_page_size => 1 (what the cards ask); `refunded` is true on an
+ *     original refunded later and false otherwise; by_staff keeps a
+ *     deactivated provider's money; a 16-digit reference searches without
+ *     an error; the joins degrade visibly (has_client, null names). The
+ *     ledger is append-only, so these fixtures exist on the LOCAL stack
+ *     only — on hosted the read-only cases run (42501, 22023, the shape)
+ *     and the rest prints a skip line.
  *
  * Runs against whatever scripts/_env.mjs resolves: the hosted project from
  * apps/reserve/.env, or the local stack under SUPABASE_LOCAL=true. Rows are
@@ -71,7 +82,7 @@ async function must(p, what) {
 // ---------------------------------------------------------------------------
 // Fixtures: staff with real sessions, a role with no permissions, clients
 // ---------------------------------------------------------------------------
-const made = { users: [], staff: [], roleRows: [], roles: [], clients: [], products: [], locations: [], orgs: [] };
+const made = { users: [], staff: [], roleRows: [], roles: [], clients: [], products: [], transactions: [], locations: [], orgs: [] };
 
 async function staffMember(orgId, label, roleId) {
   const email = `verify-tbl-${label}-${run}@verify.test`;
@@ -119,6 +130,42 @@ async function productsAs(session, args) {
   const { data, error } = await session.client.rpc("products_page", args);
   return { page: data, error };
 }
+/** transactions_page as a session; returns { page, error }. */
+async function txnsAs(session, args) {
+  const { data, error } = await session.client.rpc("transactions_page", args);
+  return { page: data, error };
+}
+/**
+ * A ledger row with its lines and payment, written by the service role
+ * (the ledger has no insert policy for anyone else). Header money follows
+ * the checkout route: subtotal = service + product + gift_card lines,
+ * discount_cents POSITIVE on the header (the line is negative), total =
+ * subtotal - discount + tax + tip.
+ */
+async function txn(orgId, locationId, cashierId, { clientId = null, at, items, payment, note = null, refunds = null }) {
+  const subtotal = items.filter((i) => ["service", "product", "gift_card", "late_cancellation_fee"].includes(i.kind)).reduce((a, i) => a + i.total_cents, 0);
+  const discount = -items.filter((i) => i.kind === "discount").reduce((a, i) => a + i.total_cents, 0);
+  const tax = items.reduce((a, i) => a + (i.tax_cents ?? 0), 0);
+  const tip = items.filter((i) => i.kind === "tip").reduce((a, i) => a + i.total_cents, 0);
+  const total = subtotal - discount + tax + tip;
+  const row = await must(
+    admin.from("transactions").insert({
+      organization_id: orgId, location_id: locationId, client_id: clientId, refunds_transaction_id: refunds,
+      subtotal_cents: subtotal, discount_cents: discount, tax_cents: tax, tip_cents: tip, total_cents: total,
+      checked_out_by: cashierId, note, created_at: at,
+    }).select("id").single(),
+    `transaction ${note ?? at}`,
+  );
+  made.transactions.push(row.id);
+  await must(admin.from("transaction_items").insert(items.map((i) => ({
+    transaction_id: row.id, kind: i.kind, name_snapshot: i.name, quantity: 1, unit_price_cents: i.total_cents,
+    taxable: (i.tax_cents ?? 0) > 0, tax_cents: i.tax_cents ?? 0, total_cents: i.total_cents, staff_id: i.staff_id ?? null,
+  }))), `items ${note ?? at}`);
+  // payments_stripe_intent_presence: a stripe_card payment carries its intent id.
+  await must(admin.from("payments").insert({ transaction_id: row.id, method: payment.method, amount_cents: total, reference: payment.reference ?? null, stripe_payment_intent_id: payment.method === "stripe_card" ? payment.reference : null }), `payment ${note ?? at}`);
+  return { id: row.id, total };
+}
+
 async function product(orgId, name, extra = {}) {
   const row = await must(
     admin.from("products").insert({ organization_id: orgId, name: `${TAG} ${name}`, price_cents: 1000, ...extra }).select("id").single(),
@@ -294,7 +341,124 @@ try {
     check("pages of 2 cover the six products exactly once", seen.length === 6 && new Set(seen).size === 6 && products.every((id) => seen.includes(id)));
   }
 
-  // ── 6. two organisations (local stack only) ──────────────────────────
+  // ── 6. transactions_page ─────────────────────────────────────────────
+  console.log("\ntransactions_page — the signal, the guards, the shape (every stack)");
+  const ledgerRole = await roleWith(ORG, "ledger viewer", ["transactions.view"]);
+  const ledgerViewer = await staffMember(ORG, "ledger-viewer", ledgerRole);
+  const FAR = { p_from: "1999-01-01T00:00:00Z", p_to: "1999-01-02T00:00:00Z" }; // an empty window on any stack
+  {
+    const { error } = await txnsAs(nobody, FAR);
+    check("a staff member WITHOUT transactions.view gets 42501 from transactions_page", error?.code === "42501", error?.code ?? "no error");
+    const inj = await txnsAs(holder, { ...FAR, p_sort: "t.id; drop table transactions" });
+    check("an unknown sort raises 22023", inj.error?.code === "22023", inj.error?.code ?? "no error");
+    const badKind = await txnsAs(holder, { ...FAR, p_kind: "gift" });
+    check("an unknown kind raises 22023", badKind.error?.code === "22023", badKind.error?.code ?? "no error");
+    const badRange = await txnsAs(holder, { p_from: FAR.p_to, p_to: FAR.p_from });
+    check("an empty or reversed range raises 22023 — nothing is ever summed over everything", badRange.error?.code === "22023", badRange.error?.code ?? "no error");
+    const shape = (await txnsAs(holder, { ...FAR, p_page_size: 1 })).page;
+    check("the answer carries rows, total, total_exact, totals and by_staff",
+      JSON.stringify(Object.keys(shape ?? {}).sort()) === JSON.stringify(["by_staff", "rows", "total", "total_exact", "totals"]), Object.keys(shape ?? {}).join(","));
+    check("totals carries exactly decision 2's eleven figures, zeros over an empty window",
+      JSON.stringify(Object.keys(shape?.totals ?? {}).sort()) === JSON.stringify(["avg_ticket_cents", "discounts_cents", "fees_cents", "gift_cards_sold_cents", "refunds_cents", "retail_cents", "revenue_cents", "service_cents", "tax_cents", "tips_cents", "txn_count"])
+        && Object.values(shape?.totals ?? { x: 1 }).every((v) => v === 0),
+      JSON.stringify(shape?.totals));
+    const longRef = await txnsAs(holder, { ...FAR, p_q: "4242123412341234" });
+    check("a 16-digit word is searched as text, never cast as money: no error", !longRef.error && longRef.page?.total === 0, longRef.error?.message ?? `total ${longRef.page?.total}`);
+  }
+
+  console.log("\ntransactions_page — the totals over a ledger fixture");
+  let eastRevenue = null;
+  if (!LOCAL_MODE) {
+    console.log("  skip  ledger fixtures (the ledger is append-only: its rows cannot be removed from the hosted project)");
+  } else {
+    const loc = await must(admin.from("locations").select("id").eq("organization_id", ORG).order("created_at").limit(1).single(), "location");
+    const prov = await staffMember(ORG, "provider", null);
+    const prov2 = await staffMember(ORG, "former-provider", null);
+    const spa = await client(ORG, "Sam", `Ledger-${run}`);
+    const MARCH = { p_from: "2001-03-15T00:00:00Z", p_to: "2001-03-16T00:00:00Z" };
+    const APRIL = { p_from: "2001-04-20T00:00:00Z", p_to: "2001-04-21T00:00:00Z" };
+    const BOTH = { p_from: "2001-03-01T00:00:00Z", p_to: "2001-05-01T00:00:00Z" };
+    const t1 = await txn(ORG, loc.id, holder.id, { clientId: spa, at: "2001-03-15T10:00:00Z", note: `${TAG} sale`, items: [
+      { kind: "service", name: "Facial", total_cents: 10000, staff_id: prov.id },
+      { kind: "product", name: "Lotion", total_cents: 2000, tax_cents: 160 },
+      { kind: "tip", name: "Tip", total_cents: 500, staff_id: prov.id },
+      { kind: "discount", name: "Member discount", total_cents: -1000 },
+    ], payment: { method: "cash" } });
+    const t2 = await txn(ORG, loc.id, holder.id, { clientId: spa, at: "2001-03-15T11:00:00Z", note: `${TAG} gift`, items: [
+      { kind: "gift_card", name: "Gift card", total_cents: 5000 },
+    ], payment: { method: "card_external", reference: "4242123412341234" } });
+    const t3 = await txn(ORG, loc.id, holder.id, { clientId: spa, at: "2001-03-15T12:00:00Z", note: `${TAG} fee`, items: [
+      { kind: "late_cancellation_fee", name: "Late cancellation fee (Facial)", total_cents: 5000 },
+    ], payment: { method: "stripe_card", reference: "pi_verify" } });
+    const t4 = await txn(ORG, loc.id, holder.id, { clientId: null, at: "2001-03-15T13:00:00Z", note: `${TAG} walk-in facial`, items: [
+      { kind: "service", name: "Express facial", total_cents: 3000, staff_id: prov2.id },
+    ], payment: { method: "cash" } });
+    // Refunds, issued in a LATER period: mirrors of t1 and of the fee.
+    await txn(ORG, loc.id, holder.id, { clientId: spa, at: "2001-04-20T10:00:00Z", note: `${TAG} refund of sale`, refunds: t1.id, items: [
+      { kind: "service", name: "Refund — Facial", total_cents: -10000, staff_id: prov.id },
+      { kind: "product", name: "Refund — Lotion", total_cents: -2000, tax_cents: -160 },
+      { kind: "tip", name: "Refund — Tip", total_cents: -500, staff_id: prov.id },
+      { kind: "discount", name: "Refund — Member discount", total_cents: 1000 },
+    ], payment: { method: "cash" } });
+    await txn(ORG, loc.id, holder.id, { clientId: spa, at: "2001-04-20T11:00:00Z", note: `${TAG} refund of fee`, refunds: t3.id, items: [
+      { kind: "late_cancellation_fee", name: "Refund — Late cancellation fee", total_cents: -5000 },
+    ], payment: { method: "stripe_card", reference: "pi_verify" } });
+    await must(admin.from("staff").update({ active: false }).eq("id", prov2.id), "deactivate former provider");
+
+    const march = (await txnsAs(holder, MARCH)).page;
+    const T = march?.totals ?? {};
+    check("March: four transactions, the refunds not among them (issued in April)", march?.total === 4 && T.txn_count === 4, JSON.stringify({ total: march?.total, txn_count: T.txn_count }));
+    check("revenue = service 13,000 + retail 2,000 = 15,000, pre-tax, GROSS of the discount", T.service_cents === 13000 && T.retail_cents === 2000 && T.revenue_cents === 15000, JSON.stringify(T));
+    check("tips 500, discounts 1,000, tax 160 — each its own figure, none inside revenue", T.tips_cents === 500 && T.discounts_cents === 1000 && T.tax_cents === 160);
+    check("the gift-card sale (5,000) is a liability figure, never revenue", T.gift_cards_sold_cents === 5000 && T.revenue_cents === 15000);
+    check("the late-cancellation fee (5,000) is its own figure, never revenue", T.fees_cents === 5000);
+    check("refunds 0 in March, avg ticket = (11,660 + 5,000 + 5,000 + 3,000) / 4 = 6,165", T.refunds_cents === 0 && T.avg_ticket_cents === 6165, `${T.refunds_cents} ${T.avg_ticket_cents}`);
+    const april = (await txnsAs(holder, APRIL)).page;
+    const A = april?.totals ?? {};
+    check("April: refunds 16,660 (the sale's 11,660 and the fee's 5,000), counted when ISSUED, zero tickets", A.refunds_cents === 16660 && A.txn_count === 0 && A.avg_ticket_cents === 0, JSON.stringify(A));
+    check("…and the mirrors net the April figures below zero: service -10,000, fees -5,000", A.service_cents === -10000 && A.fees_cents === -5000);
+    const both = (await txnsAs(holder, BOTH)).page?.totals ?? {};
+    check("March + April together: revenue nets to 3,000 (the walk-in's service; the sale's service AND product mirrored), fees to 0, tax to 0, refunds 16,660 — nothing filtered by sign",
+      both.revenue_cents === 3000 && both.service_cents === 3000 && both.retail_cents === 0 && both.fees_cents === 0 && both.tax_cents === 0 && both.refunds_cents === 16660, JSON.stringify(both));
+    const oneRow = (await txnsAs(holder, { ...MARCH, p_page_size: 1 })).page;
+    check("p_page_size => 1 (what the cards ask) returns the SAME totals as the full page", JSON.stringify(oneRow?.totals) === JSON.stringify(T) && oneRow?.rows.length === 1);
+    const pageTwo = (await txnsAs(holder, { ...MARCH, p_page_size: 2, p_page: 2 })).page;
+    check("the totals do not change with the page", JSON.stringify(pageTwo?.totals) === JSON.stringify(T) && pageTwo?.rows.length === 2);
+    const rowT1 = march.rows.find((r) => r.id === t1.id);
+    const rowT2 = march.rows.find((r) => r.id === t2.id);
+    check("`refunded` is true on the sale refunded in a LATER period and false on the gift-card sale", rowT1?.refunded === true && rowT2?.refunded === false);
+    check("the row carries exactly the table's fields",
+      JSON.stringify(Object.keys(rowT1).sort()) === JSON.stringify(["cashier", "cashier_id", "client", "created_at", "discount_cents", "has_client", "id", "items", "note", "payments", "refunded", "refunds_transaction_id", "subtotal_cents", "tax_cents", "tip_cents", "total_cents"]), Object.keys(rowT1).sort().join(","));
+    const byStaff = march?.by_staff ?? [];
+    const formerRow = byStaff.find((b) => b.staff_id === prov2.id);
+    check("by_staff includes the DEACTIVATED provider with their 3,000 (attribution is the line's, not the roster's)", formerRow?.service_cents === 3000 && formerRow?.active === false, JSON.stringify(formerRow));
+    check("…and the active provider's 10,000 service + 500 tips", byStaff.find((b) => b.staff_id === prov.id)?.service_cents === 10000 && byStaff.find((b) => b.staff_id === prov.id)?.tips_cents === 500);
+    check("by_staff's service sums to totals.service_cents", byStaff.reduce((a, b) => a + b.service_cents, 0) === T.service_cents);
+
+    console.log("\ntransactions_page — search, filters, and the joins that degrade visibly");
+    const ref16 = (await txnsAs(holder, { ...MARCH, p_q: "4242123412341234" })).page;
+    check("a 16-digit reference finds its payment as TEXT, without an error", ref16?.total === 1 && ref16.rows[0].id === t2.id, `total ${ref16?.total}`);
+    check("an amount '$116.60' finds the sale", (await txnsAs(holder, { ...MARCH, p_q: "$116.60" })).page?.total === 1);
+    check("an amount '50' finds both 50.00 transactions (the gift card and the fee)", (await txnsAs(holder, { ...MARCH, p_q: "50" })).page?.total === 2);
+    check("'walk' finds the walk-in (no client), through the word and the note", (await txnsAs(holder, { ...MARCH, p_q: "walk" })).page?.rows.some((r) => r.id === t4.id));
+    check("the client's name finds their three", (await txnsAs(holder, { ...MARCH, p_q: `ledger-${run}` })).page?.total === 3);
+    check("an item name finds the sale ('lotion')", (await txnsAs(holder, { ...MARCH, p_q: "lotion" })).page?.total === 1);
+    check("kind = sale is the three sales, not the fee", (await txnsAs(holder, { ...MARCH, p_kind: "sale" })).page?.total === 3);
+    check("kind = fee is the ORIGINAL fee charge only (and none in April, where its refund is)",
+      (await txnsAs(holder, { ...MARCH, p_kind: "fee" })).page?.rows.map((r) => r.id).join() === t3.id && (await txnsAs(holder, { ...APRIL, p_kind: "fee" })).page?.total === 0);
+    check("kind = refund in April is both mirrors, the fee's included", (await txnsAs(holder, { ...APRIL, p_kind: "refund" })).page?.total === 2);
+    check("method = stripe_card is the fee", (await txnsAs(holder, { ...MARCH, p_method: "stripe_card" })).page?.total === 1);
+    check("staff = the provider finds the sale carrying their lines", (await txnsAs(holder, { ...MARCH, p_staff_id: prov.id })).page?.rows.map((r) => r.id).join() === t1.id);
+    const viewerPage = (await txnsAs(ledgerViewer, MARCH)).page;
+    const vT1 = viewerPage?.rows.find((r) => r.id === t1.id);
+    check("a caller with transactions.view and NO clients.view gets has_client true with client null — never a walk-in", vT1?.has_client === true && vT1?.client === null && viewerPage.rows.find((r) => r.id === t4.id)?.has_client === false, JSON.stringify({ has: vT1?.has_client, client: vT1?.client }));
+    check("…and NO staff.view: by_staff keeps every line's money under staff_id with the name null, summing to service revenue",
+      (viewerPage?.by_staff ?? []).every((b) => b.display_name === null) && viewerPage.by_staff.reduce((a, b) => a + b.service_cents, 0) === 13000 && vT1?.cashier === null, JSON.stringify(viewerPage?.by_staff));
+    check("…while the totals are the same as the holder's", JSON.stringify(viewerPage?.totals) === JSON.stringify(T));
+    eastRevenue = T.revenue_cents;
+  }
+
+  // ── 7. two organisations (local stack only) ──────────────────────────
   console.log("\ntwo organisations — one organisation's rows never appear in the other's results");
   if (!LOCAL_MODE) {
     console.log("  skip  two-organisation isolation (needs the local stack: creates a second organisation)");
@@ -303,7 +467,7 @@ try {
     made.orgs.push(west.id);
     const loc = await must(admin.from("locations").insert({ organization_id: west.id, name: `${TAG} west spa`, timezone: "America/Los_Angeles" }).select("id").single(), "location west");
     made.locations.push(loc.id);
-    const westRole = await roleWith(west.id, "west viewer", ["clients.view", "products.view"]);
+    const westRole = await roleWith(west.id, "west viewer", ["clients.view", "products.view", "transactions.view"]);
     const westHolder = await staffMember(west.id, "west-holder", westRole);
     await client(west.id, "Maria", `Alvarez-${run}`, { email: `west.${run}@verify.test` });
     await product(west.id, "West Lotion", { sku: `WEST-${run}` });
@@ -319,12 +483,27 @@ try {
     const eastProducts = (await productsAs(holder, { p_q: mine, p_active: "all" })).page;
     check("products: the west viewer sees west's one product and none of east's six", westProducts?.total === 1 && westProducts.rows[0].sku === `WEST-${run}`, `total ${westProducts?.total}`);
     check("products: the east manager still sees exactly east's six", eastProducts?.total === 6 && !eastProducts.rows.some((r) => r.sku === `WEST-${run}`), `total ${eastProducts?.total}`);
+    const westStaff = await staffMember(west.id, "west-cashier", null);
+    await txn(west.id, loc.id, westStaff.id, { clientId: null, at: "2001-03-15T15:00:00Z", note: `${TAG} west sale`, items: [{ kind: "service", name: "West facial", total_cents: 7000, staff_id: westStaff.id }], payment: { method: "cash" } });
+    const MARCH = { p_from: "2001-03-15T00:00:00Z", p_to: "2001-03-16T00:00:00Z" };
+    const westTx = (await txnsAs(westHolder, MARCH)).page;
+    const eastTx = (await txnsAs(holder, MARCH)).page;
+    check("transactions: the west viewer sees west's one sale and totals of 7,000 — none of east's", westTx?.total === 1 && westTx?.totals.revenue_cents === 7000, JSON.stringify({ total: westTx?.total, revenue: westTx?.totals?.revenue_cents }));
+    check("transactions: east's totals exclude west's sale (still 15,000 over the same window)", eastTx?.total === 4 && eastTx?.totals.revenue_cents === eastRevenue, JSON.stringify({ total: eastTx?.total, revenue: eastTx?.totals?.revenue_cents }));
   }
 } catch (e) {
   console.error(`\nHARNESS ERROR (counts as failure): ${e.message}`);
   failed++;
   failures.push(`harness error: ${e.message}`);
 } finally {
+  // The ledger fixtures (local stack only): lines and payments first,
+  // refunds before the originals they point at.
+  if (made.transactions.length) {
+    await admin.from("payments").delete().in("transaction_id", made.transactions);
+    await admin.from("transaction_items").delete().in("transaction_id", made.transactions);
+    await admin.from("transactions").delete().in("id", made.transactions).not("refunds_transaction_id", "is", null);
+    await admin.from("transactions").delete().in("id", made.transactions);
+  }
   if (made.clients.length) await admin.from("clients").delete().in("id", made.clients);
   if (made.products.length) await admin.from("products").delete().in("id", made.products);
   for (const r of made.roleRows) await admin.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id);
