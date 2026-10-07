@@ -2596,6 +2596,7 @@ export type Database = {
       current_staff_id: { Args: never; Returns: string }
       find_or_create_dm: { Args: { p_other_staff_id: string }; Returns: string }
       get_my_permissions: { Args: never; Returns: string[] }
+      gift_card_liability: { Args: never; Returns: Json }
       has_permission: { Args: { perm: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_conversation_participant: {
@@ -2641,6 +2642,21 @@ export type Database = {
       }
       system_staff_id: { Args: { p_organization_id: string }; Returns: string }
       timemultirange: { Args: never; Returns: unknown }
+      transactions_page: {
+        Args: {
+          p_desc?: boolean
+          p_from: string
+          p_kind?: string
+          p_method?: string
+          p_page?: number
+          p_page_size?: number
+          p_q?: string
+          p_sort?: string
+          p_staff_id?: string
+          p_to: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

@@ -67,6 +67,19 @@ end if;
 The page shows that as an error, not an empty table. RLS stays the
 backstop; the check is the signal.
 
+**The invoker rule for joins.** Under `security invoker`, every table a
+page function joins is filtered by THAT table's policy, and a policy
+keyed on a different permission silently nulls or drops what the
+caller may not read: a `transactions.view` holder without `clients.view`
+sees `client: null` on a real client's sale, which the page would draw as
+"Walk-in"; a join to `staff` for attribution drops a provider's revenue
+from `by_staff` for a caller without `staff.view`. So every join in a
+page function must either degrade VISIBLY — a `has_client` flag the page
+turns into "Client hidden", a left join that keeps the money under a
+null name — or rely on a permission the page already requires. The
+harness checks the degraded side on purpose: a caller with the page's
+permission and without the joined table's gets the figures, not a hole.
+
 **When definer would be justified, and only then.** If the performance
 check (decision 7) shows a page function over the seeded load exceeding
 the budget there — p50 above 50ms or max above 200ms of database time
@@ -418,6 +431,68 @@ the benchmark's per-index `idx_scan` deltas come from the statistics
 collector, which flushes lazily, so a case can print "idx: none" while
 `seq_scan` stays at zero; the sequential-scan count is the budget's
 signal, and it held.
+
+`[AS-BUILT 2026-10-06, PR 3, transactions_page, 51,516 transactions
+(1,516 refunds) with 95,000 lines and 51,516 payments over the last
+year, plus the clients and products seeds, 20 runs a case after a
+warm-up, local stack]` The MONTH window — what the page opens on — is
+inside the budget on every case: default page 21.2ms, cards only
+(`p_page_size => 1`) 18.9ms, sort by client 23.4ms, sort by total
+21.0ms, refunds only over the year 21.4ms (p50; max ≤ 31.5ms). The YEAR
+window is NOT: default page 207ms, cards only 211ms, cash only 161ms,
+one provider 213ms, a reference search 172ms, an amount search 175ms,
+an item search ("facial", 16,652 matches) 324ms. Measured apart, the
+cost has two halves. (1) The ledger's line policies: `transaction_items_read`
+and `payments_read` keep an `exists` lookup on the parent transaction
+PER ROW (the helper calls were taken out of it; the lookup stays), and a
+year reads every line — 1.7 million primary-key lookups across the 20
+runs, about 90ms a run. Rewriting those two policies as
+`transaction_id in (select id from transactions where organization_id =
+(select current_org_id()))`, one hashed set per statement, brought the
+year from 208ms to 150ms but took the month from 28ms to 41ms; not
+taken. (2) The work itself: run as `postgres` with the same claims and
+no RLS at all — what `security definer` would cost — the year is still
+117–120ms and the item search 51ms. So no policy shape meets a 50ms
+budget over a 51,000-transaction year; the budget was written per case
+without a window in mind, and a year is 12 months of lines summed on
+every request. Options, for the owner: (a) keep invoker and state the
+budget per window — month ≤ 50ms, met; year ≤ 250ms, met except the
+common-term search; (b) put `organization_id` on `transaction_items`
+and `payments` (a trigger-kept copy of the parent's) so their policies
+become a column check like `transactions_read`, which removes half (1)
+and keeps invoker — a schema change with a backfill; (c) decision 1's
+escape hatch, definer with the three conditions, which removes all of
+(1) for ~120ms; (d) pre-aggregated daily totals for the cards, the only
+route to a year in milliseconds. `[DECIDED 2026-10-06]` Invoker
+stays, and the budget is per window: a month (or less) at p50 ≤ 50ms,
+max ≤ 200ms, unchanged; a year at p50 ≤ 400ms, max ≤ 800ms. The
+benchmark checks each case against its window's budget. Rejected, with
+the reasons: definer — measured at about 120ms for the year, not worth
+giving up RLS for; pre-aggregated totals — a second source of truth for
+revenue, which decision 2 exists to prevent; the `in`-set policy shape —
+it slows the month view, the one the page opens on, and the set it
+builds is every transaction the organisation has ever had, so it grows
+with history. The fallback that removes the policy half outright,
+`organization_id` on the two line tables, is on the policy-sweep board
+item with its measured saving and what it touches, and needs its own
+design.
+The benchmark now runs `analyze` first and discards a warm-up run: the
+first cold run after the seed printed an 11-second outlier once, which
+is what a page never sees.
+
+`[AS-BUILT 2026-10-06, PR 3]` The period selector, the totals, by_staff,
+the `refunded` flag, the Fees card, the two-key gate, the KPI card on
+the same function, the utilization table in the location's zone, and
+`gift_card_liability` are built as decisions 2 and 3 say. Two findings:
+the date picker echoes its model back through `v-model` on every
+programmatic change, which read as a user pick and turned a period
+button into a custom range, so a picked range equal to the current one
+is ignored; and a hand-computed harness figure forgot the product line's
+mirror (the function was right). Journey 6 proves the period in the URL
+with the location's dates from a Los Angeles browser; the harness proves
+the totals, the flag, by_staff with a deactivated provider, the 16-digit
+reference, the degrading joins and the fee/refund split on the local
+stack, and the signal, the guards and the shape on hosted.
 
 `[AS-BUILT 2026-10-06, PR 2]` The low-stock threshold is one shared
 definition (`shared/products/stock.ts`, `LOW_STOCK_THRESHOLD = 5`,

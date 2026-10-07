@@ -30,10 +30,11 @@ How each transaction settled. Multiple rows = split tender ("$80 gift card + res
 
 ## Indexes
 
-| Name          | Definition                                                                |
-| ------------- | ------------------------------------------------------------------------- |
-| payments_pkey | CREATE UNIQUE INDEX payments_pkey ON public.payments USING btree (id)     |
-| payments_txn  | CREATE INDEX payments_txn ON public.payments USING btree (transaction_id) |
+| Name                    | Definition                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| payments_pkey           | CREATE UNIQUE INDEX payments_pkey ON public.payments USING btree (id)                      |
+| payments_txn            | CREATE INDEX payments_txn ON public.payments USING btree (transaction_id)                  |
+| payments_reference_trgm | CREATE INDEX payments_reference_trgm ON public.payments USING gin (reference gin_trgm_ops) |
 
 ## Triggers
 

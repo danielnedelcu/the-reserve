@@ -198,11 +198,22 @@ QUEUED (in order):
   `(select current_org_id())` and `(select has_permission(…))` so
   Postgres evaluates them once per statement — same truth value, same
   rows. The clients policies are fixed (20261006 clients_policies_evaluate_once).
-  The transactions, transaction_items and payments policies are fixed in
-  server-tables PR 3, since its totals read them. The rest — every other
-  table's policies — is ONE dedicated sweep afterwards, proven the same
-  way: the harnesses and journeys unchanged before and after, and a
-  benchmark before and after on a seeded local stack.
+  The transactions, transaction_items and payments policies had their
+  helper calls wrapped in server-tables PR 3, since its totals read them
+  — but transaction_items_read and payments_read still carry an `exists`
+  lookup on the parent transaction PER ROW, because the line tables have
+  no organization_id of their own. Measured 2026-10-06 at about 90ms of
+  every year-wide transactions_page call (1.7 million primary-key lookups
+  over 20 runs at 51,516 transactions). The fix is `organization_id` on
+  transaction_items and payments — a copy of the parent's, kept by a
+  trigger, backfilled once — so their policies become the same plain
+  column check as transactions_read. It touches every writer of those
+  tables: the checkout route, the refund route and the fee engine's
+  inserts, plus the backfill, and needs its own design before the sweep
+  takes it. The rest — every other table's policies — is ONE dedicated
+  sweep afterwards, proven the same way: the harnesses and journeys
+  unchanged before and after, and a benchmark before and after on a
+  seeded local stack.
 - Pickers that load every row (found by the server-tables benchmark
   2026-10-06, when 10,000 seeded clients pushed a test client past the
   1,000-row cap): the schedule's booking dialog loads all active clients
@@ -233,8 +244,12 @@ QUEUED (in order):
   (a) revenue stays GROSS of discounts with Discounts as its own figure
   — what the cards have always shown, now written down; (b) the
   late-cancellation fee shows as its own "Fees" card, outside revenue —
-  the column comment's intent, now visible. Each is a one-line change
-  in `transactions_page` if the answer is otherwise.
+  the column comment's intent, now visible; (c) average ticket counts a
+  late-cancellation fee transaction as a ticket — unchanged behaviour,
+  carried into `transactions_page` as it was — which lowers the average
+  on a day with fees; excluding fee-only transactions from the count is
+  a one-line change. Each is a one-line change in `transactions_page`
+  if the answer is otherwise.
 
 - ~~LATENT CORRECTNESS BUG, fix deliberately, NOT in the scheduler reskin:
   the two-timezone seam.~~ DONE 2026-10-06: the grid's positions, the

@@ -78,7 +78,7 @@ const destinations = computed(() =>
       icon: "lucide:chart-bar",
       text: "Financials",
       to: "/financials",
-      show: can("financials.view_summary"),
+      show: can("financials.view_summary") && can("transactions.view"),
     },
     {
       icon: "lucide:building",

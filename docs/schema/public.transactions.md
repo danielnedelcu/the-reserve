@@ -38,11 +38,13 @@ The immutable money ledger: one row per checkout. NEVER updated or deleted (no p
 
 ## Indexes
 
-| Name                 | Definition                                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------------------- |
-| transactions_pkey    | CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (id)                           |
-| transactions_org_day | CREATE INDEX transactions_org_day ON public.transactions USING btree (organization_id, created_at DESC) |
-| transactions_client  | CREATE INDEX transactions_client ON public.transactions USING btree (client_id, created_at DESC)        |
+| Name                   | Definition                                                                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| transactions_pkey      | CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (id)                                                              |
+| transactions_org_day   | CREATE INDEX transactions_org_day ON public.transactions USING btree (organization_id, created_at DESC)                                    |
+| transactions_client    | CREATE INDEX transactions_client ON public.transactions USING btree (client_id, created_at DESC)                                           |
+| transactions_note_trgm | CREATE INDEX transactions_note_trgm ON public.transactions USING gin (note gin_trgm_ops)                                                   |
+| transactions_refund_of | CREATE INDEX transactions_refund_of ON public.transactions USING btree (refunds_transaction_id) WHERE (refunds_transaction_id IS NOT NULL) |
 
 ## Relations
 
