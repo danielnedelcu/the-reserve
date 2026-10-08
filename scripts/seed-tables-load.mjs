@@ -5,7 +5,11 @@
  * organisation on the LOCAL stack — never anywhere else: it refuses to run
  * without SUPABASE_LOCAL=true and the localhost guard. Clients are tagged
  * referral_source = 'LOAD-SEED', products and staff are named 'LOAD-SEED …',
- * transactions carry note 'LOAD-SEED'; `--clean` removes them all.
+ * transactions carry note 'LOAD-SEED'; appointments carry notes
+ * 'LOAD-SEED' (one completed hour per seeded service line, 50,000 over
+ * the five providers, each with its appointment_services line, for the
+ * schedule benchmark — docs/design/policy-sweep-design.md); `--clean`
+ * removes them all.
  *
  * Ledger rows go through the DIRECT postgres connection, each batch in
  * one transaction with the ledger's triggers ACTIVE, so the seed is
@@ -60,6 +64,8 @@ if (process.argv.includes("--clean")) {
     counts.items = (await db.query("delete from transaction_items i using transactions t where i.transaction_id = t.id and t.note = $1", [TAG])).rowCount;
     counts.refunds = (await db.query("delete from transactions where note = $1 and refunds_transaction_id is not null", [TAG])).rowCount;
     counts.transactions = (await db.query("delete from transactions where note = $1", [TAG])).rowCount;
+    counts.appointments = (await db.query("delete from appointments where notes = $1", [TAG])).rowCount; // lines cascade
+    counts.services = (await db.query("delete from services where name like $1", [`${TAG} %`])).rowCount;
     counts.staff = (await db.query("delete from staff where display_name like $1", [`${TAG} %`])).rowCount;
     counts.clients = (await db.query("delete from clients where referral_source = $1", [TAG])).rowCount;
     counts.products = (await db.query("delete from products where name like $1", [`${TAG} %`])).rowCount;
@@ -71,7 +77,7 @@ if (process.argv.includes("--clean")) {
   } finally {
     await db.end();
   }
-  console.log(`Removed ${counts.transactions} seeded transactions (${counts.refunds} refunds, ${counts.items} lines, ${counts.payments} payments), ${counts.staff} staff, ${counts.clients} clients and ${counts.products} products.`);
+  console.log(`Removed ${counts.transactions} seeded transactions (${counts.refunds} refunds, ${counts.items} lines, ${counts.payments} payments), ${counts.appointments} appointments, ${counts.services} services, ${counts.staff} staff, ${counts.clients} clients and ${counts.products} products.`);
   process.exit(0);
 }
 
@@ -232,5 +238,41 @@ for (let b = 0; b < originals.length; b += 500) {
     process.exit(1);
   }
 }
-await ledgerDb.end();
 console.log(`\nSeeded ${txMade} transactions and ${originals.length} refunds (note "${TAG}"). Remove with --clean.`);
+
+// Appointments: one completed hour per transaction, in the five providers'
+// lanes back to back (the no-double-booking exclusion holds because each
+// provider's hours are consecutive), with one appointment_services line
+// each — the schedule's shape, for the policy-sweep benchmark on
+// appointments_read's own-versus-any branch and appointment_services.
+const { rows: svc } = await ledgerDb.query("insert into services (organization_id, name, duration_minutes, price_cents, requires_intake) values ($1, $2, 60, 10000, false) returning id", [org.data.id, `${TAG} Service`]);
+const SERVICE = svc[0].id;
+const APPT_COLS = ["organization_id", "location_id", "client_id", "staff_id", "blocked_from", "blocked_until", "starts_at", "ends_at", "status", "booked_by", "notes"];
+const APPT_LINE_COLS = ["appointment_id", "service_id", "name_snapshot", "price_cents", "duration_min"];
+const HOUR = 3_600_000;
+let apptMade = 0;
+for (let b = 0; b < TXN_COUNT; b += 500) {
+  const headers = [];
+  for (let i = b; i < Math.min(b + 500, TXN_COUNT); i++) {
+    const prov = providers[i % providers.length];
+    const slot = Math.floor(i / providers.length); // this provider's n-th hour
+    const at = new Date(start + slot * HOUR);
+    const end = new Date(at.getTime() + HOUR);
+    headers.push({ organization_id: org.data.id, location_id: location.data.id, client_id: clientIds[i % clientIds.length], staff_id: prov, blocked_from: at.toISOString(), blocked_until: end.toISOString(), starts_at: at.toISOString(), ends_at: end.toISOString(), status: i % 29 === 0 ? "cancelled" : "completed", booked_by: cashier, notes: TAG });
+  }
+  try {
+    await ledgerDb.query("begin");
+    const rows = await insertMany(ledgerDb, "appointments", APPT_COLS, headers);
+    await insertMany(ledgerDb, "appointment_services", APPT_LINE_COLS, rows.map((r) => ({ appointment_id: r.id, service_id: SERVICE, name_snapshot: SERVICES[apptMade % SERVICES.length], price_cents: 10_000, duration_min: 60 })));
+    await ledgerDb.query("commit");
+  } catch (e) {
+    await ledgerDb.query("rollback").catch(() => {});
+    console.error(`appointments batch at ${b} failed: ${e.message}`);
+    process.exit(1);
+  }
+  apptMade += rows_or(headers.length);
+  process.stdout.write(`\rappointments ${apptMade} / ${TXN_COUNT}`);
+}
+function rows_or(n) { return n; }
+await ledgerDb.end();
+console.log(`\nSeeded ${apptMade} appointments with one service line each (notes "${TAG}").`);
