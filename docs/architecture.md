@@ -160,9 +160,15 @@ privileged session; give the session a user that is already the floor.**
   the PaymentIntent, the refund route pushes the Stripe refund, and only
   on success are ledger rows written. A decline writes nothing; ledger
   and bank cannot disagree.
-- **The ledger is append-only.** Refunds are negative-mirror
-  transactions referencing the original. Gift cards and (future)
-  membership credits are liabilities, not revenue.
+- **The ledger is append-only, for every role.** A trigger refuses
+  update and delete on transactions, lines and payments — the service
+  role included — and TRUNCATE is revoked; before 2026-10-08 this
+  rested on the absence of policies, which the service role bypasses.
+  Every transaction is balanced at commit by deferred constraint
+  triggers, and every write goes through one function
+  (docs/design/ledger-integrity-design.md). Refunds are negative-mirror
+  transactions referencing the original, one per original. Gift cards
+  and (future) membership credits are liabilities, not revenue.
 - **The webhook reconciles; it does not drive.** Signature-verified
   against the raw body, idempotent via `stripe_events` (insert-first;
   duplicate → 200, any other failure → 500 so Stripe redelivers). A

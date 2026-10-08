@@ -2,7 +2,7 @@
 
 ## Description
 
-The immutable money ledger: one row per checkout. NEVER updated or deleted (no policies exist). Refunds are new rows with negative amounts referencing the original via refunds_transaction_id. All financial reporting reads from here.
+The immutable money ledger: one row per checkout. Append-only for EVERY role, the service role included (trg_transactions_append_only); corrections are refunds — new rows with negative amounts referencing the original via refunds_transaction_id, one per original. Balanced at commit by assert_ledger_transaction. All financial reporting reads from here.
 
 ## Columns
 
@@ -26,27 +26,36 @@ The immutable money ledger: one row per checkout. NEVER updated or deleted (no p
 
 ## Constraints
 
-| Name                                     | Type        | Definition                                                                            |
-| ---------------------------------------- | ----------- | ------------------------------------------------------------------------------------- |
-| transactions_check                       | CHECK       | CHECK ((total_cents = (((subtotal_cents - discount_cents) + tax_cents) + tip_cents))) |
-| transactions_organization_id_fkey        | FOREIGN KEY | FOREIGN KEY (organization_id) REFERENCES organizations(id)                            |
-| transactions_location_id_fkey            | FOREIGN KEY | FOREIGN KEY (location_id) REFERENCES locations(id)                                    |
-| transactions_checked_out_by_fkey         | FOREIGN KEY | FOREIGN KEY (checked_out_by) REFERENCES staff(id)                                     |
-| transactions_client_id_fkey              | FOREIGN KEY | FOREIGN KEY (client_id) REFERENCES clients(id)                                        |
-| transactions_appointment_id_fkey         | FOREIGN KEY | FOREIGN KEY (appointment_id) REFERENCES appointments(id)                              |
-| transactions_pkey                        | PRIMARY KEY | PRIMARY KEY (id)                                                                      |
-| transactions_refunds_transaction_id_fkey | FOREIGN KEY | FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id)                      |
+| Name                                     | Type        | Definition                                                                                                                                                                                 |
+| ---------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| transactions_check                       | CHECK       | CHECK ((total_cents = (((subtotal_cents - discount_cents) + tax_cents) + tip_cents)))                                                                                                      |
+| trg_ledger_transactions_balanced         | TRIGGER     | CREATE CONSTRAINT TRIGGER trg_ledger_transactions_balanced AFTER INSERT ON public.transactions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
+| transactions_organization_id_fkey        | FOREIGN KEY | FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT                                                                                                              |
+| transactions_location_id_fkey            | FOREIGN KEY | FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE RESTRICT                                                                                                                      |
+| transactions_checked_out_by_fkey         | FOREIGN KEY | FOREIGN KEY (checked_out_by) REFERENCES staff(id) ON DELETE RESTRICT                                                                                                                       |
+| transactions_client_id_fkey              | FOREIGN KEY | FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT                                                                                                                          |
+| transactions_appointment_id_fkey         | FOREIGN KEY | FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE RESTRICT                                                                                                                |
+| transactions_pkey                        | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                                           |
+| transactions_refunds_transaction_id_fkey | FOREIGN KEY | FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT                                                                                                        |
 
 ## Indexes
 
-| Name                     | Definition                                                                                                                                 |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| transactions_pkey        | CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (id)                                                              |
-| transactions_org_day     | CREATE INDEX transactions_org_day ON public.transactions USING btree (organization_id, created_at DESC)                                    |
-| transactions_client      | CREATE INDEX transactions_client ON public.transactions USING btree (client_id, created_at DESC)                                           |
-| transactions_note_trgm   | CREATE INDEX transactions_note_trgm ON public.transactions USING gin (note gin_trgm_ops)                                                   |
-| transactions_refund_of   | CREATE INDEX transactions_refund_of ON public.transactions USING btree (refunds_transaction_id) WHERE (refunds_transaction_id IS NOT NULL) |
-| transactions_idempotency | CREATE UNIQUE INDEX transactions_idempotency ON public.transactions USING btree (organization_id, idempotency_key)                         |
+| Name                                 | Definition                                                                                                                                                      |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| transactions_pkey                    | CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (id)                                                                                   |
+| transactions_org_day                 | CREATE INDEX transactions_org_day ON public.transactions USING btree (organization_id, created_at DESC)                                                         |
+| transactions_client                  | CREATE INDEX transactions_client ON public.transactions USING btree (client_id, created_at DESC)                                                                |
+| transactions_note_trgm               | CREATE INDEX transactions_note_trgm ON public.transactions USING gin (note gin_trgm_ops)                                                                        |
+| transactions_refund_of               | CREATE INDEX transactions_refund_of ON public.transactions USING btree (refunds_transaction_id) WHERE (refunds_transaction_id IS NOT NULL)                      |
+| transactions_idempotency             | CREATE UNIQUE INDEX transactions_idempotency ON public.transactions USING btree (organization_id, idempotency_key)                                              |
+| transactions_one_refund_per_original | CREATE UNIQUE INDEX transactions_one_refund_per_original ON public.transactions USING btree (refunds_transaction_id) WHERE (refunds_transaction_id IS NOT NULL) |
+
+## Triggers
+
+| Name                             | Definition                                                                                                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| trg_ledger_transactions_balanced | CREATE CONSTRAINT TRIGGER trg_ledger_transactions_balanced AFTER INSERT ON public.transactions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
+| trg_transactions_append_only     | CREATE TRIGGER trg_transactions_append_only BEFORE DELETE OR UPDATE ON public.transactions FOR EACH ROW EXECUTE FUNCTION ledger_block_change()                                             |
 
 ## Relations
 

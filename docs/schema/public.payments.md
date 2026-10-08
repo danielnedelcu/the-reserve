@@ -19,14 +19,15 @@ How each transaction settled. Multiple rows = split tender ("$80 gift card + res
 
 ## Constraints
 
-| Name                            | Type        | Definition                                                                                                  |
-| ------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------- |
-| payments_check                  | CHECK       | CHECK (((method = 'gift_card'::text) = (gift_card_id IS NOT NULL)))                                         |
-| payments_method_check           | CHECK       | CHECK ((method = ANY (ARRAY['card_external'::text, 'gift_card'::text, 'cash'::text, 'stripe_card'::text]))) |
-| payments_stripe_intent_presence | CHECK       | CHECK (((method = 'stripe_card'::text) = (stripe_payment_intent_id IS NOT NULL)))                           |
-| payments_gift_card_id_fkey      | FOREIGN KEY | FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)                                                        |
-| payments_transaction_id_fkey    | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT                                 |
-| payments_pkey                   | PRIMARY KEY | PRIMARY KEY (id)                                                                                            |
+| Name                            | Type        | Definition                                                                                                                                                                         |
+| ------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| payments_check                  | CHECK       | CHECK (((method = 'gift_card'::text) = (gift_card_id IS NOT NULL)))                                                                                                                |
+| payments_method_check           | CHECK       | CHECK ((method = ANY (ARRAY['card_external'::text, 'gift_card'::text, 'cash'::text, 'stripe_card'::text])))                                                                        |
+| payments_stripe_intent_presence | CHECK       | CHECK (((method = 'stripe_card'::text) = (stripe_payment_intent_id IS NOT NULL)))                                                                                                  |
+| trg_ledger_payments_balanced    | TRIGGER     | CREATE CONSTRAINT TRIGGER trg_ledger_payments_balanced AFTER INSERT ON public.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
+| payments_gift_card_id_fkey      | FOREIGN KEY | FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT                                                                                                            |
+| payments_transaction_id_fkey    | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT                                                                                                        |
+| payments_pkey                   | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                                   |
 
 ## Indexes
 
@@ -38,9 +39,11 @@ How each transaction settled. Multiple rows = split tender ("$80 gift card + res
 
 ## Triggers
 
-| Name                  | Definition                                                                                                                   |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| trg_gift_card_payment | CREATE TRIGGER trg_gift_card_payment AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION apply_gift_card_payment() |
+| Name                         | Definition                                                                                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| trg_gift_card_payment        | CREATE TRIGGER trg_gift_card_payment AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION apply_gift_card_payment()                                                       |
+| trg_ledger_payments_balanced | CREATE CONSTRAINT TRIGGER trg_ledger_payments_balanced AFTER INSERT ON public.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
+| trg_payments_append_only     | CREATE TRIGGER trg_payments_append_only BEFORE DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION ledger_block_change()                                             |
 
 ## Relations
 

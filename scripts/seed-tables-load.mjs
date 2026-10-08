@@ -7,6 +7,11 @@
  * referral_source = 'LOAD-SEED', products and staff are named 'LOAD-SEED …',
  * transactions carry note 'LOAD-SEED'; `--clean` removes them all.
  *
+ * Ledger rows go through the DIRECT postgres connection, each batch in
+ * one transaction with the ledger's triggers ACTIVE, so the seed is
+ * balanced or it fails at commit; `--clean` is the one place
+ * session_replication_role = replica is set (ledger-integrity-design.md).
+ *
  *   npm run seed:tables            seed everything (clients: --count N; transactions: --transactions N)
  *   npm run seed:tables -- --clean remove them
  */
@@ -23,6 +28,15 @@ guard(["NUXT_PUBLIC_SUPABASE_URL"]);
 const { url, serviceKey } = supabaseEnv();
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 const TAG = "LOAD-SEED";
+
+/** insert into <table> (cols) values (...),(...) returning id — one statement per batch. */
+async function insertMany(db, table, cols, rows, returning = "id") {
+  if (!rows.length) return [];
+  const params = [];
+  const tuples = rows.map((r) => `(${cols.map((c) => { params.push(r[c] ?? null); return `$${params.length}`; }).join(",")})`);
+  const { rows: out } = await db.query(`insert into ${table} (${cols.join(",")}) values ${tuples.join(",")} returning ${returning}`, params);
+  return out;
+}
 
 const org = await admin.from("organizations").select("id, name").order("created_at").limit(1).maybeSingle();
 if (org.error || !org.data) {
@@ -41,6 +55,7 @@ if (process.argv.includes("--clean")) {
   const counts = {};
   try {
     await db.query("begin");
+    await db.query("set local session_replication_role = replica"); // the append-only block, skipped for cleanup only
     counts.payments = (await db.query("delete from payments p using transactions t where p.transaction_id = t.id and t.note = $1", [TAG])).rowCount;
     counts.items = (await db.query("delete from transaction_items i using transactions t where i.transaction_id = t.id and t.note = $1", [TAG])).rowCount;
     counts.refunds = (await db.query("delete from transactions where note = $1 and refunds_transaction_id is not null", [TAG])).rowCount;
@@ -146,6 +161,13 @@ const DAY = 86_400_000;
 const start = Date.now() - 365 * DAY;
 let txMade = 0;
 const originals = []; // { id, at, items, total } for the refund pass
+guard(["DATABASE_URL"]);
+const ledgerDsn = get("DATABASE_URL");
+const ledgerDb = new pg.Client({ connectionString: ledgerDsn });
+await ledgerDb.connect();
+const HEADER_COLS = ["organization_id", "location_id", "client_id", "refunds_transaction_id", "subtotal_cents", "discount_cents", "tax_cents", "tip_cents", "total_cents", "checked_out_by", "note", "created_at", "idempotency_key"];
+const LINE_COLS = ["transaction_id", "kind", "name_snapshot", "quantity", "unit_price_cents", "taxable", "tax_cents", "total_cents", "staff_id"];
+const PAY_COLS = ["transaction_id", "method", "amount_cents", "reference", "stripe_payment_intent_id"];
 for (let b = 0; b < TXN_COUNT; b += 500) {
   const headers = [];
   const lineSets = [];
@@ -164,21 +186,27 @@ for (let b = 0; b < TXN_COUNT; b += 500) {
     headers.push({ organization_id: org.data.id, location_id: location.data.id, client_id: i % 10 === 0 ? null : clientIds[i % clientIds.length], subtotal_cents: subtotal, discount_cents: discount, tax_cents: tax, tip_cents: tip, total_cents: total, checked_out_by: cashier, note: TAG, created_at: at, idempotency_key: `seed:${randomUUID()}` });
     lineSets.push({ items, total, at, method: METHODS[i % METHODS.length], ref: i % 2 === 0 ? `ref-${String(i).padStart(8, "0")}` : null, refund: i % 33 === 0 });
   }
-  const { data: rows, error } = await admin.from("transactions").insert(headers).select("id");
-  if (error) { console.error(`transactions insert failed at ${b}: ${error.message}`); process.exit(1); }
-  const lines = [];
-  const pays = [];
-  rows.forEach((r, k) => {
-    const set = lineSets[k];
-    for (const x of set.items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: x.name, quantity: 1, unit_price_cents: x.total_cents, taxable: x.tax_cents > 0, tax_cents: x.tax_cents, total_cents: x.total_cents, staff_id: x.staff_id });
-    const method = set.method === "gift_card" ? "cash" : set.method;
-    pays.push({ transaction_id: r.id, method, amount_cents: set.total, reference: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : set.ref, stripe_payment_intent_id: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : null });
-    if (set.refund) originals.push({ id: r.id, at: set.at, items: set.items, header: headers[k] });
-  });
-  const li = await admin.from("transaction_items").insert(lines);
-  if (li.error) { console.error(`items insert failed at ${b}: ${li.error.message}`); process.exit(1); }
-  const pi = await admin.from("payments").insert(pays);
-  if (pi.error) { console.error(`payments insert failed at ${b}: ${pi.error.message}`); process.exit(1); }
+  let rows;
+  try {
+    await ledgerDb.query("begin");
+    rows = await insertMany(ledgerDb, "transactions", HEADER_COLS, headers);
+    const lines = [];
+    const pays = [];
+    rows.forEach((r, k) => {
+      const set = lineSets[k];
+      for (const x of set.items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: x.name, quantity: 1, unit_price_cents: x.total_cents, taxable: x.tax_cents > 0, tax_cents: x.tax_cents, total_cents: x.total_cents, staff_id: x.staff_id });
+      const method = set.method === "gift_card" ? "cash" : set.method;
+      pays.push({ transaction_id: r.id, method, amount_cents: set.total, reference: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : set.ref, stripe_payment_intent_id: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : null });
+      if (set.refund) originals.push({ id: r.id, at: set.at, items: set.items, header: headers[k] });
+    });
+    await insertMany(ledgerDb, "transaction_items", LINE_COLS, lines);
+    await insertMany(ledgerDb, "payments", PAY_COLS, pays);
+    await ledgerDb.query("commit"); // the ledger's invariants are checked here
+  } catch (e) {
+    await ledgerDb.query("rollback").catch(() => {});
+    console.error(`ledger batch at ${b} failed at commit: ${e.message}`);
+    process.exit(1);
+  }
   txMade += rows.length;
   process.stdout.write(`\rtransactions ${txMade} / ${TXN_COUNT}`);
 }
@@ -186,15 +214,23 @@ for (let b = 0; b < TXN_COUNT; b += 500) {
 for (let b = 0; b < originals.length; b += 500) {
   const chunk = originals.slice(b, b + 500);
   const headers = chunk.map((o, k) => ({ ...o.header, refunds_transaction_id: o.id, subtotal_cents: -o.header.subtotal_cents, discount_cents: -o.header.discount_cents, tax_cents: -o.header.tax_cents, tip_cents: -o.header.tip_cents, total_cents: -o.header.total_cents, created_at: new Date(Date.parse(o.at) + (1 + (k % 20)) * DAY).toISOString(), idempotency_key: `seed:refund:${o.id}` }));
-  const { data: rows, error } = await admin.from("transactions").insert(headers).select("id");
-  if (error) { console.error(`refunds insert failed: ${error.message}`); process.exit(1); }
-  const lines = [];
-  const pays = [];
-  rows.forEach((r, k) => {
-    for (const x of chunk[k].items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: `Refund — ${x.name}`, quantity: 1, unit_price_cents: -x.total_cents, taxable: x.tax_cents > 0, tax_cents: -x.tax_cents, total_cents: -x.total_cents, staff_id: x.staff_id });
-    pays.push({ transaction_id: r.id, method: "cash", amount_cents: -chunk[k].header.total_cents, reference: null });
-  });
-  await admin.from("transaction_items").insert(lines);
-  await admin.from("payments").insert(pays);
+  try {
+    await ledgerDb.query("begin");
+    const rows = await insertMany(ledgerDb, "transactions", HEADER_COLS, headers);
+    const lines = [];
+    const pays = [];
+    rows.forEach((r, k) => {
+      for (const x of chunk[k].items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: `Refund — ${x.name}`, quantity: 1, unit_price_cents: -x.total_cents, taxable: x.tax_cents > 0, tax_cents: -x.tax_cents, total_cents: -x.total_cents, staff_id: x.staff_id });
+      pays.push({ transaction_id: r.id, method: "cash", amount_cents: -chunk[k].header.total_cents, reference: null, stripe_payment_intent_id: null });
+    });
+    await insertMany(ledgerDb, "transaction_items", LINE_COLS, lines);
+    await insertMany(ledgerDb, "payments", PAY_COLS, pays);
+    await ledgerDb.query("commit");
+  } catch (e) {
+    await ledgerDb.query("rollback").catch(() => {});
+    console.error(`refund batch failed at commit: ${e.message}`);
+    process.exit(1);
+  }
 }
+await ledgerDb.end();
 console.log(`\nSeeded ${txMade} transactions and ${originals.length} refunds (note "${TAG}"). Remove with --clean.`);

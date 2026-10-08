@@ -25,16 +25,18 @@ Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history).
 
 ## Constraints
 
-| Name                                  | Type        | Definition                                                                                                                                      |
-| ------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| transaction_items_kind_check          | CHECK       | CHECK ((kind = ANY (ARRAY['service'::text, 'product'::text, 'gift_card'::text, 'tip'::text, 'discount'::text, 'late_cancellation_fee'::text]))) |
-| transaction_items_quantity_check      | CHECK       | CHECK ((quantity > 0))                                                                                                                          |
-| transaction_items_staff_id_fkey       | FOREIGN KEY | FOREIGN KEY (staff_id) REFERENCES staff(id)                                                                                                     |
-| transaction_items_appointment_id_fkey | FOREIGN KEY | FOREIGN KEY (appointment_id) REFERENCES appointments(id)                                                                                        |
-| transaction_items_product_id_fkey     | FOREIGN KEY | FOREIGN KEY (product_id) REFERENCES products(id)                                                                                                |
-| transaction_items_gift_card_id_fkey   | FOREIGN KEY | FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)                                                                                            |
-| transaction_items_transaction_id_fkey | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT                                                                     |
-| transaction_items_pkey                | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                |
+| Name                                      | Type        | Definition                                                                                                                                                                               |
+| ----------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| transaction_items_kind_check              | CHECK       | CHECK ((kind = ANY (ARRAY['service'::text, 'product'::text, 'gift_card'::text, 'tip'::text, 'discount'::text, 'late_cancellation_fee'::text])))                                          |
+| transaction_items_quantity_check          | CHECK       | CHECK ((quantity > 0))                                                                                                                                                                   |
+| transaction_items_total_is_qty_times_unit | CHECK       | CHECK ((total_cents = (quantity * unit_price_cents)))                                                                                                                                    |
+| trg_ledger_items_balanced                 | TRIGGER     | CREATE CONSTRAINT TRIGGER trg_ledger_items_balanced AFTER INSERT ON public.transaction_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
+| transaction_items_staff_id_fkey           | FOREIGN KEY | FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE RESTRICT                                                                                                                           |
+| transaction_items_appointment_id_fkey     | FOREIGN KEY | FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE RESTRICT                                                                                                              |
+| transaction_items_product_id_fkey         | FOREIGN KEY | FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT                                                                                                                      |
+| transaction_items_gift_card_id_fkey       | FOREIGN KEY | FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT                                                                                                                  |
+| transaction_items_transaction_id_fkey     | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT                                                                                                              |
+| transaction_items_pkey                    | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                                         |
 
 ## Indexes
 
@@ -47,9 +49,11 @@ Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history).
 
 ## Triggers
 
-| Name             | Definition                                                                                                                  |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| trg_product_sale | CREATE TRIGGER trg_product_sale AFTER INSERT ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION apply_product_sale() |
+| Name                              | Definition                                                                                                                                                                               |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| trg_ledger_items_balanced         | CREATE CONSTRAINT TRIGGER trg_ledger_items_balanced AFTER INSERT ON public.transaction_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
+| trg_product_sale                  | CREATE TRIGGER trg_product_sale AFTER INSERT ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION apply_product_sale()                                                              |
+| trg_transaction_items_append_only | CREATE TRIGGER trg_transaction_items_append_only BEFORE DELETE OR UPDATE ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION ledger_block_change()                                 |
 
 ## Relations
 

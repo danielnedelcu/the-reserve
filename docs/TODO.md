@@ -237,7 +237,16 @@ QUEUED (in order):
   atomic, idempotent `write_ledger_transaction` with the three writers
   on it; PR 2 the deferred constraint triggers, the check, the
   update/delete block, the TRUNCATE revoke and `verify-ledger`. The 4a
-  design doc and testing-design.md are corrected.
+  design doc and testing-design.md are corrected. BOTH BUILT 2026-10-08
+  (PR #26, and the ledger_integrity migration): the ledger is now
+  append-only for every role and balanced at commit.
+- Client data erasure: a client with sales history cannot be deleted —
+  the ledger references them (`restrict`, ledger-integrity-design.md) —
+  so an erasure request must ANONYMISE the client record (name, contact
+  details, date of birth, notes, address, emergency contact) while
+  keeping the row for the ledger. Design it before the first request
+  arrives: which fields, who may run it, the audit row, and what the
+  ledger shows afterwards.
 - Stripe test-mode harness for the late-cancellation fee writer (the
   cancel route needs a cancel token inside the fee window, a Stripe
   customer with a saved card and a live test-mode charge, so no harness
