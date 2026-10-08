@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SearchOption } from "~/components/ServerSearchSelect.vue";
 import {
   FIELD_TYPES,
   CONTACT_FIELD_KEYS,
@@ -289,37 +290,27 @@ interface ClientOption {
   last_name: string;
   email: string | null;
 }
-const clientQuery = ref("");
-const clientResults = ref<ClientOption[]>([]);
 const selectedClient = ref<ClientOption | null>(null);
-const searchingClients = ref(false);
 
-async function searchClients() {
-  const q = clientQuery.value.trim();
-  if (q.length < 2) {
-    clientResults.value = [];
-    return;
-  }
-  searchingClients.value = true;
-  // The same search the /clients page runs (clients_page: name, email,
-  // phone digits; words AND, escaped), eight at a time. It replaced an
-  // .or(ilike…) filter that interpolated the typed text unescaped.
-  const { data, error } = await supabase.rpc("clients_page", {
-    p_q: q,
-    p_active: "active",
-    p_sort: "name",
-    p_desc: false,
-    p_page: 1,
-    p_page_size: 8,
-  });
-  clientResults.value = error ? [] : asServerPage<ClientOption>(data, null).rows;
-  searchingClients.value = false;
+// The same search the /clients page runs (clients_page: name, email,
+// phone digits; words AND, escaped), eight at a time, through the shared
+// server-searched picker (ServerSearchSelect: debounce, newest search
+// wins). It replaced an .or(ilike…) filter that interpolated the typed
+// text unescaped, then a hand-rolled list without either.
+async function searchClients(term: string, signal: AbortSignal): Promise<SearchOption<ClientOption>[]> {
+  const { data, error } = await supabase
+    .rpc("clients_page", { p_q: term || undefined, p_active: "active", p_sort: "name", p_desc: false, p_page: 1, p_page_size: 8 })
+    .abortSignal(signal);
+  return asServerPage<ClientOption>(data, error).rows.map((c) => ({
+    value: c.id,
+    label: `${c.first_name} ${c.last_name}`,
+    description: c.email ?? undefined,
+    data: c,
+  }));
 }
 
 function chooseClient(client: ClientOption) {
   selectedClient.value = client;
-  clientResults.value = [];
-  clientQuery.value = "";
   // Their address is the obvious default, and it is editable.
   if (client.email) recipientEmail.value = client.email;
 }
@@ -328,8 +319,6 @@ function openSend(def: DefinitionSummary) {
   sendingFor.value = def;
   recipientEmail.value = "";
   selectedClient.value = null;
-  clientQuery.value = "";
-  clientResults.value = [];
   result.value = null;
   sendOpen.value = true;
 }
@@ -760,38 +749,16 @@ function fieldSummary(field: FormField): string {
               </UiButton>
             </div>
             <template v-else>
-              <UiInput
+              <ServerSearchSelect
                 id="client-search"
-                v-model="clientQuery"
-                placeholder="Search by name or email"
+                :model-value="null"
                 class="mt-1.5"
-                @input="searchClients"
+                :search="searchClients"
+                placeholder="Search by name or email"
+                empty-text="No matching clients."
+                clear-on-select
+                @select="(o) => chooseClient(o.data as ClientOption)"
               />
-              <ul
-                v-if="clientResults.length"
-                class="mt-2 divide-y rounded-lg border"
-              >
-                <li v-for="c in clientResults" :key="c.id">
-                  <button
-                    type="button"
-                    class="hover:bg-muted/50 w-full px-3 py-2 text-left"
-                    @click="chooseClient(c)"
-                  >
-                    <span class="text-sm"
-                      >{{ c.first_name }} {{ c.last_name }}</span
-                    >
-                    <span class="text-muted-foreground ml-2 text-xs">{{
-                      c.email
-                    }}</span>
-                  </button>
-                </li>
-              </ul>
-              <p
-                v-else-if="clientQuery.trim().length >= 2 && !searchingClients"
-                class="text-muted-foreground mt-2 text-sm"
-              >
-                No matching clients.
-              </p>
               <p class="text-muted-foreground mt-1.5 text-xs">
                 This form has no name or email questions, so it can only go to
                 someone already on file.

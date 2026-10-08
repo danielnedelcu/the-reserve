@@ -214,13 +214,20 @@ QUEUED (in order):
   sweep afterwards, proven the same way: the harnesses and journeys
   unchanged before and after, and a benchmark before and after on a
   seeded local stack.
-- Pickers that load every row (found by the server-tables benchmark
+- ~~Pickers that load every row (found by the server-tables benchmark
   2026-10-06, when 10,000 seeded clients pushed a test client past the
   1,000-row cap): the schedule's booking dialog loads all active clients
   (app/pages/schedule.vue, `booking-clients`), checkout.vue loads all
   active clients and all active products, and the command palette caps
-  clients at 500. Move each onto clients_page / products_page with a
-  search box, the way the forms page's picker was moved in PR 1.
+  clients at 500.~~ DONE 2026-10-07 (server tables PR 4): one shared
+  `ServerSearchSelect` (app/components/ServerSearchSelect.vue, Lokl's
+  SearchSelect server mode — 300ms debounce, AbortController, newest
+  search wins in app/utils/latestSearch.ts) on the booking dialog, both
+  checkout pickers, the forms send dialog and the command palette, each
+  calling clients_page / products_page. Proven by journeys 03, 07 and 08
+  booking, ringing up and opening a client who sorts past 1,100 fillers.
+  Left loading whole: services, staff and the bookable-staff lists
+  (bounded by the roster and the catalogue, not by growth).
 - Ledger integrity claim without a trigger (found by the server-tables
   survey 2026-10-06): docs/design/migration4a-design.md says
   `sum(payments) = transactions.total` is "asserted by trigger", and no

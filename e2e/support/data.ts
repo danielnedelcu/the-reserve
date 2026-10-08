@@ -39,6 +39,7 @@ export class TestData {
   private clients: string[] = [];
   private services: string[] = [];
   private products: string[] = [];
+  private bulkClients = false;
   private locationTimezone: { id: string; timezone: string } | null = null;
 
   private constructor(readonly env: TestEnv, readonly orgId: string) {}
@@ -98,6 +99,27 @@ export class TestData {
   /** Track a client the journey made through the UI, so cleanup takes it. */
   trackClient(id: string): void {
     this.clients.push(id);
+  }
+
+  /**
+   * Many clients at once, tagged through referral_source so cleanup takes
+   * them with one filtered delete (that many ids in a URL would fail
+   * silently). Last names `${prefix}-${tag}-00001` … sort together, so a
+   * client named after them sorts past the first thousand — the case the
+   * old load-everything pickers could not reach.
+   */
+  async clientsBulk(count: number, prefix = "Aa"): Promise<void> {
+    const rows = Array.from({ length: count }, (_, i) => ({
+      organization_id: this.orgId,
+      first_name: "Filler",
+      last_name: `${prefix}-${this.tag}-${String(i + 1).padStart(5, "0")}`,
+      referral_source: this.tag,
+    }));
+    for (let at = 0; at < rows.length; at += 1000) {
+      const { error } = await this.env.db.from("clients").insert(rows.slice(at, at + 1000));
+      if (error) throw new Error(`clientsBulk: ${error.message}`);
+    }
+    this.bulkClients = true;
   }
 
   /** A retail product in the seeded organisation, named with the tag (names are unique per organisation). */
@@ -210,6 +232,7 @@ export class TestData {
       await step("appointments", () => this.env.db.from("appointments").delete().in("client_id", this.clients));
       await step("clients", () => this.env.db.from("clients").delete().in("id", this.clients));
     }
+    if (this.bulkClients) await step("bulk clients", () => this.env.db.from("clients").delete().eq("referral_source", this.tag));
     if (this.services.length) await step("services", () => this.env.db.from("services").delete().in("id", this.services));
     if (this.products.length) await step("products", () => this.env.db.from("products").delete().in("id", this.products));
     for (const r of this.roleRows) {

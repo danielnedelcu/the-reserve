@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { localDateKey, localToUtc } from "~~/shared/time/zone";
+import type { SearchOption } from "~/components/ServerSearchSelect.vue";
 
 definePageMeta({ middleware: "can", permission: "appointments.view.own" });
 useSeoMeta({ title: "Schedule — The Reserve" });
@@ -433,18 +434,29 @@ const slotsLoading = ref(false);
 const booking = ref(false);
 const slotsFetched = ref(false);
 
-const { data: clientOptions } = await useAsyncData(
-  "booking-clients",
-  async () => {
-    if (!can("appointments.create")) return [];
-    const { data } = await supabase
-      .from("clients")
-      .select("id, first_name, last_name")
-      .eq("active", true)
-      .order("last_name");
-    return data ?? [];
-  },
-);
+// The client picker searches clients_page as you type (ServerSearchSelect):
+// the dialog used to load every active client and was cut at max_rows, so
+// a client past the first thousand could not be booked.
+interface ClientHit { id: string; first_name: string; last_name: string; email: string | null; phone: string | null }
+async function searchClients(term: string, signal: AbortSignal): Promise<SearchOption<ClientHit>[]> {
+  const { data, error } = await supabase
+    .rpc("clients_page", { p_q: term || undefined, p_active: "active", p_sort: "name", p_desc: false, p_page: 1, p_page_size: 20 })
+    .abortSignal(signal);
+  return asServerPage<ClientHit>(data, error).rows.map((c) => ({
+    value: c.id,
+    label: `${c.last_name}, ${c.first_name}`,
+    description: c.email ?? c.phone ?? undefined,
+    data: c,
+  }));
+}
+async function lookupClient(id: string, signal: AbortSignal): Promise<SearchOption<ClientHit> | null> {
+  const { data } = await supabase.from("clients").select("id, first_name, last_name, email, phone").eq("id", id).abortSignal(signal).maybeSingle();
+  return data ? { value: data.id, label: `${data.last_name}, ${data.first_name}`, description: data.email ?? data.phone ?? undefined, data } : null;
+}
+const bClientModel = computed({
+  get: () => bClientId.value || null,
+  set: (v: string | null) => (bClientId.value = v ?? ""),
+});
 
 const { data: serviceOptions } = await useAsyncData(
   "booking-services",
@@ -941,14 +953,15 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
         <div class="grid gap-4">
           <div>
             <label class="text-sm font-medium" for="b-client">Client</label>
-            <UiSelect v-model="bClientId">
-              <UiSelectTrigger id="b-client" class="mt-1.5" placeholder="Select a client…" />
-              <UiSelectContent>
-                <UiSelectItem v-for="c in clientOptions" :key="c.id" :value="c.id">
-                  {{ c.last_name }}, {{ c.first_name }}
-                </UiSelectItem>
-              </UiSelectContent>
-            </UiSelect>
+            <ServerSearchSelect
+              id="b-client"
+              v-model="bClientModel"
+              class="mt-1.5"
+              :search="searchClients"
+              :lookup="lookupClient"
+              placeholder="Search clients…"
+              empty-text="No client matches."
+            />
           </div>
 
           <div>

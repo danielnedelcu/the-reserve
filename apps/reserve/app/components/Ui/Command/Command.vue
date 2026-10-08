@@ -18,6 +18,14 @@
   export const [useCommand, provideCommandContext] = createContext<{
     allItems: Ref<Map<string, string>>;
     allGroups: Ref<Map<string, Set<string>>>;
+    /**
+     * Local addition, not in ui-thing's copy: ids of items the local
+     * filter must not hide — rows a SERVER search already matched, on
+     * fields the rendered text may not carry. Set through UiCommandItem's
+     * `always-visible`. `force: false` in ui-thing.config.ts is what keeps
+     * a CLI `add` from overwriting it; re-add this component deliberately.
+     */
+    keptItems: Ref<Set<string>>;
     filterState: {
       search: string;
       filtered: { count: number; items: Map<string, number>; groups: Set<string> };
@@ -46,6 +54,7 @@
 
   const allItems = ref<Map<string, string>>(new Map());
   const allGroups = ref<Map<string, Set<string>>>(new Map());
+  const keptItems = ref<Set<string>>(new Set());
 
   const { contains } = useFilter({ sensitivity: "base" });
   const filterState = reactive({
@@ -73,7 +82,7 @@
 
     // Check which items should be included
     for (const [id, value] of allItems.value) {
-      const score = contains(value, filterState.search);
+      const score = keptItems.value.has(id) || contains(value, filterState.search);
       filterState.filtered.items.set(id, score ? 1 : 0);
       if (score) itemCount++;
     }
@@ -91,11 +100,15 @@
     filterState.filtered.count = itemCount;
   }
 
+  // Items that arrive AFTER the search changed (a server search answering
+  // 300ms later) must be filtered too, or their group stays hidden until
+  // the next keystroke — so the item map is watched as well as the search.
   watch(
-    () => filterState.search,
+    [() => filterState.search, allItems],
     () => {
       filterItems();
-    }
+    },
+    { deep: true }
   );
-  provideCommandContext({ allItems, allGroups, filterState });
+  provideCommandContext({ allItems, allGroups, filterState, keptItems });
 </script>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { SearchOption } from "~/components/ServerSearchSelect.vue";
+
 definePageMeta({ middleware: "can", permission: "pos.checkout" });
 useSeoMeta({ title: "Checkout — The Reserve" });
 
@@ -106,23 +108,37 @@ watch(
 // ---------------------------------------------------------------------------
 // Clients (standalone flow) + products + tax rate
 // ---------------------------------------------------------------------------
-const { data: clients } = await useAsyncData("checkout-clients", async () => {
-  const { data } = await supabase
-    .from("clients")
-    .select("id, first_name, last_name")
-    .eq("active", true)
-    .order("last_name");
-  return data ?? [];
-});
-
-const { data: products } = await useAsyncData("checkout-products", async () => {
-  const { data } = await supabase
-    .from("products")
-    .select("id, name, price_cents, taxable, stock_quantity")
-    .eq("active", true)
-    .order("name");
-  return data ?? [];
-});
+// Clients and products are searched on the server as you type
+// (ServerSearchSelect on clients_page and products_page): the lists used
+// to load every active row and were cut at max_rows without an error.
+interface ClientHit { id: string; first_name: string; last_name: string; email: string | null; phone: string | null }
+async function searchClients(term: string, signal: AbortSignal): Promise<SearchOption<ClientHit>[]> {
+  const { data, error } = await supabase
+    .rpc("clients_page", { p_q: term || undefined, p_active: "active", p_sort: "name", p_desc: false, p_page: 1, p_page_size: 20 })
+    .abortSignal(signal);
+  return asServerPage<ClientHit>(data, error).rows.map((c) => ({
+    value: c.id,
+    label: `${c.last_name}, ${c.first_name}`,
+    description: c.email ?? c.phone ?? undefined,
+    data: c,
+  }));
+}
+async function lookupClient(id: string, signal: AbortSignal): Promise<SearchOption<ClientHit> | null> {
+  const { data } = await supabase.from("clients").select("id, first_name, last_name, email, phone").eq("id", id).abortSignal(signal).maybeSingle();
+  return data ? { value: data.id, label: `${data.last_name}, ${data.first_name}`, description: data.email ?? data.phone ?? undefined, data } : null;
+}
+interface ProductHit { id: string; name: string; price_cents: number; taxable: boolean; stock_quantity: number }
+async function searchProducts(term: string, signal: AbortSignal): Promise<SearchOption<ProductHit>[]> {
+  const { data, error } = await supabase
+    .rpc("products_page", { p_q: term || undefined, p_active: "active", p_sort: "name", p_desc: false, p_page: 1, p_page_size: 20 })
+    .abortSignal(signal);
+  return asServerPage<ProductHit>(data, error).rows.map((p) => ({
+    value: p.id,
+    label: p.name,
+    description: `${dollars(p.price_cents)}${p.stock_quantity === 0 ? " · out of stock" : ""}`,
+    data: p,
+  }));
+}
 
 const { data: location } = await useAsyncData("checkout-location", async () => {
   const { data } = await supabase
@@ -150,15 +166,6 @@ const { data: bookableStaff } = await useAsyncData(
 // ---------------------------------------------------------------------------
 // Add lines
 // ---------------------------------------------------------------------------
-const productSearch = ref("");
-const productMatches = computed(() => {
-  const q = productSearch.value.trim().toLowerCase();
-  if (!q) return [];
-  return (products.value ?? [])
-    .filter((p) => p.name.toLowerCase().includes(q))
-    .slice(0, 6);
-});
-
 function addProduct(product: {
   id: string;
   name: string;
@@ -182,7 +189,6 @@ function addProduct(product: {
       productId: product.id,
     });
   }
-  productSearch.value = "";
 }
 
 const giftAmount = ref<number | null>(null);
@@ -433,22 +439,16 @@ async function completeCheckout() {
           <label class="text-sm font-medium" for="co-client"
             >Client (optional)</label
           >
-          <UiSelect v-model="clientId">
-            <UiSelectTrigger
-              id="co-client"
-              class="mt-1.5"
-              placeholder="Walk-in / no client"
-            />
-            <UiSelectContent>
-              <UiSelectItem :value="null as never" text="Walk-in / no client" />
-              <UiSelectItem
-                v-for="client in clients"
-                :key="client.id"
-                :value="client.id"
-                :text="`${client.last_name}, ${client.first_name}`"
-              />
-            </UiSelectContent>
-          </UiSelect>
+          <ServerSearchSelect
+            id="co-client"
+            v-model="clientId"
+            class="mt-1.5"
+            :search="searchClients"
+            :lookup="lookupClient"
+            placeholder="Walk-in / no client"
+            clear-label="Walk-in / no client"
+            empty-text="No client matches."
+          />
           <p class="text-muted-foreground mt-1.5 text-xs">
             Attaching a client emails them a receipt and links the sale to their
             history.
@@ -506,36 +506,16 @@ async function completeCheckout() {
           <label class="text-sm font-medium" for="co-product"
             >Add retail product</label
           >
-          <UiInput
+          <ServerSearchSelect
             id="co-product"
-            v-model="productSearch"
-            placeholder="Search products…"
+            :model-value="null"
             class="mt-1.5"
+            :search="searchProducts"
+            placeholder="Search products…"
+            empty-text="No product matches."
+            clear-on-select
+            @select="(o) => addProduct(o.data as ProductHit)"
           />
-          <ul
-            v-if="productMatches.length"
-            class="mt-2 overflow-hidden rounded-md border"
-          >
-            <li v-for="product in productMatches" :key="product.id">
-              <button
-                class="hover:bg-secondary/60 flex w-full items-center justify-between px-3 py-2 text-left text-sm"
-                @click="addProduct(product)"
-              >
-                <span>
-                  {{ product.name }}
-                  <span
-                    v-if="product.stock_quantity === 0"
-                    class="text-destructive text-xs"
-                  >
-                    (out of stock)
-                  </span>
-                </span>
-                <span class="tabular-nums">{{
-                  dollars(product.price_cents)
-                }}</span>
-              </button>
-            </li>
-          </ul>
         </section>
 
         <!-- Gift card + discount, side by side -->
