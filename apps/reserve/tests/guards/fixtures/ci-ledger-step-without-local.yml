@@ -1,3 +1,7 @@
+# FIXTURE for tests/guards/ciLocalOnly.test.ts — a copy of .github/workflows/ci.yml
+# with the bug of commit cc9b771 reintroduced: the verify:audit step sits between
+# the verify:ledger step's `run` and its `env`, so the ledger step has no
+# SUPABASE_LOCAL. The guard test must name that job, step and harness.
 # The gate. A change that breaks the typecheck, a unit test, or lint
 # cannot merge: main requires the "typecheck + tests" and "lint" checks.
 # Lint was advisory until the sweep took it to zero (PR #1); it is
@@ -131,8 +135,6 @@ jobs:
           SUPABASE_LOCAL: "true"
       - name: verify:ledger against the running app (local only; writes ledger rows)
         run: npm run verify:ledger
-        env:
-          SUPABASE_LOCAL: "true"
       - name: verify:audit against the running app (local only; writes audit rows)
         run: npm run verify:audit
         env:
