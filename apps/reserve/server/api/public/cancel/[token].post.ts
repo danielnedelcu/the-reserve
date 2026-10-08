@@ -8,6 +8,7 @@ import {
   consumesWaiver,
 } from "~~/server/utils/cancellationPolicy";
 import { chargeSavedCard } from "~~/server/utils/chargeSavedCard";
+import { writeLedgerTransaction } from "~~/server/utils/ledgerWrite";
 import { notifyStaffWithPermission } from "~~/server/utils/notifyStaff";
 import { sendMail } from "~~/server/utils/mailer";
 import { cancellationNoticeEmail } from "~~/server/utils/emailTemplates";
@@ -136,65 +137,60 @@ export default defineEventHandler(async (event) => {
     p_organization_id: appointment.organization_id,
   });
 
-  // 4a. The ledger: one transaction, one fee line, one card payment.
+  // 4a. The ledger: one transaction, one fee line, one card payment, in
+  // ONE call keyed by the PaymentIntent, so a retry cannot record the fee
+  // twice (docs/design/ledger-integrity-design.md).
   let transactionId: string | null = null;
   if (paymentIntentId && systemStaffId) {
-    const { data: txn, error: txnError } = await admin
-      .from("transactions")
-      .insert({
-        organization_id: appointment.organization_id,
-        location_id: appointment.location_id,
-        client_id: appointment.client_id,
-        appointment_id: appointment.id,
-        subtotal_cents: feeCents,
-        discount_cents: 0,
-        tax_cents: 0,
-        tip_cents: 0,
-        total_cents: feeCents,
-        checked_out_by: systemStaffId,
-        note: "Late cancellation fee (cancelled via link)",
-      })
-      .select("id")
-      .single();
-    if (txnError || !txn) {
-      console.error(
-        `[cancel link] ORPHANED fee ${paymentIntentId}: charged, no ledger row:`,
-        txnError?.message,
-      );
-    } else {
-      transactionId = txn.id;
-      const { error: itemError } = await admin.from("transaction_items").insert({
-        transaction_id: txn.id,
-        kind: "late_cancellation_fee",
-        name_snapshot: `Late cancellation fee (${appointment.serviceName})`,
-        quantity: 1,
-        unit_price_cents: feeCents,
-        total_cents: feeCents,
-        taxable: false,
-        tax_cents: 0,
-        appointment_id: appointment.id,
-      });
-      const { error: paymentError } = itemError
-        ? { error: null }
-        : await admin.from("payments").insert({
-            transaction_id: txn.id,
+    try {
+      transactionId = await writeLedgerTransaction(admin, {
+        organizationId: appointment.organization_id,
+        idempotencyKey: `pi:${paymentIntentId}`,
+        header: {
+          location_id: appointment.location_id,
+          client_id: appointment.client_id,
+          appointment_id: appointment.id,
+          subtotal_cents: feeCents,
+          discount_cents: 0,
+          tax_cents: 0,
+          tip_cents: 0,
+          total_cents: feeCents,
+          checked_out_by: systemStaffId,
+          note: "Late cancellation fee (cancelled via link)",
+        },
+        items: [
+          {
+            kind: "late_cancellation_fee",
+            appointment_id: appointment.id,
+            product_id: null,
+            gift_card_id: null,
+            staff_id: null,
+            name_snapshot: `Late cancellation fee (${appointment.serviceName})`,
+            quantity: 1,
+            unit_price_cents: feeCents,
+            taxable: false,
+            tax_cents: 0,
+            total_cents: feeCents,
+            discount_reason: null,
+          },
+        ],
+        payments: [
+          {
             method: "stripe_card",
             amount_cents: feeCents,
-            stripe_payment_intent_id: paymentIntentId,
+            gift_card_id: null,
             reference: paymentIntentId,
-          });
-      if (itemError || paymentError) {
-        // Same cleanup as checkout: no half-written transaction. The
-        // webhook then flags the intent as orphaned, loudly.
-        await admin.from("payments").delete().eq("transaction_id", txn.id);
-        await admin.from("transaction_items").delete().eq("transaction_id", txn.id);
-        await admin.from("transactions").delete().eq("id", txn.id);
-        transactionId = null;
-        console.error(
-          `[cancel link] ORPHANED fee ${paymentIntentId}: ledger rolled back:`,
-          (itemError ?? paymentError)?.message,
-        );
-      }
+            stripe_payment_intent_id: paymentIntentId,
+          },
+        ],
+      });
+    } catch (ledgerError) {
+      // Nothing half-written: the function wrote all or nothing. The
+      // webhook then flags the intent as orphaned, loudly.
+      console.error(
+        `[cancel link] ORPHANED fee ${paymentIntentId}: charged, no ledger row:`,
+        (ledgerError as { statusMessage?: string; message?: string }).statusMessage ?? (ledgerError as Error).message,
+      );
     }
   } else if (paymentIntentId) {
     console.error(

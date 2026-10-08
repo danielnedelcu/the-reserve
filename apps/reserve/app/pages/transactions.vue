@@ -90,6 +90,16 @@ function clientName(txn: TxnRow) {
 const detail = ref<TxnRow | null>(null);
 const refunding = ref(false);
 
+// /transactions?open=<id> opens that transaction's detail (the "View
+// refund" link on an already-refunded toast lands here).
+const route = useRoute();
+onMounted(() => {
+  const open = typeof route.query.open === "string" ? route.query.open : null;
+  if (!open) return;
+  const row = (transactions.value ?? []).find((t) => t.id === open);
+  if (row) detail.value = row;
+});
+
 async function refund(txn: TxnRow) {
   if (
     !confirm(
@@ -104,7 +114,16 @@ async function refund(txn: TxnRow) {
     detail.value = null;
     await refresh();
   } catch (error: unknown) {
-    const err = error as { data?: { statusMessage?: string } };
+    const err = error as { data?: { statusCode?: number; statusMessage?: string; data?: { refundTransactionId?: string } } };
+    const refundId = err.data?.data?.refundTransactionId;
+    if (err.data?.statusCode === 409 && refundId) {
+      // Not a failure: the refund already exists (a second click, or a
+      // retry after a lost response). Show it, with the way to it.
+      toast.link("Already refunded", `${dollars(txn.total_cents)} was refunded earlier.`, { label: "View refund", to: `/transactions?open=${refundId}` });
+      detail.value = null;
+      await refresh();
+      return;
+    }
     toast.error("Refund failed", err.data?.statusMessage ?? "Unknown error");
   } finally {
     refunding.value = false;

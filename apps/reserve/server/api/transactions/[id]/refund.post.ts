@@ -2,7 +2,7 @@ import {
   serverSupabaseClient,
   serverSupabaseServiceRole,
 } from "#supabase/server";
-import type { TablesInsert } from "~~/shared/types/database";
+import { writeLedgerTransaction } from "~~/server/utils/ledgerWrite";
 
 /**
  * POST /api/transactions/:id/refund — full refund (v1).
@@ -11,6 +11,12 @@ import type { TablesInsert } from "~~/shared/types/database";
  * refunds_transaction_id. The original is never touched. Triggers do the rest:
  * negative gift_card payments restore balances; negative product items restore
  * stock (pos_refund_fix migration).
+ *
+ * The mirror is written by ONE call to write_ledger_transaction, keyed
+ * `refund:<original id>` — one refund per original, and a retry after a
+ * lost response returns the same mirror. The Stripe refund is created
+ * under its own idempotency key so a retry never refunds twice
+ * (docs/design/ledger-integrity-design.md).
  */
 export default defineEventHandler(async (event) => {
   await requireUser(event);
@@ -68,7 +74,13 @@ export default defineEventHandler(async (event) => {
     .eq("refunds_transaction_id", originalId)
     .limit(1);
   if (priorRefund?.length) {
-    throw createError({ statusCode: 409, statusMessage: "Already refunded" });
+    // Not a failure: the page shows it as "already refunded" with a link
+    // to the mirror. A retry after a lost response lands here too.
+    throw createError({
+      statusCode: 409,
+      statusMessage: "Already refunded",
+      data: { refundTransactionId: priorRefund[0]!.id },
+    });
   }
 
   // Gift cards SOLD in the original: refundable only if unused; deactivate on refund.
@@ -108,10 +120,10 @@ export default defineEventHandler(async (event) => {
     const intentId = stripePayment.stripe_payment_intent_id;
     if (!intentId) continue;
     try {
-      await useStripe().refunds.create({
-        payment_intent: intentId,
-        amount: stripePayment.amount_cents,
-      });
+      await useStripe().refunds.create(
+        { payment_intent: intentId, amount: stripePayment.amount_cents },
+        { idempotencyKey: `reserve-refund-${original.id}-${intentId}` },
+      );
     } catch (error: unknown) {
       const stripeError = error as { message?: string };
       throw createError({
@@ -120,11 +132,36 @@ export default defineEventHandler(async (event) => {
       });
     }
   }
-  // The negative mirror
-  const { data: refundTxn, error: txnError } = await admin
-    .from("transactions")
-    .insert({
-      organization_id: orgId,
+  // The negative mirror: header, lines and payments in one call.
+  const itemRows = (original.transaction_items ?? []).map(
+    (item: Record<string, unknown>) => ({
+      kind: item.kind as string,
+      appointment_id: (item.appointment_id as string | null) ?? null,
+      product_id: (item.product_id as string | null) ?? null,
+      gift_card_id: (item.gift_card_id as string | null) ?? null,
+      staff_id: (item.staff_id as string | null) ?? null,
+      name_snapshot: `Refund — ${item.name_snapshot}`,
+      quantity: item.quantity as number,
+      unit_price_cents: -(item.unit_price_cents as number),
+      taxable: item.taxable as boolean,
+      tax_cents: -(item.tax_cents as number),
+      total_cents: -(item.total_cents as number),
+      discount_reason: (item.discount_reason as string | null) ?? null,
+    }),
+  );
+  const paymentRows = (original.payments ?? []).map(
+    (payment: Record<string, unknown>) => ({
+      method: payment.method as string,
+      amount_cents: -(payment.amount_cents as number),
+      gift_card_id: (payment.gift_card_id as string | null) ?? null, // negative amount → trigger restores balance
+      stripe_payment_intent_id: (payment.stripe_payment_intent_id as string | null) ?? null,
+      reference: payment.reference ? `refund: ${payment.reference}` : null,
+    }),
+  );
+  const refundId = await writeLedgerTransaction(admin, {
+    organizationId: orgId,
+    idempotencyKey: `refund:${original.id}`,
+    header: {
       location_id: original.location_id,
       client_id: original.client_id,
       appointment_id: original.appointment_id,
@@ -136,70 +173,11 @@ export default defineEventHandler(async (event) => {
       total_cents: -original.total_cents,
       checked_out_by: staffId,
       note: `Refund of transaction ${original.id.slice(0, 8)}`,
-    })
-    .select("id")
-    .single();
-  if (txnError || !refundTxn) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: txnError?.message ?? "Refund write failed",
-    });
-  }
-
-  const itemRows = (original.transaction_items ?? []).map(
-    (item: Record<string, unknown>) => ({
-      transaction_id: refundTxn.id,
-      kind: item.kind,
-      appointment_id: item.appointment_id,
-      product_id: item.product_id,
-      gift_card_id: item.gift_card_id,
-      staff_id: item.staff_id,
-      name_snapshot: `Refund — ${item.name_snapshot}`,
-      quantity: item.quantity,
-      unit_price_cents: -(item.unit_price_cents as number),
-      taxable: item.taxable,
-      tax_cents: -(item.tax_cents as number),
-      total_cents: -(item.total_cents as number),
-      discount_reason: item.discount_reason,
-    }),
-  );
-  const { error: itemsError } = await admin
-    .from("transaction_items")
-    .insert(itemRows as TablesInsert<"transaction_items">[]);
-  if (itemsError) {
-    await admin
-      .from("transaction_items")
-      .delete()
-      .eq("transaction_id", refundTxn.id);
-    await admin.from("transactions").delete().eq("id", refundTxn.id);
-    throw createError({ statusCode: 500, statusMessage: itemsError.message });
-  }
-
-  const paymentRows = (original.payments ?? []).map(
-    (payment: Record<string, unknown>) => ({
-      transaction_id: refundTxn.id,
-      method: payment.method,
-      amount_cents: -(payment.amount_cents as number),
-      gift_card_id: payment.gift_card_id, // negative amount → trigger restores balance
-      stripe_payment_intent_id: payment.stripe_payment_intent_id ?? null,
-      reference: payment.reference ? `refund: ${payment.reference}` : null,
-    }),
-  );
-  const { error: paymentsError } = await admin
-    .from("payments")
-    .insert(paymentRows as TablesInsert<"payments">[]);
-  if (paymentsError) {
-    await admin.from("payments").delete().eq("transaction_id", refundTxn.id);
-    await admin
-      .from("transaction_items")
-      .delete()
-      .eq("transaction_id", refundTxn.id);
-    await admin.from("transactions").delete().eq("id", refundTxn.id);
-    throw createError({
-      statusCode: 500,
-      statusMessage: paymentsError.message,
-    });
-  }
+    },
+    items: itemRows,
+    payments: paymentRows,
+  });
+  const refundTxn = { id: refundId };
 
   // Deactivate refunded (unused) gift cards
   for (const cardItem of soldCards) {

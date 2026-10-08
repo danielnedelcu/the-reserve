@@ -17,5 +17,12 @@ export function useToast() {
       useSonner.warning(title, { description, duration: 6000 }),
     info: (title: string, description?: string) =>
       useSonner.info(title, { description, duration: 5000 }),
+    /** An informational toast with one action, e.g. "View refund" → a page. */
+    link: (title: string, description: string, action: { label: string; to: string }) =>
+      useSonner.info(title, {
+        description,
+        duration: 10000,
+        action: { label: action.label, onClick: () => navigateTo(action.to) },
+      }),
   };
 }

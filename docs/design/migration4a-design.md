@@ -35,7 +35,9 @@ transactions (1) ── transaction_items (N) ── payments (N)
   future payroll reads come from here).
 - **payments**: how it settled. method: card_external | gift_card | cash
   (| stripe_* in 4b). gift_card_id when redeeming. Sum(payments) must equal
-  transactions.total — enforced in the checkout route, asserted by trigger.
+  transactions.total — enforced in the checkout route. `[AS-BUILT]` No
+  trigger asserts it (found 2026-10-07; docs/design/ledger-integrity-design.md
+  adds the deferred constraint triggers).
 
 ## Refunds
 
@@ -43,18 +45,34 @@ A refund is a NEW transaction with negative amounts, `refunds_transaction_id`
 pointing at the original. Originals are never edited. Requires `pos.refund`.
 Partial refunds = refund transaction containing only the refunded lines.
 
-## Money integrity rules (enforced by trigger, not just app code)
+## Money integrity rules
 
-1. total = subtotal - discount + tax + tip on every transaction.
-2. sum(payments.amount) = transactions.total.
-3. Gift card balance never below zero (redemption trigger).
+`[AS-BUILT]` Corrected 2026-10-07: the heading used to say "enforced by
+trigger, not just app code", and rule 2 never was. What the schema does:
+
+1. total = subtotal - discount + tax + tip on every transaction — a CHECK
+   constraint on `transactions`.
+2. sum(payments.amount) = transactions.total — enforced in the checkout
+   route only (a 422 before any write). No trigger or constraint; the
+   hosted ledger satisfies it (checked read-only 2026-10-07, 11 rows).
+   docs/design/ledger-integrity-design.md makes it, and the line-item and
+   refund-mirror rules, deferred constraint triggers checked at commit.
+3. Gift card balance never below zero (redemption trigger + check).
 4. Product stock decremented on sale (floor at zero, warn don't block).
+
+Also not true as built: the ledger is "immutable" only by the ABSENCE of
+update/delete policies, which the service role bypasses, and the three
+writers use that to delete half-written rows on failure. The same design
+doc adds the atomic write function and the update/delete block.
 
 ## Flows (4a)
 
 - **Checkout** (server route `POST /api/checkout`): cart in → validate,
   price from catalog/products (never trust client), compute tax on taxable
-  lines, apply tip + discounts, write txn + items + payments atomically,
+  lines, apply tip + discounts, write txn + items + payments (`[AS-BUILT]`
+  NOT atomically: three PostgREST requests with compensating deletes, so a
+  crash between them leaves a header without lines or payments — found
+  2026-10-07, fixed by ledger-integrity-design.md's write function),
   triggers maintain gift-card balances & stock, email receipt, audit_log row.
 - **Gift card sale**: a `gift_card` item creates the gift_cards row (code
   generated) — sale is liability, not revenue (reporting reads kinds).

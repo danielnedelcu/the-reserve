@@ -5,6 +5,7 @@ import {
 import { sendMail } from "~~/server/utils/mailer";
 import { receiptEmail } from "~~/server/utils/emailTemplates";
 import { chargeSavedCard } from "~~/server/utils/chargeSavedCard";
+import { checkoutIdempotencyKey, writeLedgerTransaction } from "~~/server/utils/ledgerWrite";
 
 /**
  * POST /api/checkout — the money route.
@@ -12,12 +13,22 @@ import { chargeSavedCard } from "~~/server/utils/chargeSavedCard";
  * Everything is re-priced SERVER-SIDE from the catalog/appointment snapshots;
  * client-sent amounts are only accepted for tip, discount, and gift-card
  * amounts (which are choices, not prices). The ledger accepts no authenticated
- * inserts, so all writes go through the service role here. Inserts are
- * sequential with cleanup-on-failure; converting to a single DB-transaction
- * RPC is a known hardening TODO.
+ * inserts, so the write goes through the service role here — ONE call to
+ * write_ledger_transaction, which lands header, lines and payments in one
+ * database transaction (docs/design/ledger-integrity-design.md). The
+ * three sequential inserts with compensating deletes are gone.
+ *
+ * Idempotent: the page mints `idempotencyKey` once per cart and sends it
+ * with every attempt. A retry after a lost response returns the same
+ * transaction; the same key with an edited cart is a 409 carrying the
+ * first transaction's id, and the page mints a new key only after telling
+ * staff the first sale went through. With a saved-card charge the Stripe
+ * PaymentIntent is created under the same key, so a retry never charges
+ * twice, and the ledger key becomes the intent's id.
  *
  * Body:
  * {
+ *   idempotencyKey: uuid,           // minted by the page, once per cart
  *   clientId?: uuid,
  *   appointmentId?: uuid,           // pre-fills nothing server-side; service
  *                                   // items carry their own appointmentId
@@ -88,6 +99,10 @@ export default defineEventHandler(async (event) => {
   const paymentsIn = Array.isArray(body?.payments) ? body.payments : [];
   if (!items.length) {
     throw createError({ statusCode: 422, statusMessage: "Cart is empty" });
+  }
+  const cartKey = String(body?.idempotencyKey ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cartKey)) {
+    throw createError({ statusCode: 422, statusMessage: "Missing idempotency key" });
   }
 
   // ---- location + tax rate ---------------------------------------------------
@@ -460,6 +475,7 @@ export default defineEventHandler(async (event) => {
         reserve_client_id: body.clientId,
         reserve_staff_id: staffId,
       },
+      idempotencyKey: `reserve-checkout-${cartKey}`,
     });
     if (!charged.ok) {
       throw createError({ statusCode: 402, statusMessage: charged.message });
@@ -469,9 +485,27 @@ export default defineEventHandler(async (event) => {
     paymentRows[stripeCharge.rowIndex]!.reference = charged.paymentIntentId;
   }
 
-  // ---- writes (service role; cleanup on failure) --------------------------------
-  // 1. gift cards being SOLD
-  for (const giftCard of giftCardsToCreate) {
+  // ---- writes (service role) ---------------------------------------------------
+  const idempotencyKey = checkoutIdempotencyKey(stripeCharge ? paymentRows[stripeCharge.rowIndex]!.stripe_payment_intent_id : null, cartKey);
+
+  // 1. gift cards being SOLD. A retry must not mint a second card: if this
+  // key already wrote a transaction, its gift-card lines are reused, so
+  // the write below compares equal and returns that transaction.
+  const { data: priorByKey } = await admin
+    .from("transactions")
+    .select("id, transaction_items(kind, gift_card_id, gift_cards(code))")
+    .eq("organization_id", orgId)
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+  const priorCards = ((priorByKey?.transaction_items ?? []) as { kind: string; gift_card_id: string | null; gift_cards: { code: string } | null }[])
+    .filter((l) => l.kind === "gift_card" && l.gift_card_id);
+  for (const [n, giftCard] of giftCardsToCreate.entries()) {
+    const prior = priorCards[n];
+    if (prior) {
+      rows[giftCard.rowIndex]!.gift_card_id = prior.gift_card_id;
+      rows[giftCard.rowIndex]!.name_snapshot += ` (${prior.gift_cards?.code ?? ""})`;
+      continue;
+    }
     const { data: created, error } = await admin
       .from("gift_cards")
       .insert({
@@ -495,11 +529,12 @@ export default defineEventHandler(async (event) => {
     rows[giftCard.rowIndex]!.name_snapshot += ` (${created.code})`;
   }
 
-  // 2. the transaction
-  const { data: txn, error: txnError } = await admin
-    .from("transactions")
-    .insert({
-      organization_id: orgId,
+  // 2. the transaction, its lines and its payments — one call, one
+  // database transaction; a retry returns the existing id.
+  const transactionId = await writeLedgerTransaction(admin, {
+    organizationId: orgId,
+    idempotencyKey,
+    header: {
       location_id: location.id,
       client_id: body.clientId ?? null,
       appointment_id: body.appointmentId ?? null,
@@ -510,40 +545,18 @@ export default defineEventHandler(async (event) => {
       total_cents: total,
       checked_out_by: staffId,
       note: body.note || null,
-    })
-    .select("id")
-    .single();
-  if (txnError || !txn) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: txnError?.message ?? "Ledger write failed",
-    });
+    },
+    items: rows,
+    payments: paymentRows,
+  });
+  const txn = { id: transactionId };
+  if (priorByKey) {
+    // A genuine retry: the sale was recorded the first time; the audit
+    // row and the receipt went out then.
+    return { id: txn.id, totalCents: total };
   }
 
-  // 3. items + payments (cleanup transaction on failure)
-  const { error: itemsError } = await admin
-    .from("transaction_items")
-    .insert(rows.map((r) => ({ ...r, transaction_id: txn.id })));
-  if (itemsError) {
-    await admin.from("transaction_items").delete().eq("transaction_id", txn.id);
-    await admin.from("transactions").delete().eq("id", txn.id);
-    throw createError({ statusCode: 500, statusMessage: itemsError.message });
-  }
-
-  const { error: paymentsError } = await admin
-    .from("payments")
-    .insert(paymentRows.map((p) => ({ ...p, transaction_id: txn.id })));
-  if (paymentsError) {
-    await admin.from("payments").delete().eq("transaction_id", txn.id);
-    await admin.from("transaction_items").delete().eq("transaction_id", txn.id);
-    await admin.from("transactions").delete().eq("id", txn.id);
-    throw createError({
-      statusCode: 500,
-      statusMessage: paymentsError.message,
-    });
-  }
-
-  // 4. audit
+  // 3. audit
   const { error: auditError } = await admin.from("audit_log").insert({
     actor_staff_id: staffId,
     actor_user_id: actorUserId(user.user),
@@ -560,7 +573,7 @@ export default defineEventHandler(async (event) => {
     console.error("[checkout] audit failed:", auditError);
   }
 
-  // 5. receipt (fire and forget)
+  // 4. receipt (fire and forget)
   try {
     if (body.clientId) {
       const { data: client } = await admin
