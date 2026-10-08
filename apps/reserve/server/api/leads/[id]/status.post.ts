@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
   const { data: staffId } = await client.rpc("current_staff_id");
   if (!staffId) throw createError({ statusCode: 403, statusMessage: "No staff identity in scope" });
 
-  const { data: before } = await client.from("leads").select("status").eq("id", id).maybeSingle();
+  const { data: before } = await client.from("leads").select("status, organization_id").eq("id", id).maybeSingle();
   if (!before) throw createError({ statusCode: 404, statusMessage: "Lead not found" });
   if (before.status === "converted") {
     throw createError({
@@ -56,6 +56,7 @@ export default defineEventHandler(async (event) => {
 
   const admin = serverSupabaseServiceRole(event);
   await admin.from("audit_log").insert({
+    organization_id: before.organization_id, // the lead row's
     actor_staff_id: staffId,
     actor_user_id: actorUserId(user),
     action: "lead.status_changed",

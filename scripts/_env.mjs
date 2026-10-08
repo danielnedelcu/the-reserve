@@ -135,3 +135,23 @@ export function supabaseEnv() {
   }
   return { url, anonKey, serviceKey };
 }
+
+/**
+ * The gate for a harness that creates staff or grants roles — writes
+ * into the append-only audit_log — and so runs on the LOCAL stack only
+ * (CLAUDE.md). Under SUPABASE_LOCAL it returns and the run proceeds. On a
+ * hosted stack it prints a skip line and exits 0: nothing was run, and
+ * nothing should be. On a stack whose URL is local WITHOUT SUPABASE_LOCAL
+ * it refuses with exit 1 instead of skipping — the only way to reach
+ * that state is a step that forgot the variable, and a green skip there
+ * is a silent failure (CI run 37727683375: verify:leads skipped all 72
+ * cases and passed).
+ */
+export function localOnlyOrSkip(url) {
+  if (LOCAL_MODE) return;
+  if (isLocalUrl(url)) {
+    refuse(`the stack at ${url} is local but SUPABASE_LOCAL is not set: a local-only harness would skip every case and pass. Set SUPABASE_LOCAL=true on this step.`);
+  }
+  console.log("  skip  every case: this harness creates staff and grants roles, which writes append-only audit rows, so it runs on the LOCAL stack only (CLAUDE.md); nothing was run on this hosted stack");
+  process.exit(0);
+}

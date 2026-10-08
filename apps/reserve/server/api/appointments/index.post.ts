@@ -246,6 +246,7 @@ export default defineEventHandler(async (event) => {
   // --- Audit --------------------------------------------------------------------
   const admin = serverSupabaseServiceRole(event);
   await admin.from("audit_log").insert({
+    organization_id: service.organization_id, // the row the booking was priced from
     actor_staff_id: staffIdSelf,
     actor_user_id: actorUserId(user),
     action: "appointment.booked",

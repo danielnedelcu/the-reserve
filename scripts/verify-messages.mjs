@@ -32,9 +32,11 @@ import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { LOCAL_MODE, ROOT, get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, ROOT, get, guard, pgSsl, supabaseEnv, localOnlyOrSkip } from "./_env.mjs";
+import { scrubTestStaff } from "./_cleanup.mjs";
 
 const { url, anonKey, serviceKey } = supabaseEnv();
+localOnlyOrSkip(url);
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
 const DATABASE_URL = get("DATABASE_URL");
 if (!DATABASE_URL) {
@@ -168,6 +170,7 @@ async function timeoffScoping() {
     for (const id of made.requests) await admin.from("availability_exceptions").delete().eq("id", id);
     if (made.staff.length) await admin.from("notifications").delete().in("staff_id", made.staff);
     for (const r of made.roleRows) await admin.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id);
+    if (made.staff.length) await scrubTestStaff(DATABASE_URL, made.staff);
     if (made.staff.length) await admin.from("staff").delete().in("id", made.staff);
     for (const id of made.roles) {
       await admin.from("role_permissions").delete().eq("role_id", id);
@@ -338,6 +341,7 @@ try {
   if (created.staff.length) {
     await admin.from("conversations").delete().in("created_by", created.staff);
     await admin.from("notifications").delete().in("staff_id", created.staff);
+    await scrubTestStaff(DATABASE_URL, created.staff); // what the roles trigger wrote about them
     await admin.from("staff").delete().in("id", created.staff);
   }
   for (const id of created.users) await admin.auth.admin.deleteUser(id);

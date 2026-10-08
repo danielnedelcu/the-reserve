@@ -385,6 +385,28 @@ side by side.
 3. **`verify:messages` harness**: still on the punch list — add it to
    PR A alongside the localhost guard, since the CI stack enables it.
 
+**Hosted runs never write into an append-only table (2026-10-08).**
+`audit_log` and the ledger refuse UPDATE and DELETE for every role, and
+creating staff or granting a role writes an audit row through the
+staff_roles trigger, so a hosted harness run that did either would leave
+rows it could never remove — which is exactly what the 30 orphan audit
+rows found by the policy-sweep inventory were. `verify-tables`,
+`verify-forms`, `verify-leads` and `verify-messages` therefore run their
+session cases on the local stack only and print a `skip` line on
+hosted; `verify-presets` and `verify-policies` keep their read-only
+hosted cases; `verify-ledger` and `verify-audit` are local only. Local
+cleanup removes a run's audit rows, what its staff wrote and what the
+trigger wrote about them, through `scripts/_cleanup.mjs` on the direct
+postgres connection with replica mode behind the localhost guard; the
+e2e support uses the same helper.
+The gate is `localOnlyOrSkip(url)` in `scripts/_env.mjs`, and it has
+three outcomes, not two: with SUPABASE_LOCAL it runs; on a hosted stack
+it skips and exits 0; on a stack whose URL is local WITHOUT the flag it
+refuses with exit 1. The third exists because CI run 37727683375 hit it
+the day the gates landed: the e2e job's verify:leads step had no
+SUPABASE_LOCAL, every one of its 72 cases skipped, and the step passed.
+A workflow step that forgets the flag now fails instead.
+
 `verify:ledger` (2026-10-08, docs/design/ledger-integrity-design.md) is
 LOCAL ONLY and needs the built app up (`npm run build:check && npm run
 app:start`): it writes ledger rows through `write_ledger_transaction`

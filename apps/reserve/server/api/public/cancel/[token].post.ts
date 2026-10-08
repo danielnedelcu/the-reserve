@@ -235,6 +235,7 @@ export default defineEventHandler(async (event) => {
 
   // 4d. Audit, attributed to the system.
   await admin.from("audit_log").insert({
+    organization_id: appointment.organization_id, // the token's appointment's
     actor_staff_id: systemStaffId ?? null,
     actor_user_id: null,
     action: "appointment.cancelled_via_link",

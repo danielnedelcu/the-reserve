@@ -32,10 +32,15 @@ export default defineEventHandler(async (event) => {
   if (error)
     throw createError({ statusCode: 500, statusMessage: error.message });
 
-  // Audit the access — even an empty result is an access.
+  // Audit the access — even an empty result is an access. The entry
+  // belongs to the client's organisation, read under the caller's RLS:
+  // a client the caller cannot read is a client they cannot audit on.
+  const { data: owner } = await client.from("clients").select("organization_id").eq("id", clientId).maybeSingle();
+  if (!owner) throw createError({ statusCode: 404, statusMessage: "Client not found" });
   const { data: staffId } = await client.rpc("current_staff_id");
   const admin = serverSupabaseServiceRole(event);
   await admin.from("audit_log").insert({
+    organization_id: owner.organization_id,
     actor_staff_id: staffId,
     actor_user_id: actorUserId(user),
     action: "health_note.viewed",

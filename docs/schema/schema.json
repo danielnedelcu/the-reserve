@@ -729,7 +729,7 @@
     {
       "name": "public.audit_log",
       "type": "BASE TABLE",
-      "comment": "Append-only. Inserts via service role / security-definer functions only. Includes health_note.viewed (app-layer, since SELECTs cannot fire triggers), appointment.booked, staff lifecycle events.",
+      "comment": "Who did what, to which record, when — one row per sensitive action. Append-only for EVERY role, the service role included (trg_audit_log_append_only; the API roles also lack update and delete). Scoped to the organisation by organization_id, set by every writer from a row it holds.",
       "columns": [
         {
           "name": "id",
@@ -771,6 +771,12 @@
           "name": "detail",
           "type": "jsonb",
           "nullable": true
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": false,
+          "comment": "The organisation the entry belongs to: the entity's, else the actor's. Every writer sets it from a row it holds (never current_org_id()); the staff_roles trigger from the staff row, else the role's; accept_staff_invite from the invite. audit_read scopes on it."
         }
       ],
       "indexes": [
@@ -781,9 +787,31 @@
           "columns": [
             "id"
           ]
+        },
+        {
+          "name": "audit_log_org_time",
+          "def": "CREATE INDEX audit_log_org_time ON public.audit_log USING btree (organization_id, occurred_at DESC)",
+          "table": "public.audit_log",
+          "columns": [
+            "organization_id",
+            "occurred_at"
+          ]
         }
       ],
       "constraints": [
+        {
+          "name": "audit_log_organization_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT",
+          "table": "public.audit_log",
+          "referenced_table": "public.organizations",
+          "columns": [
+            "organization_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
         {
           "name": "audit_log_actor_staff_id_fkey",
           "type": "FOREIGN KEY",
@@ -806,6 +834,12 @@
           "columns": [
             "id"
           ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_audit_log_append_only",
+          "def": "CREATE TRIGGER trg_audit_log_append_only BEFORE DELETE OR UPDATE ON public.audit_log FOR EACH ROW EXECUTE FUNCTION append_only_block()"
         }
       ]
     },
@@ -3444,7 +3478,7 @@
         },
         {
           "name": "trg_transactions_append_only",
-          "def": "CREATE TRIGGER trg_transactions_append_only BEFORE DELETE OR UPDATE ON public.transactions FOR EACH ROW EXECUTE FUNCTION ledger_block_change()"
+          "def": "CREATE TRIGGER trg_transactions_append_only BEFORE DELETE OR UPDATE ON public.transactions FOR EACH ROW EXECUTE FUNCTION append_only_block()"
         }
       ]
     },
@@ -3690,7 +3724,7 @@
         },
         {
           "name": "trg_transaction_items_append_only",
-          "def": "CREATE TRIGGER trg_transaction_items_append_only BEFORE DELETE OR UPDATE ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION ledger_block_change()"
+          "def": "CREATE TRIGGER trg_transaction_items_append_only BEFORE DELETE OR UPDATE ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION append_only_block()"
         }
       ]
     },
@@ -3857,7 +3891,7 @@
         },
         {
           "name": "trg_payments_append_only",
-          "def": "CREATE TRIGGER trg_payments_append_only BEFORE DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION ledger_block_change()"
+          "def": "CREATE TRIGGER trg_payments_append_only BEFORE DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION append_only_block()"
         }
       ]
     },
@@ -7037,6 +7071,19 @@
     {
       "table": "public.audit_log",
       "columns": [
+        "organization_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.organizations",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT"
+    },
+    {
+      "table": "public.audit_log",
+      "columns": [
         "actor_staff_id"
       ],
       "cardinality": "zero_or_more",
@@ -9699,7 +9746,7 @@
       "type": "FUNCTION"
     },
     {
-      "name": "public.ledger_block_change",
+      "name": "public.append_only_block",
       "return_type": "trigger",
       "arguments": "",
       "type": "FUNCTION"

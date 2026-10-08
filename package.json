@@ -27,6 +27,8 @@
     "verify:messages": "node scripts/verify-messages.mjs",
     "verify:tables": "node --experimental-strip-types scripts/verify-tables.mjs",
     "verify:ledger": "node scripts/verify-ledger.mjs",
+    "verify:audit": "node scripts/verify-audit.mjs",
+    "verify:policies": "node scripts/verify-policies.mjs",
     "seed:tables": "node scripts/seed-tables-load.mjs",
     "bench:tables": "node scripts/bench-tables.mjs",
     "e2e:forms": "node scripts/e2e-forms.mjs"

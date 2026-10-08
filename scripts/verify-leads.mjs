@@ -22,7 +22,8 @@ import pg from "pg";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { LEAD_INTERESTS, LEAD_STATUSES, LEAD_HONEYPOT_FIELD } from "../apps/reserve/shared/leads/constants.ts";
-import { get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, get, guard, pgSsl, supabaseEnv, localOnlyOrSkip } from "./_env.mjs";
+import { scrubTestStaff } from "./_cleanup.mjs";
 
 const base = process.argv[2] ?? "http://localhost:3000";
 
@@ -31,6 +32,7 @@ const base = process.argv[2] ?? "http://localhost:3000";
 // config, and a RUNNING app at `base` — which is why it is not in the CI
 // database job yet (it joins when the app-start script lands).
 supabaseEnv();
+localOnlyOrSkip(get("NUXT_PUBLIC_SUPABASE_URL"));
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
 const env = {
   NUXT_PUBLIC_SUPABASE_URL: get("NUXT_PUBLIC_SUPABASE_URL"),
@@ -436,6 +438,7 @@ async function main() {
  */
 async function removeFixtures() {
   await admin.from("leads").delete().like("email", `%${SUFFIX}`);
+  await scrubTestStaff(get("DATABASE_URL"), [bystanderId, holderId].filter(Boolean)); // what they wrote and what the roles trigger wrote about them
   if (bystanderId) await admin.from("staff").delete().eq("id", bystanderId);
   if (holderId) {
     await admin.from("staff_roles").delete().eq("staff_id", holderId).eq("role_id", holderRoleId);

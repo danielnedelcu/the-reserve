@@ -55,7 +55,7 @@ The immutable money ledger: one row per checkout. Append-only for EVERY role, th
 | Name                             | Definition                                                                                                                                                                                 |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | trg_ledger_transactions_balanced | CREATE CONSTRAINT TRIGGER trg_ledger_transactions_balanced AFTER INSERT ON public.transactions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
-| trg_transactions_append_only     | CREATE TRIGGER trg_transactions_append_only BEFORE DELETE OR UPDATE ON public.transactions FOR EACH ROW EXECUTE FUNCTION ledger_block_change()                                             |
+| trg_transactions_append_only     | CREATE TRIGGER trg_transactions_append_only BEFORE DELETE OR UPDATE ON public.transactions FOR EACH ROW EXECUTE FUNCTION append_only_block()                                               |
 
 ## Relations
 

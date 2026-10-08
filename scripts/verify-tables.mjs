@@ -48,11 +48,13 @@
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { randomBytes } from "node:crypto";
-import { LOCAL_MODE, get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, get, guard, pgSsl, supabaseEnv, localOnlyOrSkip } from "./_env.mjs";
+import { scrubTestStaff } from "./_cleanup.mjs";
 import { LOW_STOCK_THRESHOLD } from "../apps/reserve/shared/products/stock.ts";
 
 const { url, anonKey, serviceKey } = supabaseEnv();
 guard(["NUXT_PUBLIC_SUPABASE_URL"]);
+localOnlyOrSkip(url);
 
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 const run = randomBytes(4).toString("hex");
@@ -553,6 +555,7 @@ try {
   if (made.clients.length) await admin.from("clients").delete().in("id", made.clients);
   if (made.products.length) await admin.from("products").delete().in("id", made.products);
   for (const r of made.roleRows) await admin.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id);
+  if (made.staff.length) await scrubTestStaff(get("DATABASE_URL"), made.staff); // roles off silently, then what they wrote and what the trigger wrote about them
   if (made.staff.length) await admin.from("staff").delete().in("id", made.staff);
   for (const id of made.users) await admin.auth.admin.deleteUser(id);
   for (const id of made.roles) {
