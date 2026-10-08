@@ -37,6 +37,7 @@ import { createServerClient } from "@supabase/ssr";
 import pg from "pg";
 import { randomBytes, randomUUID } from "node:crypto";
 import { LOCAL_MODE, get, guard, isLocalUrl, pgSsl, supabaseEnv } from "./_env.mjs";
+import { scrubTestStaff } from "./_cleanup.mjs";
 
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
 const { url, anonKey, serviceKey } = supabaseEnv();
@@ -386,6 +387,10 @@ async function main() {
     if (refundId) made.transactions.push(refundId);
     const m = refundId ? await rowsOf(refundId) : null;
     check("POST /api/transactions/:id/refund writes the mirror: −2500 header, the line and the payment negated, key refund:<original>", refund.status === 200 && m?.txn?.total_cents === -2_500 && m.txn.refunds_transaction_id === saleId && m.items[0]?.total_cents === -2_500 && m.payments[0]?.amount_cents === -2_500 && m.txn.idempotency_key === `refund:${saleId}`, `${refund.status} ${refund.text.slice(0, 120)}`);
+    {
+      const audit = (await admin.from("audit_log").select("action, organization_id").in("entity_id", [saleId, refundId].filter(Boolean)).order("id")).data ?? [];
+      check("the checkout and refund routes' audit rows carry the organisation (pos.checkout on the sale, pos.refund on the original)", audit.length >= 2 && audit.every((a) => a.organization_id === ORG) && audit.some((a) => a.action === "pos.checkout") && audit.some((a) => a.action === "pos.refund"), JSON.stringify(audit));
+    }
     const refundAgain = saleId ? await post(`/api/transactions/${saleId}/refund`, cashier.cookie, {}) : { status: 0, json: null, text: "" };
     check("refunding again is a 409 naming the existing mirror, and leaves one", refundAgain.status === 409 && refundAgain.json?.data?.refundTransactionId === refundId && (await countByKey(ORG, `refund:${saleId}`)) === 1, `${refundAgain.status} ${refundAgain.text?.slice(0, 120) ?? ""}`);
   }
@@ -418,7 +423,7 @@ async function cleanup() {
   if (made.clients.length) await admin.from("clients").delete().in("id", made.clients);
   for (const r of made.roleRows) await admin.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id);
   if (made.staff.length) {
-    await admin.from("audit_log").delete().in("actor_staff_id", made.staff);
+    await scrubTestStaff(dsn, made.staff); // what they wrote and what the roles trigger wrote about them
     await admin.from("staff").delete().in("id", made.staff);
   }
   for (const id of made.users) await admin.auth.admin.deleteUser(id);

@@ -19,10 +19,16 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { get, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, get, guard, supabaseEnv } from "./_env.mjs";
+import { scrubTestStaff } from "./_cleanup.mjs";
 
 // Credentials and the SUPABASE_LOCAL guard live in scripts/_env.mjs.
 const { url, anonKey, serviceKey } = supabaseEnv();
+if (!LOCAL_MODE) {
+  console.log("  skip  every case: this harness creates staff and grants roles, which writes append-only audit rows, so it runs on the LOCAL stack only (CLAUDE.md); nothing was run on this hosted stack");
+  process.exit(0);
+}
+guard(["DATABASE_URL"]);
 const env = { FORM_IP_PEPPER: get("FORM_IP_PEPPER") };
 
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
@@ -552,6 +558,8 @@ async function main() {
     check("deleting the prospect removes its notifications (no dangling bell entry)", (orphans ?? []).length === 0);
   }
   for (const id of made.links) await admin.from("form_links").delete().eq("id", id);
+  // Their audit rows (what the roles trigger wrote about the holder) go first, through the direct connection.
+  await scrubTestStaff(get("DATABASE_URL"), [made.staffId, made.holderId].filter(Boolean));
   if (made.staffId) await admin.from("staff").delete().eq("id", made.staffId);
   if (made.holderId) {
     await admin.from("staff_roles").delete().eq("staff_id", made.holderId).eq("role_id", made.holderRoleId);

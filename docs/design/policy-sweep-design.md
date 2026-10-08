@@ -245,6 +245,218 @@ unchanged before and after: the sweep changed no policy's meaning.
   wrapped `exists` lookups, with the appointments benchmark deciding
   whether `appointment_services` earns a column later.
 
+## The `audit_log` organisation column (its own PR, before the Vercel deploy)
+
+STATUS: approved 2026-10-08 (rulings below); BUILT the same day as migration
+20261008041046_audit_log_organization — as-built notes at the end of this section.
+
+`audit_read` is `(select has_permission('audit_log.view'))` with no
+organisation term because `audit_log` has no `organization_id`: any
+holder of that permission in any organisation reads every
+organisation's audit rows. One organisation exists today, so nothing is
+exposed yet; it must be closed before a second can exist. Nothing in
+the app reads the table — the UI has no audit page — so the policy
+change affects only API reads by `audit_log.view` holders.
+
+### 1. Every writer, and the organisation each already holds
+
+Every service-role writer must set `organization_id` from a row it
+holds, never from `current_org_id()`.
+
+| Writer | Action | Organisation it holds |
+| --- | --- | --- |
+| `appointments/index.post.ts` | `appointment.booked` | the service row it priced from (`service.organization_id`), the same value it wrote on the appointment |
+| `checkout/index.post.ts` | `pos.checkout` | `orgId`, the value it passed to `write_ledger_transaction` and that the transaction row carries |
+| `transactions/[id]/refund.post.ts` | `pos.refund` | `original.organization_id`, the refunded transaction's |
+| `public/cancel/[token].post.ts` | `appointment.cancelled_via_link` | `appointment.organization_id` from the token's appointment (actor is the system staff row, which belongs to the same organisation) |
+| `clients/[id]/health-notes.get.ts` | `health_note.viewed` | the client's `organization_id`, read with the notes under the caller's RLS (the route reads the client already; one column more) |
+| `clients/[id]/communications/resend.post.ts` | `communication.resent` | `original.organization_id`, the communications_sent row being resent |
+| `prospects/[id]/review.post.ts` | `prospect.<status>` | the prospect_intake row's `organization_id` (`before` is read before the update) |
+| `leads/[id]/status.post.ts` | `lead.status_changed` | the lead row's `organization_id` (`before`) |
+| `accept_staff_invite()` (SQL, service role) | `staff.invite_accepted` | `inv.organization_id`, the invite's, which is the new staff row's |
+| `audit_staff_role_change()` (trigger on staff_roles) | `staff_role.granted` / `revoked` | the staff row's: `(select organization_id from staff where id = new.staff_id)` — this is the writer with no actor when the service role or a migration grants a role, and the entity resolves it |
+
+No job writes audit rows today (`run_communication_job` and the
+purges write their own tables), and no script or harness inserts one;
+the harnesses only trigger the staff_roles writer by creating test
+staff with roles.
+
+### 2. The backfill rule, and what hosted holds
+
+Rule: the organisation of the entity the row is about, by
+`entity_type` → that table's `organization_id`, falling back to the
+actor's staff row. System- and job-written rows resolve the same way:
+the system staff row and every entity belong to an organisation.
+
+Hosted, 127 rows, one organisation in the database:
+
+| Resolves by | Rows |
+| --- | --- |
+| the entity | 76 |
+| the actor only (entity gone) | 21 |
+| neither | 30 |
+| entity and actor disagree | 0 |
+
+**The 30 that resolve by neither — stop and report, not guess.** All
+are `staff_role.granted` / `staff_role.revoked` rows written by the
+staff_roles trigger with no actor (the service role grants roles, so
+`current_staff_id()` is null) for 15 staff ids that no longer exist,
+between 2026-10-05 23:55 and 2026-10-07 00:10 UTC. Those are the
+hosted runs of `verify-tables` (and its predecessors) in this period:
+the harness creates test staff, grants them a role, and deletes staff
+and role at cleanup. Its cleanup removes audit rows by `actor_staff_id`
+— the ones the test staff WROTE — not the ones the trigger wrote ABOUT
+them, which carry a null actor, so these survived every run. 12 of the
+30 name a test role that was also deleted; 18 name a seeded system
+role. They are harness residue, not events in the organisation's
+history. Proposed, for your ruling: delete those 30 rows on hosted as a
+one-time cleanup (as postgres, before the block trigger lands, recorded
+in the migration header), rather than assign them to the only
+organisation by inference; and fix the harness cleanup so trigger-
+written rows about test staff (`entity_id in (test staff)`) are removed
+with the rows they wrote.
+
+### 3. Append-only for every role
+
+Today: `revoke update, delete on audit_log from authenticated, anon`
+only; the service role can update and delete. The same block trigger
+as the ledger's (`ledger_block_change`, raising on UPDATE and DELETE
+for every role), created LAST in the migration, after the backfill, so
+the backfill needs no exception. TRUNCATE is revoked from the service
+role too. Places that update or delete audit rows today, all test
+cleanup, all moving to the direct `postgres` connection with
+`session_replication_role = replica` behind the localhost guard:
+
+- `e2e/support/data.ts` — deletes by `actor_staff_id` so the test staff
+  row can be deleted (the foreign key has no cascade). The e2e support
+  gains a `pg` connection from `DATABASE_URL` (the CI e2e job already
+  exports the local stack's `DB_URL`), and deletes by actor AND by
+  entity.
+- `scripts/verify-ledger.mjs`, `scripts/verify-presets.mjs` — the same
+  delete, through the `pg` connection they already hold, by actor and
+  entity.
+- `scripts/verify-tables.mjs` — deletes test staff but not their audit
+  rows today (which is how the 30 orphans came to exist); gains the same
+  cleanup, local only, and on hosted the trigger-written rows about test
+  staff will be refused … so the hosted run must stop creating staff
+  with roles, or create them under `session_replication_role` — neither
+  is right. **Decision needed:** the hosted `verify-tables` run creates
+  staff with roles today and leaves trigger-written audit rows behind;
+  with the block in place those rows can never be removed. Proposed: the
+  hosted run keeps its read-only cases only and skips any fixture that
+  grants a role, which is the local-only line `verify-presets` already
+  draws.
+- Nothing in the app updates or deletes an audit row.
+
+A foreign-key consequence: `audit_log.actor_staff_id` references
+`staff` with no action, so deleting a staff row with audit history
+already fails; with the block, their audit rows cannot be deleted
+first either. Staff are deactivated, never deleted, so this closes the
+last way a staff row could go.
+
+### 4. The migration's shape
+
+```sql
+alter table audit_log add column organization_id uuid references organizations(id) on delete restrict;
+update audit_log a set organization_id = coalesce(
+  case a.entity_type
+    when 'appointment'         then (select organization_id from appointments        where id = a.entity_id)
+    when 'client'              then (select organization_id from clients             where id = a.entity_id)
+    when 'communications_sent' then (select organization_id from communications_sent where id = a.entity_id)
+    when 'leads'               then (select organization_id from leads               where id = a.entity_id)
+    when 'prospect_intake'     then (select organization_id from prospect_intake     where id = a.entity_id)
+    when 'staff'               then (select organization_id from staff               where id = a.entity_id)
+    when 'transaction'         then (select organization_id from transactions        where id = a.entity_id)
+  end,
+  (select organization_id from staff s where s.id = a.actor_staff_id));
+-- the 30 orphans: per the ruling above
+do $$ begin if exists (select 1 from audit_log where organization_id is null) then raise exception 'audit_log backfill left % rows unresolved', (select count(*) from audit_log where organization_id is null); end if; end $$;
+alter table audit_log alter column organization_id set not null;
+create index audit_log_org_time on audit_log (organization_id, occurred_at desc);
+alter policy audit_read on audit_log using (organization_id = (select current_org_id()) and (select has_permission('audit_log.view')));
+-- writers: accept_staff_invite and audit_staff_role_change replaced to set the column (the routes in TypeScript)
+create trigger trg_audit_log_append_only before update or delete on audit_log for each row execute function ledger_block_change();
+revoke truncate on audit_log from service_role;
+```
+
+The column is `occurred_at`, not `created_at`, on this table; the index
+follows it. The `raise` makes the migration fail rather than apply a
+`not null` over an unresolved row.
+
+### Proof (for the build)
+
+A two-organisation case, local only, in `verify-tables`' shape: a
+holder of `audit_log.view` in one organisation reads none of the
+other's rows, and reads their own; every writer exercised — the routes
+through the app with a session (booking, health-note view, lead status,
+prospect review, resend, checkout and refund through `verify-ledger`'s
+cases, the cancel route by calling the function with its rows as the
+fee was) and the two SQL writers (invite acceptance, a role grant) — and
+each row carries the organisation; update, delete and truncate refused
+for the service role; `verify-policies` green; every harness and journey
+unchanged. Then comparison, push as its own step after the checks,
+comparison for zero differences, commit and PR.
+
+### Rulings (2026-10-08) and as-built
+
+1. The 30 orphan rows are deleted on hosted, narrowly, by the exact
+   signature found (the two role actions, null actor, an entity staff id
+   that no longer exists, 2026-10-05 23:55 to 2026-10-07 00:10 UTC), with
+   the migration asserting it removed exactly 30 — or 0 on a stack built
+   fresh from the migrations — and raising otherwise, before the block
+   trigger exists. `[AS-BUILT]` The persistent LOCAL stack was neither: it
+   carried 777 rows of its own residue from every local run, all of them
+   orphans, removed as test data (as postgres) before the migration was
+   applied there, so the migration's count was 0 locally.
+2. Hosted harness runs never write into an append-only table: the rule
+   is in CLAUDE.md and docs/testing-design.md; `verify-tables`,
+   `verify-forms`, `verify-leads` and `verify-messages` are local-only
+   with a printed skip line on hosted; every cleanup (those four,
+   `verify-presets`, `verify-ledger`, `verify-audit`, the e2e support)
+   removes a run's audit rows by actor AND by entity through
+   `scripts/_cleanup.mjs`.
+3. The block trigger is one shared `append_only_block()` whose message
+   names the table ("<table> is append-only: rows are never edited or
+   removed (<op> refused)"); the ledger's three triggers moved onto it
+   and `ledger_block_change` was dropped.
+4. `audit_staff_role_change()` takes the organisation from the staff
+   row, else from the role, so a role revoked by the cascade of its
+   staff row's deletion still records one; neither resolving fails the
+   not null, loudly.
+
+`[AS-BUILT]` Writers: the eight routes set the column from the row they
+hold (the booking's service, checkout's organisation, the refunded
+transaction, the token's appointment, the client read under RLS for a
+health-note view with 404 when unreadable, the resend's client, the
+prospect and lead rows read before the update); `accept_staff_invite`
+from the invite; the trigger as ruled. Proof: `scripts/verify-audit.mjs`
+(local only, in the CI e2e job) — the two-organisation read, a holder
+without the permission reading nothing in their own organisation, the
+trigger on a grant and on a staff deletion without replica mode, the
+invite acceptance, the health-note view and the lead status change
+through the app, update/delete/truncate refused for the service role
+with the message naming the table, and the trigger enabled. Checkout
+and refund audit rows are asserted in `verify-ledger`; the booking's
+in journey 03. The prospect review, resend and cancel routes are not
+driven by a harness (a prospect, an outbound email and a Stripe charge
+would be needed); their column comes from the row they already hold and
+is typed.
+
+`[AS-BUILT]` Hosted, 2026-10-08: the read-only recount before the push
+matched the inventory exactly (127 rows; 76 by entity, 21 by actor, 30
+by neither, all 30 the orphan signature), the migration applied, the
+schema comparison found 0 differences across 2,375 objects, and the
+read-only confirmation afterwards found 97 rows, none with a null
+organisation, the block trigger enabled and no TRUNCATE for the service
+role.
+
+`[AS-BUILT]` Correction to PR 1's record: its commit message said
+"verify-policies, now in CI". It was not — the guard was committed but
+neither package.json nor the workflow referenced it, so PR 1 shipped
+with the guard unrun. This PR adds `verify:policies` and runs it first in
+the CI database job. (The silent-failure convention in CLAUDE.md, again:
+"the harness is in CI" was a claim nothing checked.)
+
 ## Deliberately deferred
 
 - Columns on the configuration-sized structural tables.

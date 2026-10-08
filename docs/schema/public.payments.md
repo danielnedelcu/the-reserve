@@ -43,7 +43,7 @@ How each transaction settled. Multiple rows = split tender ("$80 gift card + res
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | trg_gift_card_payment        | CREATE TRIGGER trg_gift_card_payment AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION apply_gift_card_payment()                                                       |
 | trg_ledger_payments_balanced | CREATE CONSTRAINT TRIGGER trg_ledger_payments_balanced AFTER INSERT ON public.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
-| trg_payments_append_only     | CREATE TRIGGER trg_payments_append_only BEFORE DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION ledger_block_change()                                             |
+| trg_payments_append_only     | CREATE TRIGGER trg_payments_append_only BEFORE DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION append_only_block()                                               |
 
 ## Relations
 

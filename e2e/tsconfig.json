@@ -9,5 +9,5 @@
     "allowJs": true,
     "types": ["node"]
   },
-  "include": ["**/*.ts", "../scripts/_env.mjs"]
+  "include": ["**/*.ts", "../scripts/_env.mjs", "../scripts/_cleanup.mjs"]
 }

@@ -53,7 +53,7 @@ Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history).
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | trg_ledger_items_balanced         | CREATE CONSTRAINT TRIGGER trg_ledger_items_balanced AFTER INSERT ON public.transaction_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction() |
 | trg_product_sale                  | CREATE TRIGGER trg_product_sale AFTER INSERT ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION apply_product_sale()                                                              |
-| trg_transaction_items_append_only | CREATE TRIGGER trg_transaction_items_append_only BEFORE DELETE OR UPDATE ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION ledger_block_change()                                 |
+| trg_transaction_items_append_only | CREATE TRIGGER trg_transaction_items_append_only BEFORE DELETE OR UPDATE ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION append_only_block()                                   |
 
 ## Relations
 

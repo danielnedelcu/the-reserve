@@ -192,6 +192,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const { error: auditError } = await admin.from("audit_log").insert({
+    organization_id: original.organization_id, // the refunded transaction's
     actor_staff_id: staffId,
     action: "pos.refund",
     entity_type: "transaction",

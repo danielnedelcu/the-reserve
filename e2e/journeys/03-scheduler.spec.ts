@@ -54,4 +54,9 @@ test("the front desk books an appointment through the dialog and sees it on the 
   // On the schedule: the provider's lane in the day view, at the location's time.
   const card = page.getByRole("button", { name: new RegExp(`${client.lastName}.*10:00 AM`) });
   await expect(card).toBeVisible();
+
+  // The booking's audit row belongs to the organisation (audit_log_organization).
+  const { data: audit } = await data.env.db.from("audit_log").select("organization_id, actor_staff_id").eq("action", "appointment.booked").eq("actor_staff_id", desk.id);
+  expect(audit?.length).toBe(1);
+  expect(audit?.[0]?.organization_id).toBe(data.orgId);
 });

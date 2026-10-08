@@ -153,6 +153,7 @@ export default defineEventHandler(async (event) => {
   }
 
   await admin.from("audit_log").insert({
+    organization_id: visible.organization_id, // the client's, read above
     actor_staff_id: staffId ?? null,
     actor_user_id: actorUserId(user),
     action: "communication.resent",

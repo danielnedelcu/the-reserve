@@ -57,6 +57,18 @@
   `shared/time/picker.ts`, recovering the day a date picker's Date
   denotes. Row counts: `shared/format/count.ts`, so `toLocaleString` is
   banned in app/ outright.
+- Hosted harness runs never write into an append-only table: audit_log
+  and the ledger refuse UPDATE and DELETE for every role (since
+  2026-10-08), so a row a hosted run creates can never be removed, and
+  creating staff or granting a role writes an audit row through the
+  staff_roles trigger. A harness case that creates staff, grants a role
+  or writes audit or ledger rows runs on the LOCAL stack only and prints
+  a `skip` line on hosted; local cleanup removes a run's audit rows — what
+  its staff wrote AND what the trigger wrote about them — through
+  `scripts/_cleanup.mjs` (direct postgres connection, replica mode,
+  localhost guard). The 30 orphan audit rows this rule exists for were
+  harness residue on hosted, deleted by the audit_log_organization
+  migration.
 - Command chains: steps are joined so a failure stops the chain (`&&`,
   or `set -e` in a script), never with a plain `;`. An irreversible step
   — a hosted db push, a merge, a delete — never runs in the same chain

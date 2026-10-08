@@ -245,14 +245,16 @@ QUEUED (in order):
   design doc and testing-design.md are corrected. BOTH BUILT 2026-10-08
   (PR #26, and the ledger_integrity migration): the ledger is now
   append-only for every role and balanced at commit.
-- audit_log has no organization_id, and audit_read is
+- ~~audit_log has no organization_id, and audit_read is
   `has_permission('audit_log.view')` alone (found by the policy-sweep
   inventory 2026-10-08, docs/design/policy-sweep-design.md): any holder
   of audit_log.view in ANY organisation can read every organisation's
-  audit rows through the API. Needs a column backfilled from the actor's
-  staff row, the writers setting it, and the policy adding
-  `organization_id = (select current_org_id())`. Not part of the sweep,
-  which changes no policy's meaning.
+  audit rows through the API.~~ DONE 2026-10-08 (migration
+  audit_log_organization): the column, backfilled by entity then actor,
+  not null; the policy scoped; every writer setting it from a row it
+  holds; append-only for every role on the shared `append_only_block`;
+  the 30 hosted orphan rows (harness residue) deleted narrowly;
+  `verify-audit` proves the two-organisation isolation.
 - Client data erasure: a client with sales history cannot be deleted —
   the ledger references them (`restrict`, ledger-integrity-design.md) —
   so an erasure request must ANONYMISE the client record (name, contact

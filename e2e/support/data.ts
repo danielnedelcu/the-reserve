@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { testEnv, type TestEnv } from "./env";
+import { get } from "../../scripts/_env.mjs";
+import { scrubTestStaff } from "../../scripts/_cleanup.mjs";
 
 /**
  * Test data for one journey, on the LOCAL stack, tagged with a run id and
@@ -284,9 +286,15 @@ export class TestData {
     }
     if (this.staff.length) {
       // What a test staff member DID is referenced by audit_log.actor_staff_id
-      // with no cascade (a booking writes one). Append-only for the app;
-      // the service role removes a test run's own rows on the local stack.
-      await step("audit_log", () => this.env.db.from("audit_log").delete().in("actor_staff_id", this.staff));
+      // with no cascade (a booking writes one), and the staff_roles trigger
+      // wrote rows ABOUT them. audit_log is append-only for every role, so
+      // the run's rows go through the direct postgres connection in replica
+      // mode, roles revoked silently first, local only (scripts/_cleanup.mjs).
+      await step("audit_log", () =>
+        scrubTestStaff(get("DATABASE_URL") as string, this.staff).then(
+          () => ({ error: null }),
+          (e: Error) => ({ error: { message: e.message } }),
+        ));
       await step("staff", () => this.env.db.from("staff").delete().in("id", this.staff));
     }
     for (const id of this.users) await step("auth user", () => this.env.db.auth.admin.deleteUser(id));

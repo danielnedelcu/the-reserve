@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: before } = await client
     .from("prospect_intake")
-    .select("status")
+    .select("status, organization_id")
     .eq("id", id)
     .maybeSingle();
   if (!before) throw createError({ statusCode: 404, statusMessage: "Prospect not found" });
@@ -67,6 +67,7 @@ export default defineEventHandler(async (event) => {
 
   const admin = serverSupabaseServiceRole(event);
   await admin.from("audit_log").insert({
+    organization_id: before.organization_id, // the prospect row's
     actor_staff_id: staffId,
     actor_user_id: actorUserId(user),
     action: `prospect.${status}`,
