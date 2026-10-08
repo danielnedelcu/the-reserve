@@ -385,6 +385,18 @@ side by side.
 3. **`verify:messages` harness**: still on the punch list — add it to
    PR A alongside the localhost guard, since the CI stack enables it.
 
+**The schema comparison (2026-10-08).** `npm run schema:compare` dumps
+the public schema's shape on hosted (TBLS_DSN) and on the local stack
+(DB_URL) and prints every difference, exit 1 on any: extensions, tables
+and views by column, constraints, indexes, policies, triggers (with
+their enabled state), functions by full definition, views by definition,
+options and owner, grants, function grants, default privileges, cron
+jobs and publication tables. It runs before a hosted push (the
+differences must be exactly the migration's) and after it (zero). Until
+2026-10-08 it lived outside the repo and did not compare view
+definitions or options; see policy-sweep-design.md for what that
+excluded.
+
 **Hosted runs never write into an append-only table (2026-10-08).**
 `audit_log` and the ledger refuse UPDATE and DELETE for every role, and
 creating staff or granting a role writes an audit row through the
