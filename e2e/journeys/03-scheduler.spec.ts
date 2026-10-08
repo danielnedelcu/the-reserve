@@ -18,7 +18,12 @@ test("the front desk books an appointment through the dialog and sees it on the 
   const desk = await data.staffMember("desk", "front_desk");
   const service = await data.service("Facial", provider.id);
   await data.hours(provider.id, location.id, "10:00", "11:00");
-  const client = await data.client("Blake");
+  // The client sorts past the first thousand: 1,100 filler clients precede
+  // them alphabetically. The booking dialog used to load every client and
+  // was cut at max_rows, so this client could not be booked at all; the
+  // picker now searches clients_page as the desk types.
+  await data.clientsBulk(1_100);
+  const client = await data.client("Blake", `Zz-${data.tag}`);
 
   await signIn(context, desk.email, desk.password);
   await page.goto("/schedule");
@@ -30,8 +35,9 @@ test("the front desk books an appointment through the dialog and sees it on the 
   // The dialog: client, service, then the staff qualified for it.
   await page.getByRole("button", { name: "New appointment" }).click();
   const dialog = page.getByRole("dialog", { name: "New appointment" });
-  await dialog.getByRole("combobox", { name: "Client" }).click();
+  await dialog.getByRole("combobox", { name: "Client" }).fill(client.lastName);
   await page.getByRole("option", { name: `${client.lastName}, ${client.firstName}` }).click();
+  await expect(dialog.getByRole("combobox", { name: "Client" })).toHaveValue(`${client.lastName}, ${client.firstName}`);
   await dialog.getByRole("combobox", { name: "Service" }).click();
   await page.getByRole("option", { name: `${service.name} (60 min)` }).click();
   await dialog.getByRole("combobox", { name: "Staff" }).click();

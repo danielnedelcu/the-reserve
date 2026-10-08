@@ -279,7 +279,7 @@ Shared code, all under `apps/reserve`:
 | URL schema helpers | `shared/tables/url.ts` | zod: `page` (coerced int ≥ 1, default 1), `dir` (`asc|desc`), `sort(keys)` (enum, first is default), `oneOf(...)`, `uuid`, `day`, `period`, `anchor`, `from/to`; a `parseTableQuery(schema, route.query)` that takes the first value of a repeated key and falls back to defaults on anything invalid, never throwing. `shared/` so the unit tests run in node |
 | `periodRange` | `shared/time/period.ts` | decision 3 |
 | `asServerPage<Row>(data, error)` | with the composable | the `{ rows, total, total_exact, …extras }` normaliser |
-| Server-searched picker | later | the cashier/provider filter on transactions can be a plain select of active staff (short list); no `SearchSelect` port in this phase |
+| Server-searched picker | later | the cashier/provider filter on transactions can be a plain select of active staff (short list); no `SearchSelect` port in this phase. `[AS-BUILT]` Ported as PR 4 (2026-10-07) once the benchmark's 10,000 clients showed the booking dialog, checkout and the command palette cut at `max_rows`: `app/components/ServerSearchSelect.vue` on `clients_page` / `products_page`, newest-search-wins in `app/utils/latestSearch.ts` |
 
 The database, one migration per table in the build order, each in the
 house style:
@@ -547,6 +547,11 @@ by journey 5 through a reload.
    list) either folded into `/financials` or moved onto
    `transactions_page`; `GiftCardsSection` onto a page function; the
    checkout page's client and product pickers onto the search functions.
+   `[AS-BUILT]` The pickers became PR 4 (2026-10-07): every picker that
+   loaded clients or products whole — the booking dialog, checkout's two,
+   the forms send dialog, the command palette — on one shared
+   `ServerSearchSelect`, with journeys 03, 07 and 08 reaching a client
+   who sorts past 1,100 fillers. Services and staff stay loaded whole.
 
 ## Deliberately deferred
 
@@ -554,8 +559,9 @@ by journey 5 through a reload.
   Lokl runs at 10,000 rows in 1–36ms; revisit only if the benchmark says so.
 - Estimated totals (`total_exact: false`): the shape is kept, the
   behaviour is not built.
-- A server-searched picker (`SearchSelect`): the staff filter is a short
-  list today.
+- ~~A server-searched picker (`SearchSelect`): the staff filter is a short
+  list today.~~ Built in PR 4 for clients and products; the staff filter
+  stays a plain select.
 - Per-location slicing of financials (multi-tenancy-status item): the
   functions take the organisation from the caller; a `p_location_id`
   filter is a one-line addition when a second location exists.

@@ -46,17 +46,22 @@
       text?: string;
       /** Shortcut to render. */
       shortcut?: string;
+      /**
+       * Local addition: never hidden by the palette's local text filter —
+       * for a row a server search already matched (see Command.vue).
+       */
+      alwaysVisible?: boolean;
     }
   >();
   const emits = defineEmits<ListboxItemEmits>();
 
   const forwarded = useForwardPropsEmits(
-    reactiveOmit(props, "class", "icon", "text", "shortcut"),
+    reactiveOmit(props, "class", "icon", "text", "shortcut", "alwaysVisible"),
     emits
   );
 
   const id = useId();
-  const { filterState, allItems, allGroups } = useCommand();
+  const { filterState, allItems, allGroups, keptItems } = useCommand();
   const groupContext = useCommandGroup();
 
   const styles = tv({
@@ -85,6 +90,7 @@
     if (!(currentElement.value instanceof HTMLElement)) return;
 
     // textValue to perform filter
+    if (props.alwaysVisible) keptItems.value.add(id);
     allItems.value.set(id, currentElement.value.textContent ?? props?.value!.toString());
 
     const groupId = groupContext?.id;
@@ -97,6 +103,7 @@
     }
   });
   onUnmounted(() => {
+    keptItems.value.delete(id);
     allItems.value.delete(id);
   });
 </script>

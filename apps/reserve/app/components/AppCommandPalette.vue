@@ -90,15 +90,36 @@ const destinations = computed(() =>
 );
 
 // ---------------------------------------------------------------------------
-// Clients (loaded once when the palette first opens; Command filters locally)
+// Clients are SEARCHED on the server as the person types (clients_page, 8
+// at a time, the newest search wins); staff — a short list — loads once
+// when the palette first opens and Command filters it locally. The palette
+// used to preload 500 clients and could not find the 501st.
 // ---------------------------------------------------------------------------
 interface Hit {
   id: string;
   name: string;
+  /** Email or phone, shown beneath the name to tell same-named clients apart. */
+  contact?: string;
 }
 const clients = ref<Hit[]>([]);
 const staff = ref<Hit[]>([]);
 const directoryLoaded = ref(false);
+const clientSearch = createLatestSearch(
+  async (term: string, signal: AbortSignal) => {
+    if (!can("clients.view") || term.length < 2) return [] as Hit[];
+    const { data, error } = await supabase
+      .rpc("clients_page", { p_q: term, p_active: "active", p_sort: "name", p_desc: false, p_page: 1, p_page_size: 8 })
+      .abortSignal(signal);
+    return asServerPage<{ id: string; first_name: string; last_name: string; email: string | null; phone: string | null }>(data, error).rows.map((c) => ({
+      id: c.id,
+      name: `${c.first_name} ${c.last_name}`,
+      contact: c.email ?? c.phone ?? undefined,
+    }));
+  },
+  { result: (_term, hits) => (clients.value = hits) },
+);
+watch(query, (q) => clientSearch.request(q.trim()));
+onBeforeUnmount(() => clientSearch.cancel());
 
 // People load lazily on first open; the GROUPS only render once the person
 // starts typing (see `searching` below) so the palette opens showing pages,
@@ -110,18 +131,6 @@ watch(dialog, async (open) => {
   }
   if (directoryLoaded.value) return;
   directoryLoaded.value = true;
-  if (can("clients.view")) {
-    const { data } = await supabase
-      .from("clients")
-      .select("id, first_name, last_name")
-      .eq("active", true)
-      .order("last_name")
-      .limit(500);
-    clients.value = (data ?? []).map((c) => ({
-      id: c.id,
-      name: `${c.first_name} ${c.last_name}`,
-    }));
-  }
   if (can("staff.view")) {
     const { data } = await supabase
       .from("staff")
@@ -155,11 +164,11 @@ function go(to: string) {
       <UiKbd class="ml-auto">⌘K</UiKbd>
     </UiButton>
 
-    <UiCommandDialog v-model:open="dialog">
-      <UiDialogTitle class="sr-only">Search</UiDialogTitle>
-      <UiDialogDescription class="sr-only">
-        Search clients and navigate. Arrow keys to move, Enter to select.
-      </UiDialogDescription>
+    <UiCommandDialog
+      v-model:open="dialog"
+      title="Search"
+      description="Search clients and navigate. Arrow keys to move, Enter to select."
+    >
       <UiCommandInput
         v-model="query"
         placeholder="Search clients, staff, pages…"
@@ -173,7 +182,8 @@ function go(to: string) {
             <UiCommandItem
               v-for="client in clients"
               :key="client.id"
-              :value="`client ${client.name}`"
+              :value="`client ${client.id}`"
+              always-visible
               @select="go(`/clients/${client.id}`)"
             >
               <Icon
@@ -182,6 +192,7 @@ function go(to: string) {
                 aria-hidden="true"
               />
               <span>{{ client.name }}</span>
+              <span v-if="client.contact" class="text-muted-foreground ml-2 text-xs">{{ client.contact }}</span>
             </UiCommandItem>
           </UiCommandGroup>
 
