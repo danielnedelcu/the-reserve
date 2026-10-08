@@ -63,6 +63,9 @@ if (process.argv.includes("--clean")) {
     counts.transactions = (await db.query("delete from transactions where note = $1", [TAG])).rowCount;
     counts.appointments = (await db.query("delete from appointments where notes = $1", [TAG])).rowCount; // lines cascade
     counts.services = (await db.query("delete from services where name like $1", [`${TAG} %`])).rowCount;
+    // The audit rows the seeded staff wrote or that were written about them
+    // (append-only; replica mode is already on for this transaction).
+    counts.audit = (await db.query("delete from audit_log a using staff s where s.display_name like $1 and (a.actor_staff_id = s.id or (a.entity_type = 'staff' and a.entity_id = s.id))", [`${TAG} %`])).rowCount;
     counts.staff = (await db.query("delete from staff where display_name like $1", [`${TAG} %`])).rowCount;
     counts.clients = (await db.query("delete from clients where referral_source = $1", [TAG])).rowCount;
     counts.products = (await db.query("delete from products where name like $1", [`${TAG} %`])).rowCount;
@@ -74,7 +77,7 @@ if (process.argv.includes("--clean")) {
   } finally {
     await db.end();
   }
-  console.log(`Removed ${counts.transactions} seeded transactions (${counts.refunds} refunds, ${counts.items} lines, ${counts.payments} payments), ${counts.appointments} appointments, ${counts.services} services, ${counts.staff} staff, ${counts.clients} clients and ${counts.products} products.`);
+  console.log(`Removed ${counts.transactions} seeded transactions (${counts.refunds} refunds, ${counts.items} lines, ${counts.payments} payments), ${counts.appointments} appointments, ${counts.services} services, ${counts.staff} staff (and ${counts.audit} audit rows about them), ${counts.clients} clients and ${counts.products} products.`);
   process.exit(0);
 }
 
@@ -169,8 +172,8 @@ const ledgerDsn = get("DATABASE_URL");
 const ledgerDb = new pg.Client({ connectionString: ledgerDsn });
 await ledgerDb.connect();
 const HEADER_COLS = ["organization_id", "location_id", "client_id", "refunds_transaction_id", "subtotal_cents", "discount_cents", "tax_cents", "tip_cents", "total_cents", "checked_out_by", "note", "created_at", "idempotency_key"];
-const LINE_COLS = ["transaction_id", "kind", "name_snapshot", "quantity", "unit_price_cents", "taxable", "tax_cents", "total_cents", "staff_id"];
-const PAY_COLS = ["transaction_id", "method", "amount_cents", "reference", "stripe_payment_intent_id"];
+const LINE_COLS = ["transaction_id", "organization_id", "kind", "name_snapshot", "quantity", "unit_price_cents", "taxable", "tax_cents", "total_cents", "staff_id"];
+const PAY_COLS = ["transaction_id", "organization_id", "method", "amount_cents", "reference", "stripe_payment_intent_id"];
 for (let b = 0; b < TXN_COUNT; b += 500) {
   const headers = [];
   const lineSets = [];
@@ -197,9 +200,9 @@ for (let b = 0; b < TXN_COUNT; b += 500) {
     const pays = [];
     rows.forEach((r, k) => {
       const set = lineSets[k];
-      for (const x of set.items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: x.name, quantity: 1, unit_price_cents: x.total_cents, taxable: x.tax_cents > 0, tax_cents: x.tax_cents, total_cents: x.total_cents, staff_id: x.staff_id });
+      for (const x of set.items) lines.push({ transaction_id: r.id, organization_id: org.data.id, kind: x.kind, name_snapshot: x.name, quantity: 1, unit_price_cents: x.total_cents, taxable: x.tax_cents > 0, tax_cents: x.tax_cents, total_cents: x.total_cents, staff_id: x.staff_id });
       const method = set.method === "gift_card" ? "cash" : set.method;
-      pays.push({ transaction_id: r.id, method, amount_cents: set.total, reference: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : set.ref, stripe_payment_intent_id: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : null });
+      pays.push({ transaction_id: r.id, organization_id: org.data.id, method, amount_cents: set.total, reference: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : set.ref, stripe_payment_intent_id: method === "stripe_card" ? `pi_${String(txMade + k).padStart(8, "0")}` : null });
       if (set.refund) originals.push({ id: r.id, at: set.at, items: set.items, header: headers[k] });
     });
     await insertMany(ledgerDb, "transaction_items", LINE_COLS, lines);
@@ -223,8 +226,8 @@ for (let b = 0; b < originals.length; b += 500) {
     const lines = [];
     const pays = [];
     rows.forEach((r, k) => {
-      for (const x of chunk[k].items) lines.push({ transaction_id: r.id, kind: x.kind, name_snapshot: `Refund — ${x.name}`, quantity: 1, unit_price_cents: -x.total_cents, taxable: x.tax_cents > 0, tax_cents: -x.tax_cents, total_cents: -x.total_cents, staff_id: x.staff_id });
-      pays.push({ transaction_id: r.id, method: "cash", amount_cents: -chunk[k].header.total_cents, reference: null, stripe_payment_intent_id: null });
+      for (const x of chunk[k].items) lines.push({ transaction_id: r.id, organization_id: org.data.id, kind: x.kind, name_snapshot: `Refund — ${x.name}`, quantity: 1, unit_price_cents: -x.total_cents, taxable: x.tax_cents > 0, tax_cents: -x.tax_cents, total_cents: -x.total_cents, staff_id: x.staff_id });
+      pays.push({ transaction_id: r.id, organization_id: org.data.id, method: "cash", amount_cents: -chunk[k].header.total_cents, reference: null, stripe_payment_intent_id: null });
     });
     await insertMany(ledgerDb, "transaction_items", LINE_COLS, lines);
     await insertMany(ledgerDb, "payments", PAY_COLS, pays);

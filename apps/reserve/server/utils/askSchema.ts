@@ -77,7 +77,7 @@ transactions(id, organization_id, location_id, client_id, appointment_id,
   walk-in retail. A REFUND is a separate row with NEGATIVE amounts whose
   refunds_transaction_id points at the original; originals are never edited.
 
-transaction_items(id, transaction_id, kind, appointment_id, product_id,
+transaction_items(id, transaction_id, organization_id, kind, appointment_id, product_id,
                   gift_card_id, staff_id, name_snapshot, quantity,
                   unit_price_cents, taxable, tax_cents, total_cents, discount_reason)
   kind: service, product, gift_card, tip, discount, late_cancellation_fee.
@@ -110,7 +110,7 @@ ledger_transactions(id, organization_id, location_id, client_id, appointment_id,
   transactions (is_refund = false), average tickets and the header's
   discount_cents / tax_cents.
 
-payments(id, transaction_id, method, amount_cents, gift_card_id, reference,
+payments(id, transaction_id, organization_id, method, amount_cents, gift_card_id, reference,
          stripe_payment_intent_id, created_at)
   method: card_external, gift_card, cash, stripe_card. Multiple rows per
   transaction = split tender. Negative amounts on refund transactions.

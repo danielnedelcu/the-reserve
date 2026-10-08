@@ -22,8 +22,16 @@
  * alternatives measured and rejected). A searched case must not
  * sequentially scan the table carrying the searched columns (clients,
  * products); a scan of transactions over a window that holds every row is
- * the planner's right choice and is reported, not failed. Exit 1 when a
- * case is over its budget.
+ * the planner's right choice and is reported, not failed. The ledger's
+ * line tables are not in that rule: under RLS, Postgres will not use a
+ * trigram index for ILIKE at all (texticlike is not leakproof, so a
+ * security-barrier scan cannot evaluate it ahead of the policy), so a
+ * search over name_snapshot or reference is a filtered scan of the
+ * organisation's rows in every schema state — through the parent's
+ * index before the ledger_organization migration, through a seq scan
+ * (one organisation holds every seeded row) after it, and faster
+ * (measured 2026-10-08: 367→238, 188→113 and 175→80ms p50). The
+ * board records the limitation. Exit 1 when a case is over its budget.
  *
  *   npm run bench:tables            (default 20 runs a case; --runs N)
  */
@@ -31,6 +39,7 @@ import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { randomBytes } from "node:crypto";
 import { get, guard, supabaseEnv, requireLocalStack } from "./_env.mjs";
+import { scrubTestStaff } from "./_cleanup.mjs";
 
 requireLocalStack("the benchmark");
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
@@ -41,6 +50,8 @@ const onlyArg = process.argv.indexOf("--only"); // run only cases whose name sta
 const ONLY = onlyArg > -1 ? process.argv[onlyArg + 1] : null;
 const RUNS = runsArg > -1 ? Number(process.argv[runsArg + 1]) : 20;
 const BUDGET = { month: { p50: 50, max: 200 }, year: { p50: 400, max: 800 } };
+/** Searched tables whose search must go through an index (see the header for why the ledger's line tables are not here). */
+const SEARCHED_BY_INDEX = ["clients", "products"];
 const budgetFor = (args) => {
   if (!args.p_from || !args.p_to) return BUDGET.month;
   const days = (Date.parse(args.p_to) - Date.parse(args.p_from)) / 86_400_000;
@@ -191,7 +202,7 @@ try {
     const apiMs = c.sql ? null : Date.now() - a0;
     const total = c.sql ? Number((await (async () => { await pgc.query("begin"); await pgc.query("set local role authenticated"); await pgc.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(useClaims)]); const r = await pgc.query(c.sql, [c.args.p_from, c.args.p_to]); await pgc.query("rollback"); return r.rows[0].count; })())) : api.data?.total;
     const budget = budgetFor(c.args);
-    const searchedTableScanned = c.args.p_q && seqScans.some((s) => !s.startsWith("transactions×"));
+    const searchedTableScanned = c.args.p_q && seqScans.some((s) => SEARCHED_BY_INDEX.includes(s.split("×")[0]));
     if (c.sql && c.session === "provider" && total === 0) { console.log(`skip  ${c.name} (the provider session saw no rows — attribution did not take)`); overBudget = true; }
     const over = p50 > budget.p50 || max > budget.max || searchedTableScanned;
     if (c.fn === "transactions_page" && PROVIDER === null && c.args.p_staff_id === null) { console.log(`skip  ${c.fn}: ${c.name} (no seeded provider)`); continue; }
@@ -201,10 +212,13 @@ try {
   }
 } finally {
   await pgc.end();
-  await admin.from("staff_roles").delete().eq("staff_id", staff.data.id);
+  // Roles off silently and the audit rows about the bench's staff (and the
+  // seed provider it lent a role) removed, before the API deletes: a role
+  // revoked through the API writes one more append-only row (CLAUDE.md).
+  await scrubTestStaff(DATABASE_URL, [staff.data.id, providerRoleRow?.staff_id]);
   await admin.from("staff").delete().eq("id", staff.data.id);
   await admin.auth.admin.deleteUser(made.user.id);
-  if (providerRoleRow) await admin.from("staff_roles").delete().eq("staff_id", providerRoleRow.staff_id).eq("role_id", providerRoleRow.role_id);
+  // (the provider's bench role row went with the scrub above)
   if (PROVIDER && providerUser) {
     await admin.from("staff").update({ user_id: null }).eq("id", PROVIDER);
     await admin.auth.admin.deleteUser(providerUser);

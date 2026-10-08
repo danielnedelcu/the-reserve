@@ -359,6 +359,37 @@ async function main() {
     made.clients = made.clients.filter((c) => c !== ghost);
   }
 
+  // ── the ledger's own organization_id (policy sweep PR 2) ──────────────
+  console.log("\nthe ledger's own organization_id — every trigger enabled; a line or payment in another organisation cannot exist");
+  {
+    // A future migration that disables a trigger for a backfill and forgets
+    // to re-enable it cannot pass this: all four append-only triggers (three
+    // ledger, one audit) and the three balance triggers, enabled ('O').
+    const want = ["trg_transactions_append_only", "trg_transaction_items_append_only", "trg_payments_append_only", "trg_audit_log_append_only", "trg_ledger_transactions_balanced", "trg_ledger_items_balanced", "trg_ledger_payments_balanced"];
+    const { rows } = await db.query("select tgname, tgenabled from pg_trigger where tgname = any($1::text[]) order by tgname", [want]);
+    const enabled = rows.filter((r) => r.tgenabled === "O").map((r) => r.tgname);
+    check("the four append-only triggers and the three balance triggers all exist and are enabled (tgenabled = 'O')", want.every((n) => enabled.includes(n)), `enabled: ${enabled.join(",") || "none"}; rows: ${rows.length}`);
+  }
+  {
+    // The composite key (transaction_id, organization_id) → transactions (id, organization_id):
+    // a line or payment carrying west's organisation on east's sale id1 is refused by
+    // reference (23503), on the direct connection and through the service-role API alike.
+    const before = await rowsOf(id1);
+    let line = null, pay = null;
+    try { await db.query("begin"); await db.query("insert into transaction_items (transaction_id, organization_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents) values ($1,$2,'product','Smuggled',1,100,false,0,100)", [id1, west.id]); } catch (e) { line = e; }
+    await db.query("rollback").catch(() => {});
+    try { await db.query("begin"); await db.query("insert into payments (transaction_id, organization_id, method, amount_cents) values ($1,$2,'cash',100)", [id1, west.id]); } catch (e) { pay = e; }
+    await db.query("rollback").catch(() => {});
+    check("a line and a payment whose organisation differs from their transaction's are refused by the composite foreign key (23503) on the direct connection", line?.code === "23503" && pay?.code === "23503", `${line?.code ?? "no error"}, ${pay?.code ?? "no error"}`);
+    const api = await admin.from("transaction_items").insert({ transaction_id: id1, organization_id: west.id, kind: "product", name_snapshot: "Smuggled", quantity: 1, unit_price_cents: 100, taxable: false, tax_cents: 0, total_cents: 100 });
+    const apiPay = await admin.from("payments").insert({ transaction_id: id1, organization_id: west.id, method: "cash", amount_cents: 100 });
+    check("…and through the service-role API (23503), the constraint naming the composite key", api.error?.code === "23503" && apiPay.error?.code === "23503" && /transaction_org_fkey/.test(api.error?.message ?? ""), `${api.error?.code ?? "no error"}: ${(api.error?.message ?? "").slice(0, 90)}`);
+    const after = await rowsOf(id1);
+    check("…and the sale is untouched", after.items.length === before.items.length && after.payments.length === before.payments.length);
+    const { rows: own } = await db.query("select count(*)::int as n from transaction_items i join transactions t on t.id = i.transaction_id where i.organization_id <> t.organization_id");
+    check("no line in the ledger carries an organisation other than its transaction's (non-vacuous: the key makes it unrepresentable)", own[0].n === 0, String(own[0].n));
+  }
+
   // ── 2. the routes ─────────────────────────────────────────────────────
   console.log("\nthe routes — checkout and refund through the running app, with a real session");
   const ping = await fetch(base).catch(() => null);

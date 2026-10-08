@@ -154,6 +154,86 @@ future migration that disables one and forgets cannot pass.
   has_permission('transactions.view')))` — the plain column check,
   `transactions_read`'s shape — and the per-line parent lookup is gone.
 
+### `[AS-BUILT]` PR 2 (2026-10-08, migration ledger_organization)
+
+- **The single-column keys are dropped, not kept.** With both the
+  single-column and the composite key in place, PostgREST sees two
+  relationships between `transactions` and each child and refuses every
+  embedded select (PGRST201, "more than one relationship was found").
+  The refund route, the checkout's gift-card read and the transactions
+  page all embed `transaction_items` and `payments`; all three broke on
+  the first local run (the refund route answered 404). Proven on the
+  local stack: with the single-column keys dropped and only the
+  composite key, both embed directions work. The composite key carries
+  the same `on delete restrict` and implies the single column's
+  reference, so nothing is lost: one key, one relationship, no
+  `!fkey` hint anywhere. Recorded in the migration header.
+- **The backfill ran as designed.** Dry run in a rolled-back
+  transaction and then the real apply on the 50k seed: 87,730 lines and
+  51,516 payments backfilled, both append-only triggers re-enabled, all
+  seven triggers enabled, zero nulls, zero lines whose organisation
+  differs from the parent's. Disabling a trigger takes an ACCESS
+  EXCLUSIVE lock and the migration runs in one transaction, so no other
+  session can write to either table while the triggers are off. On
+  hosted the backfill covers 18 lines and 13 payments.
+- **Triggers on the two tables** (inventoried on hosted before the
+  push): only the two append-only triggers fire on UPDATE;
+  `trg_product_sale`, `trg_gift_card_payment` and the three balance
+  triggers are AFTER INSERT only, so the backfill ran nothing else.
+- **Proof added to `verify-ledger`**: all four append-only triggers
+  (three ledger, one audit) and the three balance triggers enabled
+  (`tgenabled = 'O'`), so a migration that disables one and forgets
+  cannot pass; and a line or payment carrying another organisation on a
+  transaction is refused by the composite key (23503) on the direct
+  connection and through the service-role API, the sale untouched, and
+  no such row exists. The fixtures (`verify-tables`, `verify-presets`,
+  `verify-ledger` through the function) and the load seed set the column.
+- **Benchmark** (`bench:tables`, 20 runs a case, the 50k seed, before
+  on the pre-migration schema and after on the migrated one with the
+  same seed shape; both runs analysed first and within every budget):
+
+  | transactions_page case | p50 before | p50 after | max before | max after |
+  |---|---|---|---|---|
+  | the year | 392 ms | 283 ms | 548 ms | 343 ms |
+  | the year, cards only | 335 ms | 298 ms | 448 ms | 555 ms |
+  | year, one provider | 396 ms | 284 ms | 605 ms | 303 ms |
+  | year, cash only | 206 ms | 143 ms | 386 ms | 214 ms |
+  | year, search an item 'facial' | 367 ms | 262 ms | 619 ms | 387 ms |
+  | year, search an amount '75' | 188 ms | 113 ms | 242 ms | 118 ms |
+  | year, search a reference | 175 ms | 81 ms | 260 ms | 575 ms |
+  | this month (default) | 33 ms | 31 ms | 39 ms | 44 ms |
+  | month, sort by total | 33 ms | 30 ms | 46 ms | 45 ms |
+  | year, refunds only | 26 ms | 26 ms | 33 ms | 31 ms |
+
+  The year window, the figure this PR exists to move, drops from 392 to
+  283 ms p50 (28%), from the edge of its 400 ms budget to well inside
+  it; every year-wide case moves the same way. Month cases are
+  unchanged within noise. Clients (p50 median 7.6 → 8.4 ms, worst max
+  32 → 33 ms), products (1.7 → 2.0 ms, worst max 4 → 16 ms) and the four
+  schedule cases show no regression; a single max outlier per run
+  (reference search 575 ms, one provider 605 ms before) is the usual
+  first-call spike and inside the 800 ms max budget.
+- **A finding the benchmark surfaced — trigram search under RLS.** The
+  three year-search cases came out faster but flagged by the bench's
+  "no sequential scan of a searched table" rule, which had passed
+  before. Explained as the authenticated role: Postgres will not use a
+  trigram index for `ILIKE` under RLS at all, because `texticlike` is
+  not leakproof and a security-barrier scan cannot evaluate it ahead of
+  the policy — with sequential scans disabled the planner falls back to
+  the organisation index and filters every row; without RLS the same
+  patterns use the trigram index at 4–9 ms. So the ledger search was a
+  filtered scan of the organisation's rows in BOTH schema states: through
+  the parent's `transaction_items_txn` index per transaction before, a
+  sequential scan after (one organisation holds every seeded row), and
+  faster. The rule is scoped to clients and products, with the reason
+  in the bench's header, and the limitation and its remedy (a
+  security-definer search function) are on the board.
+- **Two cleanups the audit rule had missed**: the load seed's `--clean`
+  and the bench's teardown deleted staff without removing the audit
+  rows written about them (four orphan rows after one bench run). Both
+  now scrub through the shared helper / inside the seed's replica-mode
+  transaction.
+
 ## Proof
 
 - **Same meaning.** Every harness and every journey passes unchanged
