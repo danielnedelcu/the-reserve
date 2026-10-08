@@ -129,6 +129,8 @@ jobs:
         run: npm run verify:leads -- "$E2E_BASE_URL"
       - name: verify:ledger against the running app (local only; writes ledger rows)
         run: npm run verify:ledger
+        env:
+          SUPABASE_LOCAL: "true"
       - name: verify:audit against the running app (local only; writes audit rows)
         run: npm run verify:audit
         env:
