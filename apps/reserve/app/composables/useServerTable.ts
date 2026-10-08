@@ -25,6 +25,14 @@ import {
  * - The first load happens through useAsyncData, so a server-rendered
  *   page arrives with its rows; later loads cancel the previous one and
  *   a late answer never overwrites a newer one.
+ * - Navigations never overwrite each other. Every change merges into the
+ *   composable's OWN record of the intended query, not into route.query:
+ *   a router.push resolves later than it is called, and a change made
+ *   while one is in flight (the search box's 300ms debounce landing just
+ *   after a filter was picked) used to merge into the stale route and
+ *   write the filter away. Found by e2e/journeys/05-products.spec.ts on
+ *   CI run 37716306154 (2026-10-08); tests/composables/useServerTable.test.ts
+ *   pins it.
  */
 
 export interface ServerPage<Row> {
@@ -94,21 +102,42 @@ export async function useServerTable<F extends FilterShape, S extends readonly [
     return searchMode === "url" ? parsed : { ...parsed, q: sessionSearch.value };
   });
 
+  // What the URL is MEANT to say: the composable's own record, which
+  // every change merges into. route.query lags a push by the router's
+  // async navigation, so merging into it lost whatever a change in flight
+  // was carrying. It follows the route only when nothing of ours is in
+  // flight (Back, a link, a reload); while our navigations are pending,
+  // the newest of them carries the whole intended state, and the router
+  // cancels the older ones.
+  const intended = ref<TableQuery<F, S>>(parseTableQuery(opts, route.query as Record<string, unknown>)) as Ref<TableQuery<F, S>>;
+  let inFlight = 0;
+  watch(
+    () => route.query,
+    (q) => {
+      if (inFlight === 0) intended.value = parseTableQuery(opts, q as Record<string, unknown>);
+    },
+    { deep: true },
+  );
+
   function go(changes: Changes<S>, history: "push" | "replace" = "push") {
-    const current = query.value;
-    const next = tableQueryToUrl(
-      opts,
-      {
-        q: changes.q ?? current.q,
-        page: changes.page ?? current.page,
-        sort: changes.sort ?? current.sort,
-        desc: changes.desc ?? current.desc,
-        filters: { ...(current.filters as Record<string, string | undefined>), ...(changes.filters ?? {}) },
-      },
-      route.query as Record<string, unknown>,
-      { includeSearch: searchMode === "url" },
-    );
-    return history === "push" ? router.push({ query: next }) : router.replace({ query: next });
+    const current = intended.value;
+    const state: TableQuery<F, S> = {
+      q: changes.q ?? current.q,
+      page: changes.page ?? current.page,
+      sort: changes.sort ?? current.sort,
+      desc: changes.desc ?? current.desc,
+      filters: Object.fromEntries(
+        Object.entries({ ...(current.filters as Record<string, string | undefined>), ...(changes.filters ?? {}) }).filter(([, v]) => v != null),
+      ) as TableQuery<F, S>["filters"],
+    };
+    intended.value = state;
+    const next = tableQueryToUrl(opts, state, route.query as Record<string, unknown>, { includeSearch: searchMode === "url" });
+    inFlight++;
+    const nav = history === "push" ? router.push({ query: next }) : router.replace({ query: next });
+    return nav.finally(() => {
+      inFlight--;
+      if (inFlight === 0) intended.value = parseTableQuery(opts, route.query as Record<string, unknown>);
+    });
   }
 
   const setFilter = (name: keyof F & string, value: string | null | undefined) =>
