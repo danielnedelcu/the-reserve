@@ -101,7 +101,8 @@ const env = {
   RESEND_API_KEY: "",
   MAIL_FROM: "",
   // No Stripe key in a test app unless a money journey supplies a test one.
-  STRIPE_SECRET_KEY: /^sk_test_/.test(process.env.STRIPE_SECRET_KEY ?? "") ? process.env.STRIPE_SECRET_KEY : "",
+  // A secret or a restricted key, test mode either way (the e2e-stripe job hands over a restricted rk_test_ one).
+  STRIPE_SECRET_KEY: /^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY ?? "") ? process.env.STRIPE_SECRET_KEY : "",
 };
 
 const log = fs.openSync(`${ROOT}/apps/reserve/.output-check/server.log`, "w");

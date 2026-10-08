@@ -137,8 +137,8 @@ jobs:
         run: npm run verify:audit
         env:
           SUPABASE_LOCAL: "true"
-      - name: Playwright journeys
-        run: npm run test:e2e
+      - name: Playwright journeys (the Stripe ones run in e2e-stripe)
+        run: npm run test:e2e -- --grep-invert @stripe
         env:
           SUPABASE_LOCAL: "true"
       - name: Keep the traces of a failure
@@ -155,6 +155,105 @@ jobs:
         run: tail -n 200 apps/reserve/.output-check/server.log 2>/dev/null || echo "No log."
       - name: Stop the app
         if: always()
+        run: npm run app:stop
+        env:
+          SUPABASE_LOCAL: "true"
+
+  # The Stripe journeys (docs/testing-design.md, "The money journeys" §3,
+  # after Lokl's sandbox gating): the same stack and built app, plus the
+  # stripe-sandbox environment's RESTRICTED test-mode key. The gate runs
+  # first: no key → a notice and every later step skipped, the job green,
+  # so a fork or a branch without the secret is not blocked; a key that is
+  # not test mode → the job FAILS; otherwise the account check (the key
+  # must belong to the account STRIPE_SANDBOX_ACCOUNT_ID names), then the
+  # journeys tagged @stripe. One run touches the sandbox at a time. The
+  # ordinary e2e job never sees the key and excludes @stripe.
+  e2e-stripe:
+    name: e2e-stripe (Stripe sandbox journeys)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stripe-sandbox
+    concurrency:
+      group: stripe-sandbox
+      cancel-in-progress: false
+    steps:
+      - name: The gate — a test-mode key for the sandbox, or skip with a notice
+        id: gate
+        env:
+          STRIPE_SANDBOX_SECRET_KEY: ${{ secrets.STRIPE_SANDBOX_SECRET_KEY }}
+          STRIPE_SANDBOX_ACCOUNT_ID: ${{ secrets.STRIPE_SANDBOX_ACCOUNT_ID }}
+        run: |
+          if [ -z "$STRIPE_SANDBOX_SECRET_KEY" ]; then
+            echo "::notice title=e2e-stripe skipped::No STRIPE_SANDBOX_SECRET_KEY in the stripe-sandbox environment, so the Stripe journeys did not run."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$STRIPE_SANDBOX_SECRET_KEY" in
+            sk_test_*|rk_test_*) ;;
+            *) echo "::error::STRIPE_SANDBOX_SECRET_KEY is not a test-mode key (sk_test_ or rk_test_); refusing to run against it."; exit 1 ;;
+          esac
+          if [ -z "$STRIPE_SANDBOX_ACCOUNT_ID" ]; then
+            echo "::error::STRIPE_SANDBOX_ACCOUNT_ID is not set in the stripe-sandbox environment; the account check cannot run."
+            exit 1
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        if: steps.gate.outputs.run == 'true'
+      - name: The account check — the key belongs to the sandbox account
+        if: steps.gate.outputs.run == 'true'
+        run: node scripts/stripe-sandbox-check.mjs
+        env:
+          STRIPE_SANDBOX_SECRET_KEY: ${{ secrets.STRIPE_SANDBOX_SECRET_KEY }}
+          STRIPE_SANDBOX_ACCOUNT_ID: ${{ secrets.STRIPE_SANDBOX_ACCOUNT_ID }}
+      - name: Install Chromium for Playwright
+        if: steps.gate.outputs.run == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Start the local Supabase stack
+        if: steps.gate.outputs.run == 'true'
+        run: npx supabase start --ignore-health-check -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
+      - name: Rebuild the database from the migrations
+        if: steps.gate.outputs.run == 'true'
+        run: npx supabase db reset --local
+      - name: Export the local stack's URL and keys
+        if: steps.gate.outputs.run == 'true'
+        run: npx supabase status -o env | sed -E 's/^([A-Z_0-9]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
+      - name: Build the app into its own folders
+        if: steps.gate.outputs.run == 'true'
+        run: npm run build:check
+      - name: Start the app with the sandbox key
+        if: steps.gate.outputs.run == 'true'
+        run: npm run app:start && cat node_modules/.cache/ci-app.env >> "$GITHUB_ENV"
+        env:
+          SUPABASE_LOCAL: "true"
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SANDBOX_SECRET_KEY }}
+      - name: Stripe journeys
+        if: steps.gate.outputs.run == 'true'
+        run: npm run test:e2e -- --grep @stripe
+        env:
+          SUPABASE_LOCAL: "true"
+          STRIPE_SANDBOX_SECRET_KEY: ${{ secrets.STRIPE_SANDBOX_SECRET_KEY }}
+          STRIPE_SANDBOX_ACCOUNT_ID: ${{ secrets.STRIPE_SANDBOX_ACCOUNT_ID }}
+      - name: Keep the traces of a failure
+        if: failure() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-stripe-results
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          retention-days: 7
+      - name: App server log
+        if: failure() && steps.gate.outputs.run == 'true'
+        run: tail -n 200 apps/reserve/.output-check/server.log 2>/dev/null || echo "No log."
+      - name: Stop the app
+        if: always() && steps.gate.outputs.run == 'true'
         run: npm run app:stop
         env:
           SUPABASE_LOCAL: "true"

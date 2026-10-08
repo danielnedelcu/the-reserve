@@ -797,6 +797,51 @@ themselves are cheap.
 - Cost measured locally: the eight journeys run in 14 s together; the
   full suite of nineteen in 33 s.
 
+### As built — PR 2, Stripe (2026-10-08)
+
+- **The gate** is `scripts/stripe-sandbox-check.mjs`, shared by the CI
+  step and the journeys: the key must be `sk_test_` or `rk_test_`, and
+  `stripe.accounts.retrieve()` must return the id `STRIPE_SANDBOX_ACCOUNT_ID`
+  names; an error names the check that failed and never a value. The
+  `e2e-stripe` job declares the `stripe-sandbox` environment and runs
+  the gate as its first step: no key → a `::notice` and every later step
+  skipped (`if: steps.gate.outputs.run == 'true'`), the job green; a key
+  that is not test mode, or no account id → the job fails; otherwise
+  the account check, the stack, the built app started with the key
+  (`ci-start-app` now passes `rk_test_` through as well as `sk_test_`),
+  and `npm run test:e2e -- --grep @stripe`. Its `concurrency` group is
+  `stripe-sandbox`, so one run touches the sandbox at a time. The
+  ordinary `e2e` job runs `--grep-invert @stripe` and never sees the key.
+  `e2e-stripe` is not a required check.
+- **`savedCard(stripe, clientId, capturedBy, paymentMethod)`**: a Stripe
+  customer (test mode) with the test payment method attached, the
+  customer id on the client, a front-desk attested `card_consents` row
+  and the `client_payment_methods` row with the card's brand and last
+  four. The customers are deleted at cleanup through the Stripe API,
+  logged rather than failed if Stripe refuses. The decline branch uses
+  `pm_card_chargeCustomerFail`, which attaches and then declines every
+  charge; `pm_card_chargeDeclined` is refused at attach time by the
+  current API, found on the first local run.
+- **Journey 18** charges the fee through the public cancel page as
+  designed and asserts the PaymentIntent in Stripe (succeeded, $50, the
+  customer, the metadata, and the only intent on that customer), the
+  ledger's fee line and `stripe_card` payment carrying the intent id,
+  the spent link charging nothing on a second visit, the decline branch
+  (the server's words in the page's alert, the appointment still booked,
+  the token released, no succeeded intent), and `/financials` filing the
+  fee as a fee with revenue at zero.
+- **Journey 19** pays with the card on file from the checkout page's own
+  "Card on file" tender, asserts the intent in Stripe, then refunds from
+  `/transactions` and asserts the Stripe refund (one, $30, succeeded)
+  and the mirror's payment carrying the same intent id. The receipt
+  cannot name the card's last four: `/transactions` labels the method
+  from a map that lacks `stripe_card`, so the row and the dialog show the
+  raw value (board item); the journey asserts the amount and the intent.
+- Locally both ran against the test-mode key in `apps/reserve/.env`
+  (accepted by the gate in place of the sandbox key, with the same
+  account check): 2 of 2 in 13.5 s; the ordinary suite excludes them. The
+  first run on the restricted sandbox key is the pull request's.
+
 ### Open for the review
 
 1. Journey 11 reads the minted gift card's code from the receipt line.

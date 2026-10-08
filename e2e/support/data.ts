@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type Stripe from "stripe";
 import { testEnv, type TestEnv } from "./env";
 import { get } from "../../scripts/_env.mjs";
 import { removeTestOrganisation, scrubTestStaff } from "../../scripts/_cleanup.mjs";
@@ -56,6 +57,7 @@ export class TestData {
   private services: string[] = [];
   private products: string[] = [];
   private giftCards: string[] = [];
+  private stripeCustomers: { stripe: Stripe; id: string }[] = [];
   private bulkClients = false;
   private locationTimezone: { id: string; timezone: string } | null = null;
 
@@ -229,6 +231,51 @@ export class TestData {
   }
 
   /**
+   * A card on file, the way the consent-and-save flow leaves one
+   * (migration4b-design.md): a Stripe customer for the client with a TEST
+   * payment method attached (pm_card_visa by default; pm_card_chargeCustomerFail
+   * for the decline branch — it attaches, then every charge to the customer
+   * is declined; pm_card_chargeDeclined is refused at attach time), the
+   * customer id on the client, a front-desk
+   * attested consent row, and the saved-card row with the card's brand and
+   * last four. The Stripe customer is deleted at cleanup. @stripe journeys only.
+   */
+  async savedCard(
+    stripe: Stripe,
+    clientId: string,
+    capturedBy: string,
+    paymentMethod: "pm_card_visa" | "pm_card_chargeCustomerFail" | "pm_card_mastercard" = "pm_card_visa",
+  ): Promise<{ paymentMethodId: string; customerId: string; brand: string; last4: string }> {
+    const customer = await stripe.customers.create({ description: `${this.tag} client ${clientId}`, metadata: { reserve_e2e_run: this.run } });
+    this.stripeCustomers.push({ stripe, id: customer.id });
+    const pm = await stripe.paymentMethods.attach(paymentMethod, { customer: customer.id });
+    const card = pm.card;
+    if (!card) throw new Error("savedCard: the attached payment method is not a card");
+    const { error: clientError } = await this.env.db.from("clients").update({ stripe_customer_id: customer.id }).eq("id", clientId);
+    if (clientError) throw new Error(`clients.stripe_customer_id: ${clientError.message}`);
+    const consent = await must(
+      this.env.db
+        .from("card_consents")
+        .insert({ organization_id: this.orgId, client_id: clientId, captured_by: capturedBy, method: "front_desk_attested", policy_text: `${this.tag}: card kept on file for late-cancellation fees and card-on-file checkout; attested at the desk.` })
+        .select("id")
+        .single(),
+      "card consent",
+    );
+    const { error } = await this.env.db.from("client_payment_methods").insert({
+      organization_id: this.orgId,
+      client_id: clientId,
+      consent_id: consent.id,
+      stripe_payment_method_id: pm.id,
+      brand: card.brand,
+      last4: card.last4,
+      exp_month: card.exp_month,
+      exp_year: card.exp_year,
+    });
+    if (error) throw new Error(`client_payment_methods: ${error.message}`);
+    return { paymentMethodId: pm.id, customerId: customer.id, brand: card.brand, last4: card.last4 };
+  }
+
+  /**
    * The seeded location, placed in the given timezone for this run and put
    * back at cleanup. The slots and booking routes read the organisation's
    * first location (`.limit(1)`), so a second location made for the run
@@ -388,6 +435,7 @@ export class TestData {
         failures.push(`organisation: ${(e as Error).message}`);
       }
       for (const id of this.users) await step("auth user", () => this.env.db.auth.admin.deleteUser(id));
+      await this.deleteStripeCustomers();
       if (failures.length) throw new Error(`Test organisation was not fully removed (${this.tag}):\n  ${failures.join("\n  ")}`);
       return;
     }
@@ -417,6 +465,7 @@ export class TestData {
       await step("staff", () => this.env.db.from("staff").delete().in("id", this.staff));
     }
     for (const id of this.users) await step("auth user", () => this.env.db.auth.admin.deleteUser(id));
+    await this.deleteStripeCustomers();
     for (const id of this.roles) {
       await step("role permissions", () => this.env.db.from("role_permissions").delete().eq("role_id", id));
       await step("role", () => this.env.db.from("roles").delete().eq("id", id));
@@ -426,5 +475,17 @@ export class TestData {
       await step("location timezone", () => this.env.db.from("locations").update({ timezone }).eq("id", id));
     }
     if (failures.length) throw new Error(`Test data was not fully removed (${this.tag}):\n  ${failures.join("\n  ")}`);
+  }
+
+  /** Stripe side effects live outside Postgres: the run's test customers go, logged rather than failed if Stripe refuses. */
+  private async deleteStripeCustomers(): Promise<void> {
+    for (const { stripe, id } of this.stripeCustomers) {
+      try {
+        await stripe.customers.del(id);
+      } catch (e) {
+        console.warn(`[e2e] Stripe test customer ${id} was not deleted: ${(e as Error).message}`);
+      }
+    }
+    this.stripeCustomers = [];
   }
 }
