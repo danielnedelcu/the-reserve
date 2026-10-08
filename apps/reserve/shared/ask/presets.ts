@@ -48,10 +48,7 @@ export const ROUTE_PRESETS: AskRoutePresets[] = [
     prefix: "/transactions",
     presets: [
       { id: "financials.revenue_this_month", label: "Revenue this month" },
-      {
-        id: "financials.gift_cards_outstanding",
-        label: "Gift cards sold but never redeemed",
-      },
+      { id: "financials.gift_cards_outstanding", label: "Gift card balances outstanding" },
       { id: "financials.top_services_quarter", label: "Top services this quarter" },
     ],
   },

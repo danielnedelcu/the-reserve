@@ -134,6 +134,22 @@ All nets happen through the mirror rows; nothing is filtered by sign.
 Refunds stay in the period they were ISSUED (their own `created_at`),
 which is what the ledger records and what the cards do today.
 
+`[AS-BUILT 2026-10-08]` The definition moved out of `transactions_page`'s
+body into two security-invoker views, `ledger_lines` and
+`ledger_transactions` (migration `ledger_definition_views`): the
+category columns and the location-local calendar live there once;
+`transactions_page` sums the view's columns over its matched set, and
+Ask's presets and prompt read the same views
+(docs/design/ask-the-reserve-design.md, "Revenue: one definition").
+Benchmark on the full seed (10,000 clients, 2,000 products, 50,000
+transactions), the same cases as PR 3: month cases unchanged (p50 31 to
+36ms, max 41ms); the year cases moved from about 160 to 325ms p50
+before the view rewrite to 178 to 385ms p50 and 763ms max after, against
+the 400ms p50 / 800ms max year budget — within it, and now near it. The
+recorded remedy is the policy-sweep board item's `organization_id` on
+the two line tables, which removes the per-row parent lookup the year
+window pays 90,000 times.
+
 **One implementation, Lokl's trick.** `transactions_page(...)` computes
 `totals` over its `matched` set (range + filters + search), the way
 `admin_bookings_page` does. The summary cards on `/financials` and the

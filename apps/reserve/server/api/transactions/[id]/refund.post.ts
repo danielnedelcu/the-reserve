@@ -3,6 +3,7 @@ import {
   serverSupabaseServiceRole,
 } from "#supabase/server";
 import { writeLedgerTransaction } from "~~/server/utils/ledgerWrite";
+import { REFUND_PREFIX } from "~~/shared/ledger/refund";
 
 /**
  * POST /api/transactions/:id/refund — full refund (v1).
@@ -140,7 +141,7 @@ export default defineEventHandler(async (event) => {
       product_id: (item.product_id as string | null) ?? null,
       gift_card_id: (item.gift_card_id as string | null) ?? null,
       staff_id: (item.staff_id as string | null) ?? null,
-      name_snapshot: `Refund — ${item.name_snapshot}`,
+      name_snapshot: `${REFUND_PREFIX}${item.name_snapshot}`,
       quantity: item.quantity as number,
       unit_price_cents: -(item.unit_price_cents as number),
       taxable: item.taxable as boolean,

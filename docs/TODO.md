@@ -213,7 +213,12 @@ QUEUED (in order):
   takes it. The rest — every other table's policies — is ONE dedicated
   sweep afterwards, proven the same way: the harnesses and journeys
   unchanged before and after, and a benchmark before and after on a
-  seeded local stack.
+  seeded local stack. 2026-10-08: after the ledger_definition_views
+  rewrite (transactions_page summing the ledger_lines view) the year
+  window sits near its budget — p50 178 to 385ms and max 763ms against
+  400ms / 800ms, up from about 160 to 325ms p50 — so the ledger
+  `organization_id` change above is the recorded remedy, and the next
+  benchmark that crosses the budget takes it.
 - ~~Pickers that load every row (found by the server-tables benchmark
   2026-10-06, when 10,000 seeded clients pushed a test client past the
   1,000-row cap): the schedule's booking dialog loads all active clients
@@ -256,7 +261,7 @@ QUEUED (in order):
   which reconciles only `payment_intent.succeeded`. A retry recovers
   through Stripe's idempotency key only within Stripe's 24-hour window;
   after that a retry refunds twice.
-- Ask presets and prompt onto the shared revenue definition
+- ~~Ask presets and prompt onto the shared revenue definition
   (docs/design/server-tables-design.md, decision 2): `revenue_this_month`
   groups tip, discount and late_cancellation_fee as revenue rows where
   the UI counts only service + product; the prompt's "a plain SUM over
@@ -265,8 +270,13 @@ QUEUED (in order):
   list omits late_cancellation_fee; `gift_cards_outstanding` means
   untouched cards where the UI means the sum of active balances; Ask
   buckets in the DB session zone (UTC, ISO Monday weeks) where the
-  convention is the location's zone with Sunday weeks. Bring them onto
-  `transactions_page` / the same definitions once PR 3 lands.
+  convention is the location's zone with Sunday weeks.~~ DONE 2026-10-08:
+  the definition is the `ledger_lines` / `ledger_transactions` views
+  (migration ledger_definition_views), `transactions_page` sums their
+  columns, every money preset and the prompt read them with the
+  location's calendar, and `verify:presets` proves each preset's figures
+  equal `transactions_page`'s on a ledger fixture (docs/design/
+  ask-the-reserve-design.md, "Revenue: one definition").
 - Owner confirmations, server-tables decision 2 (ask, do not assume):
   (a) revenue stays GROSS of discounts with Discounts as its own figure
   — what the cards have always shown, now written down; (b) the
