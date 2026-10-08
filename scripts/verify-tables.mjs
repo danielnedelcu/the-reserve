@@ -153,6 +153,7 @@ async function txn(orgId, locationId, cashierId, { clientId = null, at, items, p
       organization_id: orgId, location_id: locationId, client_id: clientId, refunds_transaction_id: refunds,
       subtotal_cents: subtotal, discount_cents: discount, tax_cents: tax, tip_cents: tip, total_cents: total,
       checked_out_by: cashierId, note, created_at: at,
+      idempotency_key: `fixture:${run}:${randomBytes(6).toString("hex")}`, // not an app writer; the key is required
     }).select("id").single(),
     `transaction ${note ?? at}`,
   );

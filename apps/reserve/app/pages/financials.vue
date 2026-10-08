@@ -468,7 +468,15 @@ async function refundTxn() {
     detail.value = null;
     await refreshAll();
   } catch (error: unknown) {
-    const err = error as { data?: { statusMessage?: string } };
+    const err = error as { data?: { statusCode?: number; statusMessage?: string; data?: { refundTransactionId?: string } } };
+    const refundId = err.data?.data?.refundTransactionId;
+    if (err.data?.statusCode === 409 && refundId) {
+      // Not a failure: the refund already exists. Show it, with the way to it.
+      toast.link("Already refunded", `${dollars(txn.total_cents)} was refunded earlier.`, { label: "View refund", to: `/transactions?open=${refundId}` });
+      detail.value = null;
+      await refreshAll();
+      return;
+    }
     toast.error("Refund failed", err.data?.statusMessage ?? "Unknown error");
   } finally {
     refunding.value = false;

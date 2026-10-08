@@ -41,6 +41,10 @@ interface CartLine {
 }
 
 const cart = ref<CartLine[]>([]);
+// One key per cart, sent with every Charge attempt, so a retry after a
+// lost response records the sale once. Replaced only after a 409 told
+// staff the first sale went through (see completeCheckout).
+const idempotencyKey = ref(crypto.randomUUID());
 const clientId = ref<string | null>(null);
 const appointmentId = ref<string | null>(null);
 const appointmentLabel = ref("");
@@ -406,6 +410,7 @@ async function completeCheckout() {
       {
         method: "POST",
         body: {
+          idempotencyKey: idempotencyKey.value,
           clientId: clientId.value,
           appointmentId: appointmentId.value,
           items,
@@ -417,9 +422,21 @@ async function completeCheckout() {
     navigateTo("/transactions");
   } catch (error: unknown) {
     const err = error as {
+      statusCode?: number;
       statusMessage?: string;
-      data?: { statusMessage?: string };
+      data?: { statusCode?: number; statusMessage?: string; data?: { transactionId?: string | null } };
     };
+    if ((err.data?.statusCode ?? err.statusCode) === 409) {
+      // The first Charge went through and the cart changed since. Tell
+      // staff, then mint a new key: the next Charge is a NEW sale.
+      const first = err.data?.data?.transactionId;
+      toast.error(
+        "This sale was already recorded",
+        `The first charge went through${first ? ` (transaction ${first.slice(0, 8)})` : ""} and the cart has changed since. Check the transactions list; charging again starts a new sale.`,
+      );
+      idempotencyKey.value = crypto.randomUUID();
+      return;
+    }
     toast.error(
       "Checkout failed",
       err.data?.statusMessage ?? err.statusMessage ?? "Unknown error",

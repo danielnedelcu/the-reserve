@@ -2445,6 +2445,7 @@ export type Database = {
           created_at: string
           discount_cents: number
           id: string
+          idempotency_key: string
           location_id: string
           note: string | null
           organization_id: string
@@ -2461,6 +2462,7 @@ export type Database = {
           created_at?: string
           discount_cents?: number
           id?: string
+          idempotency_key: string
           location_id: string
           note?: string | null
           organization_id: string
@@ -2477,6 +2479,7 @@ export type Database = {
           created_at?: string
           discount_cents?: number
           id?: string
+          idempotency_key?: string
           location_id?: string
           note?: string | null
           organization_id?: string
@@ -2656,6 +2659,16 @@ export type Database = {
           p_to: string
         }
         Returns: Json
+      }
+      write_ledger_transaction: {
+        Args: {
+          p_header: Json
+          p_idempotency_key: string
+          p_items: Json
+          p_organization_id: string
+          p_payments: Json
+        }
+        Returns: string
       }
     }
     Enums: {

@@ -10,6 +10,7 @@
  *   npm run seed:tables            seed everything (clients: --count N; transactions: --transactions N)
  *   npm run seed:tables -- --clean remove them
  */
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { LOCAL_MODE, get, guard, supabaseEnv } from "./_env.mjs";
@@ -160,7 +161,7 @@ for (let b = 0; b < TXN_COUNT; b += 500) {
     const tax = items.reduce((a, x) => a + x.tax_cents, 0);
     const tip = items.filter((x) => x.kind === "tip").reduce((a, x) => a + x.total_cents, 0);
     const total = subtotal - discount + tax + tip;
-    headers.push({ organization_id: org.data.id, location_id: location.data.id, client_id: i % 10 === 0 ? null : clientIds[i % clientIds.length], subtotal_cents: subtotal, discount_cents: discount, tax_cents: tax, tip_cents: tip, total_cents: total, checked_out_by: cashier, note: TAG, created_at: at });
+    headers.push({ organization_id: org.data.id, location_id: location.data.id, client_id: i % 10 === 0 ? null : clientIds[i % clientIds.length], subtotal_cents: subtotal, discount_cents: discount, tax_cents: tax, tip_cents: tip, total_cents: total, checked_out_by: cashier, note: TAG, created_at: at, idempotency_key: `seed:${randomUUID()}` });
     lineSets.push({ items, total, at, method: METHODS[i % METHODS.length], ref: i % 2 === 0 ? `ref-${String(i).padStart(8, "0")}` : null, refund: i % 33 === 0 });
   }
   const { data: rows, error } = await admin.from("transactions").insert(headers).select("id");
@@ -184,7 +185,7 @@ for (let b = 0; b < TXN_COUNT; b += 500) {
 // The refunds: negative mirrors, issued later.
 for (let b = 0; b < originals.length; b += 500) {
   const chunk = originals.slice(b, b + 500);
-  const headers = chunk.map((o, k) => ({ ...o.header, refunds_transaction_id: o.id, subtotal_cents: -o.header.subtotal_cents, discount_cents: -o.header.discount_cents, tax_cents: -o.header.tax_cents, tip_cents: -o.header.tip_cents, total_cents: -o.header.total_cents, created_at: new Date(Date.parse(o.at) + (1 + (k % 20)) * DAY).toISOString() }));
+  const headers = chunk.map((o, k) => ({ ...o.header, refunds_transaction_id: o.id, subtotal_cents: -o.header.subtotal_cents, discount_cents: -o.header.discount_cents, tax_cents: -o.header.tax_cents, tip_cents: -o.header.tip_cents, total_cents: -o.header.total_cents, created_at: new Date(Date.parse(o.at) + (1 + (k % 20)) * DAY).toISOString(), idempotency_key: `seed:refund:${o.id}` }));
   const { data: rows, error } = await admin.from("transactions").insert(headers).select("id");
   if (error) { console.error(`refunds insert failed: ${error.message}`); process.exit(1); }
   const lines = [];

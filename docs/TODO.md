@@ -228,14 +228,25 @@ QUEUED (in order):
   booking, ringing up and opening a client who sorts past 1,100 fillers.
   Left loading whole: services, staff and the bookable-staff lists
   (bounded by the roster and the catalogue, not by growth).
-- Ledger integrity claim without a trigger (found by the server-tables
-  survey 2026-10-06): docs/design/migration4a-design.md says
-  `sum(payments) = transactions.total` is "asserted by trigger", and no
-  such trigger or constraint exists in any migration. Either add a
-  constraint trigger (deferred, per transaction, after the checkout and
-  refund routes' writes) or correct the doc to say it is enforced in
-  the routes only. Decide deliberately; a trigger changes what a
-  partial write can do.
+- Ledger integrity (found 2026-10-06, investigated 2026-10-07 —
+  docs/design/ledger-integrity-design.md): the "asserted by trigger"
+  claim was false, and the bigger finding is that checkout, refund and
+  the fee engine write header, lines and payments as three requests with
+  compensating ledger DELETES under the service role, and nothing
+  enforces append-only against that role. Two PRs approved: PR 1 the
+  atomic, idempotent `write_ledger_transaction` with the three writers
+  on it; PR 2 the deferred constraint triggers, the check, the
+  update/delete block, the TRUNCATE revoke and `verify-ledger`. The 4a
+  design doc and testing-design.md are corrected.
+- Stripe test-mode harness for the late-cancellation fee writer (the
+  cancel route needs a cancel token inside the fee window, a Stripe
+  customer with a saved card and a live test-mode charge, so no harness
+  drives it today; PR 1 covers it by calling the write function with the
+  fee's exact rows) — and for ORPHANED REFUNDS: a Stripe refund that
+  succeeds before its ledger write fails is not flagged by the webhook,
+  which reconciles only `payment_intent.succeeded`. A retry recovers
+  through Stripe's idempotency key only within Stripe's 24-hour window;
+  after that a retry refunds twice.
 - Ask presets and prompt onto the shared revenue definition
   (docs/design/server-tables-design.md, decision 2): `revenue_this_month`
   groups tip, discount and late_cancellation_fee as revenue rows where

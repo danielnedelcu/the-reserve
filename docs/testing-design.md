@@ -50,10 +50,13 @@ the cookie the app looks for have one name.
 
 Lokl deletes bookings in test cleanup under a replica session role
 because its schema forbids deleting them in real use. The Reserve's
-ledger is append-only by explicit REVOKE — the same cleanup approach would
-exercise exactly the forbidden path, which is both wrong (it would succeed
-under a service-role cleanup script, undermining the integrity guarantee)
-and misleading (a test that cleans up by breaking the rule it's testing).
+ledger is append-only — by the absence of update/delete policies, which
+the service role bypasses; there is NO explicit REVOKE, and until
+docs/design/ledger-integrity-design.md lands its update/delete block
+(2026-10-07 finding) a service-role cleanup script succeeds. The same
+cleanup approach would exercise exactly the forbidden path, which is
+both wrong (undermining the integrity guarantee) and misleading (a test
+that cleans up by breaking the rule it's testing).
 
 **Decision required before the first money journey:**
 
@@ -381,6 +384,13 @@ side by side.
    fix and the TestData fixture before the harder journeys.
 3. **`verify:messages` harness**: still on the punch list — add it to
    PR A alongside the localhost guard, since the CI stack enables it.
+
+`verify:ledger` (2026-10-08, docs/design/ledger-integrity-design.md) is
+LOCAL ONLY and needs the built app up (`npm run build:check && npm run
+app:start`): it writes ledger rows through `write_ledger_transaction`
+and through the checkout and refund routes with a real session, proves a
+rejected write wrote nothing, and removes its rows through the direct
+postgres connection, never the API.
 
 ## Relationship to other docs
 

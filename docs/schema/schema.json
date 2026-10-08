@@ -3257,6 +3257,12 @@
           "type": "timestamp with time zone",
           "nullable": false,
           "default": "now()"
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "nullable": false,
+          "comment": "Write-once key the route supplies so a retry cannot write a second transaction: pi:\u003cpayment_intent\u003e for a Stripe charge or fee, checkout:\u003cuuid minted by the page per cart\u003e for cash/external/gift-card checkouts, refund:\u003coriginal transaction id\u003e for a refund (one per original). Rows older than this column carry legacy:\u003cid\u003e."
         }
       ],
       "indexes": [
@@ -3300,6 +3306,15 @@
           "table": "public.transactions",
           "columns": [
             "refunds_transaction_id"
+          ]
+        },
+        {
+          "name": "transactions_idempotency",
+          "def": "CREATE UNIQUE INDEX transactions_idempotency ON public.transactions USING btree (organization_id, idempotency_key)",
+          "table": "public.transactions",
+          "columns": [
+            "organization_id",
+            "idempotency_key"
           ]
         }
       ],
@@ -9321,6 +9336,12 @@
       "name": "public.transactions_page",
       "return_type": "jsonb",
       "arguments": "p_from timestamp with time zone, p_to timestamp with time zone, p_q text DEFAULT NULL::text, p_kind text DEFAULT NULL::text, p_method text DEFAULT NULL::text, p_staff_id uuid DEFAULT NULL::uuid, p_sort text DEFAULT 'when'::text, p_desc boolean DEFAULT true, p_page integer DEFAULT 1, p_page_size integer DEFAULT 25",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.write_ledger_transaction",
+      "return_type": "uuid",
+      "arguments": "p_organization_id uuid, p_idempotency_key text, p_header jsonb, p_items jsonb, p_payments jsonb",
       "type": "FUNCTION"
     }
   ],
