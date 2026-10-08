@@ -44,4 +44,25 @@ test("a product search lives in the URL and survives a reload, with the stock fi
   await expect(page.getByText("1 product", { exact: true })).toBeVisible();
   await expect(page.getByText(`${data.tag} Rose Oil`)).toBeVisible();
   await expect(page.getByText(`${data.tag} Sea Salt Scrub`)).toHaveCount(0);
+
+  // A search typed and a filter picked IMMEDIATELY, without waiting for
+  // the search's 300ms debounce: both must be in the URL after a reload.
+  // The filter's navigation is still in flight when the debounced search
+  // lands; merging into the stale route used to write the filter away
+  // (CI run 37716306154, 2026-10-08; fixed in useServerTable's intended
+  // query). No waits here on purpose.
+  await page.getByRole("combobox", { name: "Stock" }).click();
+  await page.getByRole("option", { name: "Any" }).click();
+  await expect(page).not.toHaveURL(/[?&]stock=/);
+  await page.getByRole("searchbox", { name: "Search name, SKU…" }).fill(`SALT-${data.run}`);
+  await page.getByRole("combobox", { name: "Stock" }).click();
+  await page.getByRole("option", { name: "Low stock" }).click();
+  await expect(page).toHaveURL(/[?&]stock=low/);
+  await expect(page).toHaveURL(new RegExp(`[?&]q=SALT-${data.run}`));
+  await page.reload();
+  await expect(page).toHaveURL(/[?&]stock=low/);
+  await expect(page).toHaveURL(new RegExp(`[?&]q=SALT-${data.run}`));
+  await expect(page.getByRole("searchbox", { name: "Search name, SKU…" })).toHaveValue(`SALT-${data.run}`);
+  await expect(page.getByText(`${data.tag} Sea Salt Scrub`)).toBeVisible();
+  await expect(page.getByText(`${data.tag} Rose Oil`)).toHaveCount(0);
 });
