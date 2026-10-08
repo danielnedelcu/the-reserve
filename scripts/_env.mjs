@@ -137,6 +137,23 @@ export function supabaseEnv() {
 }
 
 /**
+ * The gate for a script that must NEVER run against hosted — it writes
+ * ledger or audit rows, seeds load data, benchmarks, or starts the app
+ * for the journeys. Refuses (exit 1, nothing run) without SUPABASE_LOCAL,
+ * and when any URL it is about to use is not local. The two gates,
+ * this and localOnlyOrSkip below, are the MARKER that
+ * tests/guards/ciLocalOnly.test.ts reads to learn which scripts are
+ * local-only, so every CI step running one must carry SUPABASE_LOCAL —
+ * do not write a local-only guard inline.
+ */
+export function requireLocalStack(what, urls = []) {
+  if (!LOCAL_MODE) refuse(`${what} runs on the LOCAL stack only. Set SUPABASE_LOCAL=true with the stack's env exported.`);
+  for (const u of urls) {
+    if (!isLocalUrl(u)) refuse(`${what} runs on the LOCAL stack only, and ${hostnameOf(u) ?? "that connection"} is not local.`);
+  }
+}
+
+/**
  * The gate for a harness that creates staff or grants roles — writes
  * into the append-only audit_log — and so runs on the LOCAL stack only
  * (CLAUDE.md). Under SUPABASE_LOCAL it returns and the run proceeds. On a

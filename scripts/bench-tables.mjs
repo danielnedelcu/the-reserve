@@ -30,12 +30,9 @@
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { randomBytes } from "node:crypto";
-import { LOCAL_MODE, get, guard, supabaseEnv } from "./_env.mjs";
+import { get, guard, supabaseEnv, requireLocalStack } from "./_env.mjs";
 
-if (!LOCAL_MODE) {
-  console.error("SAFETY: the benchmark runs on the LOCAL stack only. Set SUPABASE_LOCAL=true with the stack's env exported.");
-  process.exit(1);
-}
+requireLocalStack("the benchmark");
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
 const { url, anonKey, serviceKey } = supabaseEnv();
 const DATABASE_URL = get("DATABASE_URL");

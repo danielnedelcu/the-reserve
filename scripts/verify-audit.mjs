@@ -26,16 +26,13 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import pg from "pg";
 import { randomBytes, randomUUID } from "node:crypto";
-import { LOCAL_MODE, get, guard, isLocalUrl, pgSsl, supabaseEnv } from "./_env.mjs";
+import { get, guard, pgSsl, supabaseEnv, requireLocalStack } from "./_env.mjs";
 import { scrubTestStaff } from "./_cleanup.mjs";
 
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
 const { url, anonKey, serviceKey } = supabaseEnv();
 const dsn = get("DATABASE_URL");
-if (!LOCAL_MODE || !isLocalUrl(url) || !isLocalUrl(dsn)) {
-  console.error("\nHARNESS ERROR (counts as failure): verify-audit writes audit rows and runs on the LOCAL stack only (SUPABASE_LOCAL=true).");
-  process.exit(1);
-}
+requireLocalStack("verify-audit (writes audit rows)", [url, dsn]);
 const base = (process.env.E2E_BASE_URL ?? "http://localhost:3300").replace(/\/$/, "");
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 const run = randomBytes(4).toString("hex");

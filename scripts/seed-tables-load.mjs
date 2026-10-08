@@ -22,12 +22,9 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
-import { LOCAL_MODE, get, guard, supabaseEnv } from "./_env.mjs";
+import { get, guard, supabaseEnv, requireLocalStack } from "./_env.mjs";
 
-if (!LOCAL_MODE) {
-  console.error("SAFETY: the load seed runs on the LOCAL stack only. Set SUPABASE_LOCAL=true with the stack's env exported.");
-  process.exit(1);
-}
+requireLocalStack("the load seed");
 guard(["NUXT_PUBLIC_SUPABASE_URL"]);
 const { url, serviceKey } = supabaseEnv();
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });

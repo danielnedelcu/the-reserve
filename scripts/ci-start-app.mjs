@@ -23,7 +23,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import { LOCAL_MODE, ROOT, get, guard, isLocalUrl } from "./_env.mjs";
+import { ROOT, get, guard, isLocalUrl, requireLocalStack } from "./_env.mjs";
 
 const PORT = Number(process.env.E2E_PORT ?? 3300);
 const BASE = `http://localhost:${PORT}`;
@@ -48,10 +48,7 @@ if (process.argv.includes("--stop")) {
   process.exit(0);
 }
 
-if (!LOCAL_MODE) {
-  console.error("SAFETY: this starts the app against the LOCAL stack only. Set SUPABASE_LOCAL=true with the stack's env exported.");
-  process.exit(1);
-}
+requireLocalStack("starting the app for the harnesses and journeys");
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
 const url = get("NUXT_PUBLIC_SUPABASE_URL");
 const anonKey = get("NUXT_PUBLIC_SUPABASE_KEY");
