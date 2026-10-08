@@ -61,7 +61,12 @@ if (process.argv.includes("--clean")) {
     counts.items = (await db.query("delete from transaction_items i using transactions t where i.transaction_id = t.id and t.note = $1", [TAG])).rowCount;
     counts.refunds = (await db.query("delete from transactions where note = $1 and refunds_transaction_id is not null", [TAG])).rowCount;
     counts.transactions = (await db.query("delete from transactions where note = $1", [TAG])).rowCount;
-    counts.appointments = (await db.query("delete from appointments where notes = $1", [TAG])).rowCount; // lines cascade
+    // Replica mode turns the foreign-key triggers off too, so nothing
+    // cascades: the appointment lines go explicitly, before the appointments.
+    // (Found 2026-10-08 by removeTestOrganisation's no-orphans check: two seed
+    // cycles had left 100,000 appointment_services rows with no appointment.)
+    counts.appointmentLines = (await db.query("delete from appointment_services s using appointments a where s.appointment_id = a.id and a.notes = $1", [TAG])).rowCount;
+    counts.appointments = (await db.query("delete from appointments where notes = $1", [TAG])).rowCount;
     counts.services = (await db.query("delete from services where name like $1", [`${TAG} %`])).rowCount;
     // The audit rows the seeded staff wrote or that were written about them
     // (append-only; replica mode is already on for this transaction).
@@ -77,7 +82,7 @@ if (process.argv.includes("--clean")) {
   } finally {
     await db.end();
   }
-  console.log(`Removed ${counts.transactions} seeded transactions (${counts.refunds} refunds, ${counts.items} lines, ${counts.payments} payments), ${counts.appointments} appointments, ${counts.services} services, ${counts.staff} staff (and ${counts.audit} audit rows about them), ${counts.clients} clients and ${counts.products} products.`);
+  console.log(`Removed ${counts.transactions} seeded transactions (${counts.refunds} refunds, ${counts.items} lines, ${counts.payments} payments), ${counts.appointments} appointments (${counts.appointmentLines} lines), ${counts.services} services, ${counts.staff} staff (and ${counts.audit} audit rows about them), ${counts.clients} clients and ${counts.products} products.`);
   process.exit(0);
 }
 
