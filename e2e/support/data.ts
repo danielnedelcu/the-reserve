@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { testEnv, type TestEnv } from "./env";
 import { get } from "../../scripts/_env.mjs";
-import { scrubTestStaff } from "../../scripts/_cleanup.mjs";
+import { removeTestOrganisation, scrubTestStaff } from "../../scripts/_cleanup.mjs";
 
 /**
  * Test data for one journey, on the LOCAL stack, tagged with a run id and
@@ -13,6 +13,20 @@ import { scrubTestStaff } from "../../scripts/_cleanup.mjs";
  * accept_staff_invite leaves one: an auth user with a password, a `staff`
  * row in the seeded organisation, and a `staff_roles` row for the role
  * under test, which is what decides what the person may see and do.
+ *
+ * Two shapes (docs/testing-design.md, "The money journeys"):
+ * - `TestData.create()`: rows in the SEEDED organisation, removed one
+ *   table at a time through the service role. For journeys that write no
+ *   ledger row.
+ * - `TestData.createOrganisation()`: the run's OWN organisation — a
+ *   location, the four system roles with the seeded permission matrix —
+ *   so every row the journey writes, ledger lines and payments included,
+ *   carries that organisation's id, and cleanup removes the whole
+ *   organisation on the direct postgres connection in replica mode
+ *   (removeTestOrganisation). The money journeys use this: the ledger is
+ *   append-only for every role and every key out of it is restrict, so
+ *   nothing a sale wrote can be deleted any other way, and a fresh
+ *   organisation makes every figure on /financials exact.
  */
 
 export type RoleName = "super_admin" | "admin" | "front_desk" | "provider";
@@ -33,27 +47,84 @@ async function must<T>(p: PromiseLike<{ data: T; error: { message: string } | nu
 }
 
 export class TestData {
-  readonly run = randomBytes(4).toString("hex");
-  readonly tag = `E2E-${this.run}`;
+  readonly tag: string;
   private users: string[] = [];
   private staff: string[] = [];
   private roleRows: { staff_id: string; role_id: string }[] = [];
+  private roles: string[] = [];
   private clients: string[] = [];
   private services: string[] = [];
   private products: string[] = [];
+  private giftCards: string[] = [];
   private bulkClients = false;
   private locationTimezone: { id: string; timezone: string } | null = null;
 
-  private constructor(readonly env: TestEnv, readonly orgId: string) {}
+  private constructor(
+    readonly env: TestEnv,
+    readonly orgId: string,
+    readonly run: string,
+    /** Set when the run OWNS its organisation (createOrganisation): its location, and the whole organisation goes at cleanup. */
+    private readonly owned: { locationId: string; timezone: string } | null,
+  ) {
+    this.tag = `E2E-${run}`;
+  }
 
   static async create(): Promise<TestData> {
     const env = testEnv();
     const org = await must(env.db.from("organizations").select("id").order("created_at").limit(1).single(), "seeded organisation");
-    return new TestData(env, org.id as string);
+    return new TestData(env, org.id as string, randomBytes(4).toString("hex"), null);
   }
 
-  /** A staff member with a password and the named seeded role. */
-  async staffMember(label: string, role: RoleName): Promise<TestStaff> {
+  /**
+   * The run's own organisation: a location in the given zone with the
+   * given tax rate, and the four system roles carrying the SEEDED
+   * organisation's permission matrix (copied by role name, so the matrix
+   * the app ships is what the journey tests). Everything a journey makes
+   * from here belongs to this organisation and no other journey can see it.
+   */
+  static async createOrganisation(opts: { timezone?: string; taxRateBps?: number } = {}): Promise<TestData> {
+    const env = testEnv();
+    const run = randomBytes(4).toString("hex");
+    const tag = `E2E-${run}`;
+    const timezone = opts.timezone ?? "America/New_York";
+    const seeded = await must(env.db.from("organizations").select("id").order("created_at").limit(1).single(), "seeded organisation");
+    const org = await must(env.db.from("organizations").insert({ name: `${tag} Club`, timezone }).select("id").single(), "organisation");
+    const orgId = org.id as string;
+    const location = await must(
+      env.db.from("locations").insert({ organization_id: orgId, name: `${tag} Main`, timezone, tax_rate_bps: opts.taxRateBps ?? 800 }).select("id").single(),
+      "location",
+    );
+    const seededRoles = await must(env.db.from("roles").select("id, name, is_system").eq("organization_id", seeded.id as string), "seeded roles");
+    for (const r of seededRoles as { id: string; name: string; is_system: boolean }[]) {
+      const made = await must(env.db.from("roles").insert({ organization_id: orgId, name: r.name, is_system: r.is_system }).select("id").single(), `role ${r.name}`);
+      const keys = await must(env.db.from("role_permissions").select("permission_key").eq("role_id", r.id), `permissions of ${r.name}`);
+      if ((keys as { permission_key: string }[]).length) {
+        const { error } = await env.db.from("role_permissions").insert((keys as { permission_key: string }[]).map((k) => ({ role_id: made.id, permission_key: k.permission_key })));
+        if (error) throw new Error(`role_permissions ${r.name}: ${error.message}`);
+      }
+    }
+    return new TestData(env, orgId, run, { locationId: location.id as string, timezone });
+  }
+
+  /** The run's own location (createOrganisation only). */
+  get location(): { id: string; timezone: string } {
+    if (!this.owned) throw new Error("location: this run uses the seeded organisation; call locationInZone() instead");
+    return { id: this.owned.locationId, timezone: this.owned.timezone };
+  }
+
+  /** A role made for the run with exactly these permission keys (for a case no seeded role expresses). */
+  async role(name: string, keys: string[]): Promise<{ id: string; name: string }> {
+    const row = await must(this.env.db.from("roles").insert({ organization_id: this.orgId, name: `${this.tag} ${name}`, is_system: false }).select("id").single(), `role ${name}`);
+    this.roles.push(row.id as string);
+    if (keys.length) {
+      const { error } = await this.env.db.from("role_permissions").insert(keys.map((k) => ({ role_id: row.id, permission_key: k })));
+      if (error) throw new Error(`role_permissions ${name}: ${error.message}`);
+    }
+    return { id: row.id as string, name: `${this.tag} ${name}` };
+  }
+
+  /** A staff member with a password and the named seeded role, or a role made for the run (`{ roleId }`). */
+  async staffMember(label: string, role: RoleName | { roleId: string }): Promise<TestStaff> {
     const email = `e2e-${label}-${this.run}@reserve.test`;
     const password = `e2e-${randomBytes(12).toString("hex")}`;
     const displayName = `${this.tag} ${label}`;
@@ -69,14 +140,14 @@ export class TestData {
       `staff ${label}`,
     );
     this.staff.push(row.id as string);
-    const roleRow = await must(
-      this.env.db.from("roles").select("id").eq("organization_id", this.orgId).eq("name", role).single(),
-      `role ${role}`,
-    );
+    const roleId =
+      typeof role === "string"
+        ? ((await must(this.env.db.from("roles").select("id").eq("organization_id", this.orgId).eq("name", role).single(), `role ${role}`)).id as string)
+        : role.roleId;
     // An insert without select() returns no row; only the error matters.
-    const { error: roleError } = await this.env.db.from("staff_roles").insert({ staff_id: row.id, role_id: roleRow.id });
+    const { error: roleError } = await this.env.db.from("staff_roles").insert({ staff_id: row.id, role_id: roleId });
     if (roleError) throw new Error(`staff_roles ${label}: ${roleError.message}`);
-    this.roleRows.push({ staff_id: row.id as string, role_id: roleRow.id as string });
+    this.roleRows.push({ staff_id: row.id as string, role_id: roleId });
     return { id: row.id as string, userId: made.user.id, email, password, displayName };
   }
 
@@ -84,7 +155,7 @@ export class TestData {
   async client(
     firstName: string,
     lastName = this.tag,
-    extra: { active?: boolean; email?: string; phone?: string; date_of_birth?: string } = {},
+    extra: { active?: boolean; email?: string; phone?: string; date_of_birth?: string; stripe_customer_id?: string; late_cancellation_waiver_used?: boolean } = {},
   ): Promise<{ id: string; firstName: string; lastName: string }> {
     const row = await must(
       this.env.db
@@ -127,7 +198,7 @@ export class TestData {
   /** A retail product in the seeded organisation, named with the tag (names are unique per organisation). */
   async product(
     name: string,
-    extra: { sku?: string; price_cents?: number; cost_cents?: number; stock_quantity?: number; active?: boolean } = {},
+    extra: { sku?: string; price_cents?: number; cost_cents?: number; stock_quantity?: number; active?: boolean; taxable?: boolean } = {},
   ): Promise<{ id: string; name: string }> {
     const fullName = `${this.tag} ${name}`;
     const row = await must(
@@ -140,6 +211,21 @@ export class TestData {
     );
     this.products.push(row.id as string);
     return { id: row.id as string, name: fullName };
+  }
+
+  /** A gift card with a balance, the way a sale leaves one (a code the front desk can type). */
+  async giftCard(amountCents: number, extra: { code?: string; recipientName?: string } = {}): Promise<{ id: string; code: string }> {
+    const code = extra.code ?? `E2E${this.run.slice(0, 1).toUpperCase()}-${this.run.slice(1, 5).toUpperCase()}-${this.run.slice(5, 8).toUpperCase()}X-TEST`;
+    const row = await must(
+      this.env.db
+        .from("gift_cards")
+        .insert({ organization_id: this.orgId, code, initial_balance_cents: amountCents, balance_cents: amountCents, recipient_name: extra.recipientName ?? null })
+        .select("id")
+        .single(),
+      "gift card",
+    );
+    this.giftCards.push(row.id as string);
+    return { id: row.id as string, code };
   }
 
   /**
@@ -200,7 +286,11 @@ export class TestData {
    * snapshot), at an INSTANT the journey chooses — so a journey can put
    * one at 12:30 AM in the location's zone without going through the
    * slots route. Removed with its client (appointments cascade their
-   * lines).
+   * lines). With `withCancelToken`, also the cancellation token the
+   * booking route mints beside it (the link in the confirmation email,
+   * which a test reads from the database: the app mails through Resend's
+   * HTTP API, so no local mail catcher ever sees it), expiring after the
+   * appointment, as the route sets it.
    */
   async appointment(args: {
     clientId: string;
@@ -210,7 +300,8 @@ export class TestData {
     serviceName: string;
     startsAt: Date;
     durationMinutes?: number;
-  }): Promise<{ id: string }> {
+    withCancelToken?: boolean;
+  }): Promise<{ id: string; tokenId: string | null }> {
     const duration = args.durationMinutes ?? 60;
     const endsAt = new Date(args.startsAt.getTime() + duration * 60_000);
     const row = await must(
@@ -235,7 +326,19 @@ export class TestData {
       .from("appointment_services")
       .insert({ appointment_id: row.id, service_id: args.serviceId, name_snapshot: args.serviceName, price_cents: 10_000, duration_min: duration });
     if (error) throw new Error(`appointment_services: ${error.message}`);
-    return { id: row.id as string };
+    let tokenId: string | null = null;
+    if (args.withCancelToken) {
+      const token = await must(
+        this.env.db
+          .from("cancellation_tokens")
+          .insert({ organization_id: this.orgId, appointment_id: row.id, expires_at: new Date(endsAt.getTime() + 86_400_000).toISOString() })
+          .select("id")
+          .single(),
+        "cancellation token",
+      );
+      tokenId = token.id as string;
+    }
+    return { id: row.id as string, tokenId };
   }
 
   /**
@@ -273,6 +376,21 @@ export class TestData {
       const { error } = await run();
       if (error) failures.push(`${what}: ${error.message}`);
     };
+    if (this.owned) {
+      // The run's own organisation, whole: every row carrying its id and
+      // every child reached through a foreign key, in one replica-mode
+      // transaction on the direct connection, then the catalog-driven
+      // checks (scripts/_cleanup.mjs). Auth users are not in Postgres' public
+      // schema and go through the admin API.
+      try {
+        await removeTestOrganisation(get("DATABASE_URL") as string, this.orgId);
+      } catch (e) {
+        failures.push(`organisation: ${(e as Error).message}`);
+      }
+      for (const id of this.users) await step("auth user", () => this.env.db.auth.admin.deleteUser(id));
+      if (failures.length) throw new Error(`Test organisation was not fully removed (${this.tag}):\n  ${failures.join("\n  ")}`);
+      return;
+    }
     if (this.clients.length) {
       await step("communications_sent", () => this.env.db.from("communications_sent").delete().in("client_id", this.clients));
       await step("appointments", () => this.env.db.from("appointments").delete().in("client_id", this.clients));
@@ -281,6 +399,7 @@ export class TestData {
     if (this.bulkClients) await step("bulk clients", () => this.env.db.from("clients").delete().eq("referral_source", this.tag));
     if (this.services.length) await step("services", () => this.env.db.from("services").delete().in("id", this.services));
     if (this.products.length) await step("products", () => this.env.db.from("products").delete().in("id", this.products));
+    if (this.giftCards.length) await step("gift cards", () => this.env.db.from("gift_cards").delete().in("id", this.giftCards));
     for (const r of this.roleRows) {
       await step("staff_roles", () => this.env.db.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id));
     }
@@ -298,6 +417,10 @@ export class TestData {
       await step("staff", () => this.env.db.from("staff").delete().in("id", this.staff));
     }
     for (const id of this.users) await step("auth user", () => this.env.db.auth.admin.deleteUser(id));
+    for (const id of this.roles) {
+      await step("role permissions", () => this.env.db.from("role_permissions").delete().eq("role_id", id));
+      await step("role", () => this.env.db.from("roles").delete().eq("id", id));
+    }
     if (this.locationTimezone) {
       const { id, timezone } = this.locationTimezone;
       await step("location timezone", () => this.env.db.from("locations").update({ timezone }).eq("id", id));

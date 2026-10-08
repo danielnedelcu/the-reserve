@@ -91,13 +91,24 @@ const detail = ref<TxnRow | null>(null);
 const refunding = ref(false);
 
 // /transactions?open=<id> opens that transaction's detail (the "View
-// refund" link on an already-refunded toast lands here).
+// refund" link on an already-refunded toast lands here). Watched, not
+// read once at mount: the toast is shown ON this page, so its link only
+// changes the query of a page already mounted — and the refund it names
+// was made elsewhere, so this page's list has not seen it yet and is
+// refreshed first. Found by journey 13, the first time the click was
+// driven in a browser (2026-10-08).
 const route = useRoute();
 onMounted(() => {
-  const open = typeof route.query.open === "string" ? route.query.open : null;
-  if (!open) return;
-  const row = (transactions.value ?? []).find((t) => t.id === open);
-  if (row) detail.value = row;
+  watch(
+    () => route.query.open,
+    async (open) => {
+      if (typeof open !== "string" || !open) return;
+      if (!(transactions.value ?? []).some((t) => t.id === open)) await refresh();
+      const row = (transactions.value ?? []).find((t) => t.id === open);
+      if (row) detail.value = row;
+    },
+    { immediate: true },
+  );
 });
 
 async function refund(txn: TxnRow) {

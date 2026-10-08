@@ -191,6 +191,13 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
+- Move the harnesses' hand-rolled test organisations onto
+  `removeTestOrganisation` (scripts/_cleanup.mjs, built 2026-10-08 for
+  the money journeys, catalog-driven with zero-rows and no-orphans
+  checks): `verify-tables`, `verify-presets`, `verify-audit` and
+  `verify-messages` each delete their second organisation table by
+  table today. Ruled "later" at the money-journeys design review.
+
 - Trigram search never reaches its index under RLS (found 2026-10-08 by
   the policy-sweep PR 2 benchmark): `ILIKE`'s operator function
   (`texticlike`) is not leakproof, so in a security-barrier scan Postgres
@@ -573,6 +580,13 @@ Deployment shape, the env-by-env matrix and the deploy checklist live in
 **docs/deployment.md** — that doc is authoritative; the items below that
 overlap it are pointers, not restatements (one fact, one place).
 
+- Checkout has no cash option: `/checkout` offers the card terminal, a
+  card on file and a gift card only, so a cash sale would be recorded as
+  card, and the takings-by-method figures and the cash count would be
+  wrong. The database already supports `cash` (`payments.method`, and
+  `/transactions` labels it). Confirm with the owner how the spa takes
+  payments, then add the tender or retire the value (found by journey 10,
+  2026-10-08).
 - Rotate the Resend API key (chat-exposed during dev) — see
   docs/deployment.md, deploy checklist + env matrix (RESEND_API_KEY).
 - Rotate the DB password BEFORE THE VERCEL DEPLOY, not in the final

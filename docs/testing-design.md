@@ -58,7 +58,12 @@ cleanup approach would exercise exactly the forbidden path, which is
 both wrong (undermining the integrity guarantee) and misleading (a test
 that cleans up by breaking the rule it's testing).
 
-**Decision required before the first money journey:**
+**Decision required before the first money journey** — SUPERSEDED
+2026-10-08 by "The money journeys" design at the end of this document:
+neither option survived the ledger becoming append-only for every role
+with `restrict` keys. What was built is a test organisation per run,
+removed whole on the direct connection in replica mode. The two options
+stay below as the record of the choice as it was framed.
 
 Option A — **Tagged rows, left in place** (the C2 baseline pattern):
 Test transactions are tagged with a test run ID and never deleted. The
@@ -340,9 +345,8 @@ browser, and a date of birth reading as stored.
 
 ### The money journey decision (confirm before building)
 
-Unchanged: before any journey touches the ledger, settle test-org cleanup
-(recommended for Playwright) versus tagged rows (the harnesses' pattern).
-No money journey is in this PR.
+Superseded 2026-10-08: see "The money journeys" at the end. Journeys 10
+to 17 write ledger rows in an organisation of their own.
 
 ### The test-timeout contention note
 
@@ -377,8 +381,9 @@ side by side.
 
 ## Decisions to confirm before building
 
-1. **Money journey cleanup**: test org (cascade) or tagged rows?
-   Recommendation: test org for Playwright, tagged rows for harnesses.
+1. ~~**Money journey cleanup**: test org (cascade) or tagged rows?~~
+   Decided 2026-10-08: a test organisation per run, removed on the direct
+   connection (no cascade exists any more) — "The money journeys".
 2. **Which journeys in PR B, first slice?** Recommendation: auth,
    clients, and scheduler — no money, no ledger, proves the auth cookie
    fix and the TestData fixture before the harder journeys.
@@ -452,6 +457,360 @@ app:start`): it writes ledger rows through `write_ledger_transaction`
 and through the checkout and refund routes with a real session, proves a
 rejected write wrote nothing, and removes its rows through the direct
 postgres connection, never the API.
+
+## The money journeys — design (stop 1, 2026-10-08; nothing built)
+
+STATUS: DESIGN for review. No journey, builder or workflow change exists
+yet. Inputs: the as-built sections above, the money-journey cleanup
+decision (§2, "Decision required"), `docs/testing-reference.md` §1
+(Lokl's Stripe sandbox gating), `docs/design/ledger-integrity-design.md`,
+`e2e/support/*`, and the checkout, refund, financials and cancel code as
+it stands on main at a6f99af.
+
+### 1. Cleanup: a test organisation per run, removed on the direct connection
+
+The original Option B — a test organisation deleted at the end, its
+ledger rows cascading — no longer works, for two reasons that are now
+structural: the ledger refuses UPDATE and DELETE for every role
+(`append_only_block()`), so no API delete of a test transaction can
+succeed; and every key out of the ledger is `on delete restrict`, so the
+organisation, its location, clients, staff, products and gift cards
+cannot be deleted while a transaction points at them. Option A (tagged
+rows left in place) is what the harnesses do and it is honest, but a
+Playwright money journey crosses a dozen tables and would leave real
+sales in the seeded organisation that every later journey's `/financials`
+would count.
+
+**The replacement, and it holds:** each money journey creates its OWN
+organisation, and cleanup removes everything carrying that organisation's
+id through the direct `postgres` connection with
+`session_replication_role = replica`, behind `requireLocalStack()`, in
+the shared cleanup helper (`scripts/_cleanup.mjs` gains
+`removeTestOrganisation(dsn, orgId)`). Replica mode turns off every
+trigger — the append-only block AND the foreign-key checks, which are
+internal triggers — so the deletes need no API path and no cascade; the
+ledger's rule is not exercised by the test's own cleanup, which is the
+point of doing it on the direct connection and nowhere else.
+
+What it needs:
+
+- **A provisioned organisation, the way migration 1 leaves one.** An
+  `organizations` row (name, timezone), one `locations` row (name,
+  timezone, `tax_rate_bps`), and the four system roles with their
+  permission matrix COPIED from the seeded organisation's roles by name
+  (`roles` → `role_permissions`), so a test front desk holds exactly what
+  the live front desk holds and a change to the matrix is tested, not
+  bypassed. Staff, clients, services, products and gift cards are then
+  the existing builders with `organization_id` pointed at the run's
+  organisation. Everything a journey writes — through the UI, the routes,
+  `write_ledger_transaction`, the triggers — carries that id: the
+  transaction header from the checkout route's `orgId`, the lines and
+  payments from the function's `p_organization_id`, the audit rows from
+  the writers, gift cards minted at checkout from the route, cancellation
+  tokens from the appointment.
+- **Isolation falls out of RLS.** The journey's staff belong to the new
+  organisation, so `current_org_id()` is its id, every policy scopes to it,
+  and the booking, slots and checkout routes' `.limit(1)` location reads
+  run under the user client, so they find the run's location, not the
+  seeded one. No other journey can see the run's rows, and the run sees
+  none of theirs: `/financials` in a fresh organisation shows exactly the
+  journey's sale, which makes the figure assertions exact rather than
+  "increased by". The existing journeys keep using the seeded
+  organisation (they read it; `locationInZone` moves its location) — only
+  the money journeys provision one. The `data` fixture grows a
+  `TestData.createOrganisation()` path; `TestData.create()` is unchanged.
+- **Dependency order in the helper**, one transaction, replica mode: the
+  child tables with no `organization_id` first, by join to the run's
+  parents — `appointment_services`, `availability_rules`,
+  `availability_exceptions`, `client_notes`, `staff_roles`,
+  `staff_locations`, `service_staff`, `service_resource_requirements`,
+  `resources` (via `resource_types`), `notifications`,
+  `conversation_participants` and `messages` (via `conversations`),
+  `role_permissions` (via `roles`) — then every table that carries the
+  column, by id: `payments`, `transaction_items`, `transactions`,
+  `cancellation_tokens`, `appointments`, `client_payment_methods`,
+  `card_consents`, `gift_cards`, `communications_sent`, `audit_log`,
+  `clients`, `products`, `services`, `service_categories`,
+  `resource_types`, `conversations`, `staff_invites`, `staff`,
+  `locations`, `roles`, and the rest of the list in
+  `information_schema` (campaigns, forms, leads, ask_queries — empty for a
+  money journey, deleted anyway), then `organizations`. After the commit:
+  the auth users through the admin API, and an assertion that EVERY
+  org-scoped table holds zero rows for that id and that no child row
+  references a parent that is gone — because with foreign-key checks off,
+  a table left off the list leaves orphans silently, and the convention
+  says to measure that signal. A failure here fails the journey, as the
+  existing `cleanup()` does.
+- **The helper, not the fixture, owns the list** — the harnesses'
+  two-organisation cases (`verify-tables`, `verify-presets`,
+  `verify-audit`, `verify-messages`) each delete their test organisation
+  by hand today and could move onto the same helper later; not in this
+  work.
+- **Stripe side effects are not in Postgres**: a Stripe customer created
+  for a saved-card journey is deleted at cleanup through the Stripe API
+  (test mode), logged rather than failed if it cannot be, so the sandbox
+  does not fill with customers.
+
+### 2. The journeys and what each proves
+
+Numbering continues from 09. Each journey runs in its own organisation
+with its own front desk (`front_desk` holds `pos.checkout`, `clients.view`,
+`products.view`, `gift_cards.view` and `transactions.view`, but not
+`financials.view_summary`; the owner used for `/financials` is
+`admin`). Money is asserted both on the page and in the database through
+the service-role client, by the run's organisation id, so a page that
+looks right over wrong rows fails.
+
+- **10 — checkout, card terminal.** A product sale rung up on `/checkout`:
+  pick the client, add the product (price and tax known to the test),
+  take the card at the terminal — the tender the page offers; the page
+  has no cash tender today, though the ledger's `payments.method` allows
+  one — Charge. Proves: the "Checkout complete" toast with the total; the
+  transaction row on `/transactions` with that total; on `/financials`
+  for the month, revenue, tax and the transaction count equal to what was
+  charged — one sale, exact figures, because the organisation holds
+  nothing else. In the database: one transaction with the page's
+  idempotency key, its lines and payment balanced (the trigger would have
+  refused otherwise), the `pos.checkout` audit row carrying the
+  organisation.
+- **11 — gift card: sell, then pay with it.** Sell a $50 card at
+  checkout (cash); read its code from the receipt line / the gift cards
+  list (the route appends the code to the line's name). Second sale: a
+  $30 product, apply the card by code on `/checkout`, Charge. Proves: the
+  "Gift card applied" toast with the balance; the card's balance is
+  exactly $20 after (page and `gift_cards` row); the sale's payment row
+  is `gift_card` for $30. Then a third cart over the remaining balance
+  with the card applied for its remaining $20: the page caps what it
+  applies at the balance it looked up, so the over-balance case is a
+  STALE balance — another sale spends the card between Apply and Charge
+  (the service role moves the balance to $5 in the test) — and the route
+  refuses with "Gift card balance is $5.00" (422): NOTHING is written, no
+  transaction, the balance still $5 (the trigger's overdraft check is the
+  backstop; the route's 422 is what the person sees).
+- **12 — retail stock.** A product with stock 5, quantity 2 sold (the
+  same product added twice makes one line of quantity 2). Proves:
+  `/products` shows 3 after, `products.stock_quantity` is 3; the stock
+  trigger fired once for the sale (not again on a retried Charge —
+  journey 14 covers the retry; this one asserts the plain path).
+- **13 — refund, already refunded, View refund.** Refund journey 10's
+  shape of sale from `/transactions`. Proves: the mirror row appears
+  (negative total, "refund" badge, pointing at the original); the
+  original shows "Refunded"; `/financials` nets to zero revenue for the
+  month. Then refund the same original again: the "Already refunded"
+  toast with the amount, and its **"View refund" action** is clicked —
+  the page navigates to `/transactions?open=<refund id>` and the refund's
+  detail dialog is open. That click has never been driven in a browser.
+  In the database: one refund per original (the partial unique index),
+  the stock RESTORED — read from the code, not assumed:
+  `apply_product_sale` (pos_refund_fix) adds a negative line's quantity
+  back, so a refund of two puts the stock from 3 to 5 — and the
+  `pos.refund` audit row.
+- **14 — a lost response.** Press Charge with the request intercepted:
+  Playwright `page.route('**/api/checkout')` lets the request reach the
+  server (`route.fetch()`), then aborts the reply (`route.abort()`), so the
+  server committed and the browser saw a network failure. The page shows
+  its error toast; Charge again, un-intercepted, with the SAME key (the
+  page keeps it until a 409). Proves: the second Charge answers
+  "Checkout complete" and EXACTLY ONE transaction exists for the key in
+  the organisation, with one set of lines and one payment; the stock
+  dropped once; one `pos.checkout` audit row. This is the retry path of
+  `write_ledger_transaction` driven from the real page.
+- **15 — an edited cart after a lost response.** The same interception,
+  then add a second product before pressing Charge again. Proves: the
+  route answers 409, the page shows "This sale was already recorded" with
+  the first transaction's short id and "the cart has changed since";
+  nothing is overwritten (the first transaction still has the first
+  cart's lines and total); and because the page minted a new key on the
+  409, a further Charge records a SECOND, separate sale with the edited
+  cart — two transactions, the first untouched.
+- **16 — permissions.** A `provider` (holds neither `financials.view_summary`
+  nor `transactions.view`) sees no Financials entry in the nav and is
+  redirected from `/financials`; the `front_desk`, which holds
+  `transactions.view` WITHOUT the summary permission, is treated the same
+  way and can still check out; and a role made for the run holding
+  `financials.view_summary` WITHOUT `transactions.view` is refused too
+  (the page requires both, so a holder of one never sees zeros with no
+  error — `can.ts`). Proves the gate is the pair, on the nav, the route
+  and the command palette, from both halves.
+- **17 — late cancellation, without Stripe (three of four outcomes).**
+  The builder writes an appointment and ITS cancellation token (the rows
+  the booking route leaves; see §3 for why the token comes from the
+  database). Three appointments, three links, through the public
+  `/cancel/<token>` page as the client would: (a) starting in 3 days —
+  "No fee", cancelled, nothing owed; (b) starting in 2 hours, the
+  client's first offence — the page says the fee is waived as a
+  courtesy, cancels, `late_cancellation_waiver_used` flips to true, NO
+  ledger row; (c) starting in 2 hours, waiver already used, NO card on
+  file — the page states the fee, cancels, the outcome is `uncollected`:
+  no ledger row, the staff notification for an uncollected fee exists,
+  the token is used. A second visit to a used link is the 410 page. The
+  fourth outcome, `charge`, is journey 18.
+
+### 3. Stripe: a second PR, gated the way Lokl gates it
+
+Two journeys need Stripe: the late-cancellation **charge** (a saved card
+charged off-session, the fee as a ledger row) and a **saved-card
+checkout** (`stripe_card` tender, confirmed server-side, the card's last
+four on the receipt). They go in the second PR, after the seven above are
+green, because they need a secret the first PR does not.
+
+**Gating, following `docs/testing-reference.md` §1:**
+
+- A GitHub environment `stripe-sandbox` holding `STRIPE_SANDBOX_SECRET_KEY`:
+  a RESTRICTED test-mode key (`rk_test_…`) limited to customers, payment
+  methods, setup intents, payment intents and refunds — what the two
+  journeys call and nothing else — and `STRIPE_SANDBOX_ACCOUNT_ID`, the
+  sandbox account's id, so a key from any other account is refused at
+  run time (`stripe.accounts.retrieve()` must return that id).
+- A separate job `e2e-stripe` with the same steps as `e2e` plus the
+  environment. Its first step checks the key: absent → `::notice` and
+  every later step skipped, the job green (so the required check does not
+  block PRs from forks or from anyone without the secret); present but
+  not `sk_test_`/`rk_test_` → the job FAILS, loudly; present and test-mode
+  → the account check, then the app is started with the key and the two
+  journeys run under `--grep @stripe`. The ordinary `e2e` job never sees
+  the key. A `concurrency` group on the job so only one run touches the
+  sandbox at a time.
+- `scripts/ci-start-app.mjs` passes the key through only when it is
+  test-mode (it does today for `sk_test_`; it must accept `rk_test_` too —
+  a one-line change in the second PR), and the journeys refuse to start
+  without one, naming the environment.
+
+**The cancel link in a test — from the database, not the mail catcher.**
+The app sends mail through Resend's HTTP API, not SMTP, so the local
+stack's Mailpit never sees it; in the test app `RESEND_API_KEY` is empty
+and `sendMail` logs and returns false while the booking goes through. The
+token itself lives in `cancellation_tokens` (no policies; the service
+role reads it), minted by the booking route beside the appointment. The
+builder therefore writes the appointment AND its token row, the pair the
+route leaves, and the journey opens `/cancel/<token id>`. The email's
+contents (the link, the location's time zone) stay covered by the
+template unit test; reading the actual message would need Resend's test
+mode, which does not exist. If a journey should prove the route mints the
+token, journey 03's booking can be followed by a service-role read of the
+token for that appointment — one assertion, in the first PR.
+
+**18 — late cancellation, charged.** A client with a saved card (§4), the
+waiver already used, an appointment in 2 hours. The public cancel page
+states the $50 fee and that the card will be charged; confirm. Proves: a
+PaymentIntent in test mode keyed `late-cancellation-fee-<token>`; ONE
+ledger transaction with a `late_cancellation_fee` line and a
+`stripe_card` payment of $50 carrying the intent id, written AFTER the
+charge; `/financials` shows the fee as fees, not service or retail
+revenue; the staff notification; and a second submit of the same link is
+410 with no second charge (the token was claimed first). The failure
+branch — a card Stripe declines (`pm_card_chargeDeclined`) — leaves the
+token reusable, no ledger row, and a 402 the page shows in words.
+
+**19 — checkout, card on file.** The same saved card at `/checkout`:
+tender "card on file", Charge. Proves: the intent, the `stripe_card`
+payment row with the intent id, the receipt naming the card's last four;
+and a refund of it from `/transactions` pushes a Stripe refund first and
+writes the mirror only on success (the route's 502 path with "nothing
+was refunded" is asserted by making the refund fail — a second refund of
+the same intent — in the harness, not the journey).
+
+### 4. The builders `TestData` needs
+
+| Builder | Writes | Notes |
+| --- | --- | --- |
+| `organisation(timezone, taxRateBps)` | `organizations`, one `locations`, four `roles` + `role_permissions` copied from the seeded organisation by role name | the run's organisation; `TestData.createOrganisation()` makes a `TestData` whose `orgId` is it |
+| `role(name, keys[])` | `roles`, `role_permissions` | for the permission journey's "summary without ledger read" case |
+| `staffMember(label, role)` | as today, in the run's organisation; `staff_locations` when the location matters | `front_desk`, `admin`, `provider`, or a run-made role |
+| `client(first, last, { email, stripe_customer_id, late_cancellation_waiver_used })` | `clients` | the waiver flag set directly for journeys 17c and 19 |
+| `service(name, staffId)` | as today | for the appointment |
+| `product(name, { price_cents, stock_quantity, cost_cents })` | as today | stock known to the test |
+| `giftCard(amountCents, { code })` | `gift_cards` | for a pay-with-card case that does not first sell one; journey 11 mints its card through checkout instead |
+| `appointment({ … , withCancelToken })` | as today, plus a `cancellation_tokens` row (expires_at after the appointment) | returns the token id for `/cancel/<id>` |
+| `savedCard(clientId, capturedBy, paymentMethod = "pm_card_visa")` | Stripe: customer + attached test payment method; `clients.stripe_customer_id`; `card_consents` (front-desk attested, policy text); `client_payment_methods` (brand, last4, expiry) | Stripe PR only; tracks the customer for deletion |
+| `cleanup()` | `removeTestOrganisation` on the direct connection, then auth users, then Stripe customers; the zero-rows and no-orphans assertions | replaces the per-table deletes for a run that owns an organisation |
+
+Nothing test-only enters the app: every builder writes the rows the
+routes leave, through the service role or the direct connection, and the
+journeys then act as a person would.
+
+### 5. Cost
+
+The `e2e` job on main today: 4 min 52 s, of which the Supabase stack
+start is 2 min 05 s, the migrations 36 s, the build 41 s, and the eleven
+journeys 30 s together. A money journey costs an organisation (five
+inserts and a permission copy, ~1 s), a sign-in, two or three page loads
+and the cleanup transaction: 5–10 s each on the runner, so the seven
+non-Stripe journeys add roughly 60–75 s, taking the job to about 6 min.
+The Stripe journeys add Stripe round trips (customer, payment method,
+intent, refund: 1–2 s each) — about 30–40 s, in their own job that runs
+in parallel with `e2e` and only when the key exists, so the critical
+path grows by nothing when the secret is absent and by at most the
+stack start plus ~45 s when it is. Fixed costs dominate; the journeys
+themselves are cheap.
+
+### 6. The split
+
+- **PR 1 — the organisation fixture and the seven journeys without
+  Stripe** (10–17): `removeTestOrganisation` in the cleanup helper with
+  its assertions, the builders in §4 except `savedCard`, journeys 10–17,
+  and the token read after journey 03's booking. No workflow change: the
+  journeys run in the existing `e2e` job.
+- **PR 2 — Stripe**: the `stripe-sandbox` environment (created by hand
+  in GitHub, the restricted key and the account id as its secrets), the
+  `e2e-stripe` job with the gate, `ci-start-app` accepting `rk_test_`,
+  the `savedCard` builder with customer cleanup, journeys 18 and 19, and
+  a `@stripe` tag the ordinary job excludes.
+
+### As built — PR 1 (2026-10-08)
+
+- `scripts/_cleanup.mjs` gained `removeTestOrganisation(dsn, orgId)`,
+  catalog-driven as ruled: the scoped tables from `information_schema`,
+  the unscoped ones reached through `pg_constraint` recursively (deepest
+  first), then the two checks. The no-orphans check found residue on its
+  first run: 100,000 `appointment_services` rows with no appointment,
+  left by the load seed's `--clean`, whose comment said "lines cascade"
+  — under replica mode nothing cascades. The seed now deletes the lines
+  explicitly; the local residue was removed. On CI the stack is fresh, so
+  the check fails there only on a real leak.
+- `TestData.createOrganisation()` and the `org` fixture; builders `role`,
+  `giftCard`, `appointment({ withCancelToken })`, `staffMember` with a
+  run-made role, `client` with the waiver flag; `e2e/support/money.ts`
+  holds the shared moves (pick the client, add a product, the Complete
+  button named by its total, a `/financials` card by label, the run's
+  ledger read back by organisation).
+- Journeys 10–17 as in §2, with these as-built differences: journey 10
+  takes the card at the terminal (no cash tender exists on the page);
+  journey 11 reads the code from the sale's detail on `/transactions`
+  (the route appends it to the gift card line's name, which the dialog
+  shows — the one place a front-desk person can read it after the sale)
+  and drives the over-balance refusal as a stale balance; journey 13's
+  "Already refunded" is a second window of the same manager that still
+  shows Refund after the first window refunded; journey 16 verified the
+  front desk holds `transactions.view` without the summary, so it is the
+  "one of the pair" case and no run-made role was needed for that half
+  (one is still made for the other half).
+- **A bug the journeys found, fixed in this PR** (the one app change):
+  `/transactions` read `?open=` once, on mount. The "Already refunded"
+  toast is shown on that page, so its "View refund" link only changed the
+  query of a page already mounted and nothing opened — and the refund it
+  named had been made elsewhere, so the page's list had never seen it.
+  The page now watches the query after mount and refreshes its list
+  before opening a row it has not seen. Journey 13 drove the click and
+  failed before the fix, passes after.
+- Journey 03 asserts the booking route minted the cancellation token.
+- Cost measured locally: the eight journeys run in 14 s together; the
+  full suite of nineteen in 33 s.
+
+### Open for the review
+
+1. Journey 11 reads the minted gift card's code from the receipt line.
+   If the receipt does not show it in the UI (the route appends it to the
+   line's name snapshot), the journey reads it from `gift_cards` by the
+   organisation — say which is acceptable as "the person's reachable
+   path".
+2. The appointment-and-token builder writes the token the booking route
+   would have minted. The alternative — booking through the schedule UI
+   in the test organisation and reading the token the route made — proves
+   more and costs the provider hours and a slot search per journey; §3
+   proposes one such assertion in journey 03 rather than per journey.
+3. Whether the harnesses' hand-rolled test organisations move onto
+   `removeTestOrganisation` in PR 1 or later.
 
 ## Relationship to other docs
 

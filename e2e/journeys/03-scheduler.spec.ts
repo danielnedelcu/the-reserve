@@ -59,4 +59,15 @@ test("the front desk books an appointment through the dialog and sees it on the 
   const { data: audit } = await data.env.db.from("audit_log").select("organization_id, actor_staff_id").eq("action", "appointment.booked").eq("actor_staff_id", desk.id);
   expect(audit?.length).toBe(1);
   expect(audit?.[0]?.organization_id).toBe(data.orgId);
+
+  // The booking route minted the cancellation token for this appointment —
+  // the link in the confirmation email. The money journeys write that
+  // token themselves (TestData.appointment withCancelToken); this is the
+  // one place the route's own minting is asserted.
+  const { data: booked } = await data.env.db.from("appointments").select("id").eq("client_id", client.id);
+  expect(booked?.length).toBe(1);
+  const { data: tokens } = await data.env.db.from("cancellation_tokens").select("organization_id, used_at").eq("appointment_id", booked![0]!.id);
+  expect(tokens?.length).toBe(1);
+  expect(tokens?.[0]?.organization_id).toBe(data.orgId);
+  expect(tokens?.[0]?.used_at).toBeNull();
 });
