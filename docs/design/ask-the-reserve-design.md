@@ -49,6 +49,47 @@ now supplies the data to size them), a scoped-down provider version, and
 answer summarization, which would send result rows to the model and needs
 an explicit egress review first.
 
+## Revenue: one definition (2026-10-08)
+
+Ask's money is the SHARED definition, not its own
+(docs/design/server-tables-design.md decision 2). It lives in two
+security-invoker views, `ledger_lines` and `ledger_transactions`
+(migration `ledger_definition_views`): one row per ledger line with its
+category already decided — `revenue_cents` is service + product lines,
+pre-tax, gross of discounts, net of refunds; `tips_cents`, `fees_cents`,
+`gift_cards_sold_cents` (a liability) and `discount_cents` are their own
+columns — and the transaction's own location's calendar as `local_day`,
+`local_week` (Sunday start) and `local_month`. `transactions_page` sums
+the same columns for the `/financials` cards and the dashboard, so the
+kind-to-category mapping exists once.
+
+- Every money preset in `server/utils/askPresets.ts` selects from the
+  views and buckets on their local dates; "this month" is resolved in
+  the organisation's location's zone. `top_spenders_quarter` counts
+  revenue net of refunds with tips beside it; `gift_cards_outstanding`
+  is the liability (every active card's balance, `gift_card_liability`'s
+  definition) followed by the cards; its chip reads "Gift card balances
+  outstanding".
+- The schema prompt (`server/utils/askSchema.ts`) describes both views,
+  states the definition once, tells the model never to sum
+  `transactions.total_cents` as revenue, lists `late_cancellation_fee`
+  among the kinds, and gives the location-local expressions for today,
+  this week and this month in place of `date_trunc` on `created_at` and
+  `current_date`, which are the server's UTC calendar.
+- `ask_readonly` holds SELECT on both views; `anon` and `public` do not.
+  Security invoker is explicit, so the ledger's RLS applies as the
+  asking admin through the injected claims, as everywhere else in Ask.
+- Proof: `scripts/verify-presets.mjs` on the local stack writes a ledger
+  fixture (a sale with a discount and a tip, a gift-card sale, a late
+  fee, a refund, a sale at 11:30 PM local on the last day of last month
+  and one at 12:30 AM on the first of this month) and asserts each money
+  preset equals `transactions_page`'s totals for the same window, the
+  month-edge sale counts in its own month, the gift-card preset equals
+  `gift_card_liability()`, an anon session cannot read the views, a
+  second organisation's lines never appear, and a deactivated location's
+  revenue still does. The read-only checks (pairing, execution, RLS)
+  still run against hosted.
+
 ## Decisions locked from Q&A
 
 1. **Execution: a dedicated connection whose session user is the role.**

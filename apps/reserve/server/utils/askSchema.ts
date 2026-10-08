@@ -80,9 +80,35 @@ transactions(id, organization_id, location_id, client_id, appointment_id,
 transaction_items(id, transaction_id, kind, appointment_id, product_id,
                   gift_card_id, staff_id, name_snapshot, quantity,
                   unit_price_cents, taxable, tax_cents, total_cents, discount_reason)
-  kind: service, product, gift_card, tip, discount.
+  kind: service, product, gift_card, tip, discount, late_cancellation_fee.
   staff_id on service and tip lines is provider attribution.
-  name_snapshot preserves what was sold at the time.
+  name_snapshot preserves what was sold at the time. late_cancellation_fee
+  is the fee charged for a late cancellation: money in, but not service
+  or retail revenue.
+
+ledger_lines(id, transaction_id, organization_id, location_id, client_id, checked_out_by,
+             appointment_id, product_id, gift_card_id, staff_id, kind, name_snapshot,
+             quantity, unit_price_cents, total_cents, tax_cents, discount_reason,
+             created_at, refunds_transaction_id, is_refund,
+             revenue_cents, service_cents, retail_cents, tips_cents, fees_cents,
+             gift_cards_sold_cents, discount_cents,
+             timezone, local_day, local_week, local_month)
+  THE place to answer any MONEY question: one row per transaction line with
+  its category already decided — revenue_cents is the line's amount when it
+  is a service or product line and 0 otherwise; likewise service_cents,
+  retail_cents, tips_cents, fees_cents, gift_cards_sold_cents and
+  discount_cents (positive on a sale). A refund's lines are negative, so
+  summing any of these is net of refunds with no sign filter. local_day,
+  local_week (starts Sunday) and local_month are DATES in the transaction's
+  own location's time zone: group and filter on them, never on created_at.
+
+ledger_transactions(id, organization_id, location_id, client_id, appointment_id,
+                    checked_out_by, refunds_transaction_id, is_refund, subtotal_cents,
+                    discount_cents, tax_cents, tip_cents, total_cents, note, created_at,
+                    timezone, local_day, local_week, local_month)
+  One row per transaction with the same local dates; use it for counts of
+  transactions (is_refund = false), average tickets and the header's
+  discount_cents / tax_cents.
 
 payments(id, transaction_id, method, amount_cents, gift_card_id, reference,
          stripe_payment_intent_id, created_at)
@@ -99,14 +125,29 @@ products(id, organization_id, name, description, sku, price_cents, cost_cents,
 
 - Money is in CENTS, as integers. Never divide; return the _cents column and
   let the interface format it.
-- Selling a gift card is a LIABILITY, not revenue. Exclude
-  transaction_items.kind = 'gift_card' from any revenue total. Revenue is
-  realized when the card is REDEEMED (a payments row with method='gift_card').
-- Refunds are negative rows, not deletions. A plain SUM over transactions
-  already nets them out — that is usually what someone means by revenue. To
-  count gross sales only, filter total_cents > 0.
-- kind = 'discount' lines carry negative amounts; kind = 'tip' is not revenue
-  to the business, it is provider attribution.
+- REVENUE HAS ONE DEFINITION, and it is ledger_lines.revenue_cents: service
+  and product lines, before tax, gross of discounts (a discount is its own
+  figure, discount_cents), net of refunds. Tips (tips_cents), gift-card
+  sales (gift_cards_sold_cents — a LIABILITY until redeemed, never revenue),
+  late-cancellation fees (fees_cents) and tax (tax_cents) are separate
+  figures, never inside revenue. For "revenue", "sales" or "how much did we
+  make", sum revenue_cents from ledger_lines. Never sum transactions.total_cents
+  as revenue: it includes tax, tips and gift-card sales.
+- Refunds are negative mirror rows, not deletions, and ledger_lines carries
+  them as negative lines. Summing a category column is already net of
+  refunds; never filter by sign. Count transactions with is_refund = false.
+- Gift-card REDEMPTION is a payments row with method = 'gift_card'; it is
+  how a sale was paid, not revenue in itself.
+- DATES ARE THE LOCATION'S, NOT THE SERVER'S. The server runs in UTC; the spa
+  does not. For anything on the ledger use ledger_lines.local_day,
+  local_week (starts Sunday) or local_month. For "today", "this week" and
+  "this month" compare them with:
+    today       = (now() at time zone (select timezone from locations order by created_at, id limit 1))::date
+    this week   = date_trunc('week', (now() at time zone <that zone>) + interval '1 day')::date - 1   -- the Sunday
+    this month  = date_trunc('month', now() at time zone <that zone>)::date
+  For appointments, convert the same way: (starts_at at time zone <that zone>)::date.
+  Never bucket with date_trunc on a timestamptz directly, and never use
+  current_date: both are the server's UTC calendar.
 - Cancelled and no_show appointments still exist as rows. Exclude them from
   "what happened" questions; include them for cancellation or no-show questions.
 - "Visits" means appointments with status = 'completed' unless asked otherwise.
@@ -165,6 +206,7 @@ products(id, organization_id, name, description, sku, price_cents, cost_cents,
   rather than guessing at it.
 
 - Order results the way the question implies, and cap open-ended lists at 25.
-- Use now(), current_date, date_trunc and intervals for date math.
+- Date math: now() at time zone the location's zone, then date_trunc on
+  that local timestamp (see the dates rule above); intervals in days.
 - If the question cannot be answered from these tables, do not invent one:
   return no SQL and say briefly what is missing.`;

@@ -6639,6 +6639,281 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.ledger_lines",
+      "type": "VIEW",
+      "comment": "THE revenue definition, one row per transaction line (docs/design/server-tables-design.md decision 2; docs/design/ask-the-reserve-design.md). revenue_cents = service + product lines, pre-tax, gross of discounts, net of refunds (mirror lines are negative; never filter by sign). tips_cents, fees_cents (late cancellation), gift_cards_sold_cents (a liability, never revenue) and discount_cents are their own figures; tax is tax_cents per line. local_day / local_week (Sunday start) / local_month are the transaction's own location's calendar. SECURITY INVOKER: the ledger's RLS applies as the caller. transactions_page, the dashboard and Ask all sum these columns; nothing classifies kinds elsewhere.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "transaction_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "location_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "checked_out_by",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "appointment_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "product_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "gift_card_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "staff_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "name_snapshot",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "unit_price_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tax_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "discount_reason",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "refunds_transaction_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "is_refund",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "revenue_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "service_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "retail_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tips_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "fees_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "gift_cards_sold_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "discount_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "local_day",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "local_week",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "local_month",
+          "type": "date",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW ledger_lines AS (\n SELECT i.id,\n    i.transaction_id,\n    t.organization_id,\n    t.location_id,\n    t.client_id,\n    t.checked_out_by,\n    i.appointment_id,\n    i.product_id,\n    i.gift_card_id,\n    i.staff_id,\n    i.kind,\n    i.name_snapshot,\n    i.quantity,\n    i.unit_price_cents,\n    i.total_cents,\n    i.tax_cents,\n    i.discount_reason,\n    t.created_at,\n    t.refunds_transaction_id,\n    (t.refunds_transaction_id IS NOT NULL) AS is_refund,\n        CASE\n            WHEN (i.kind = ANY (ARRAY['service'::text, 'product'::text])) THEN i.total_cents\n            ELSE 0\n        END AS revenue_cents,\n        CASE\n            WHEN (i.kind = 'service'::text) THEN i.total_cents\n            ELSE 0\n        END AS service_cents,\n        CASE\n            WHEN (i.kind = 'product'::text) THEN i.total_cents\n            ELSE 0\n        END AS retail_cents,\n        CASE\n            WHEN (i.kind = 'tip'::text) THEN i.total_cents\n            ELSE 0\n        END AS tips_cents,\n        CASE\n            WHEN (i.kind = 'late_cancellation_fee'::text) THEN i.total_cents\n            ELSE 0\n        END AS fees_cents,\n        CASE\n            WHEN (i.kind = 'gift_card'::text) THEN i.total_cents\n            ELSE 0\n        END AS gift_cards_sold_cents,\n        CASE\n            WHEN (i.kind = 'discount'::text) THEN (- i.total_cents)\n            ELSE 0\n        END AS discount_cents,\n    l.timezone,\n    ((t.created_at AT TIME ZONE l.timezone))::date AS local_day,\n    ((date_trunc('week'::text, ((t.created_at AT TIME ZONE l.timezone) + '1 day'::interval)))::date - 1) AS local_week,\n    (date_trunc('month'::text, (t.created_at AT TIME ZONE l.timezone)))::date AS local_month\n   FROM ((transaction_items i\n     JOIN transactions t ON ((t.id = i.transaction_id)))\n     JOIN locations l ON ((l.id = t.location_id)))\n)",
+      "referenced_tables": [
+        "public.transaction_items",
+        "public.transactions",
+        "public.locations"
+      ]
+    },
+    {
+      "name": "public.ledger_transactions",
+      "type": "VIEW",
+      "comment": "One row per transaction with the header figures (discount_cents and tax_cents are kept on the header; a refund's are negative) and the transaction's own location's calendar: local_day / local_week (Sunday start) / local_month. Counts and averages come from here (non-refund rows); line categories from ledger_lines. SECURITY INVOKER: the ledger's RLS applies as the caller.",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "location_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "client_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "appointment_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "checked_out_by",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "refunds_transaction_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "is_refund",
+          "type": "boolean",
+          "nullable": true
+        },
+        {
+          "name": "subtotal_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "discount_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tax_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "tip_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_cents",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "local_day",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "local_week",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "local_month",
+          "type": "date",
+          "nullable": true
+        }
+      ],
+      "def": "CREATE VIEW ledger_transactions AS (\n SELECT t.id,\n    t.organization_id,\n    t.location_id,\n    t.client_id,\n    t.appointment_id,\n    t.checked_out_by,\n    t.refunds_transaction_id,\n    (t.refunds_transaction_id IS NOT NULL) AS is_refund,\n    t.subtotal_cents,\n    t.discount_cents,\n    t.tax_cents,\n    t.tip_cents,\n    t.total_cents,\n    t.note,\n    t.created_at,\n    l.timezone,\n    ((t.created_at AT TIME ZONE l.timezone))::date AS local_day,\n    ((date_trunc('week'::text, ((t.created_at AT TIME ZONE l.timezone) + '1 day'::interval)))::date - 1) AS local_week,\n    (date_trunc('month'::text, (t.created_at AT TIME ZONE l.timezone)))::date AS local_month\n   FROM (transactions t\n     JOIN locations l ON ((l.id = t.location_id)))\n)",
+      "referenced_tables": [
+        "public.transactions",
+        "public.locations"
+      ]
     }
   ],
   "relations": [

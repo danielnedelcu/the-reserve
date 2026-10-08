@@ -1695,6 +1695,13 @@ export type Database = {
             foreignKeyName: "payments_transaction_id_fkey"
             columns: ["transaction_id"]
             isOneToOne: false
+            referencedRelation: "ledger_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
             referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
@@ -2432,6 +2439,13 @@ export type Database = {
             foreignKeyName: "transaction_items_transaction_id_fkey"
             columns: ["transaction_id"]
             isOneToOne: false
+            referencedRelation: "ledger_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
             referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
@@ -2529,6 +2543,13 @@ export type Database = {
             foreignKeyName: "transactions_refunds_transaction_id_fkey"
             columns: ["refunds_transaction_id"]
             isOneToOne: false
+            referencedRelation: "ledger_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunds_transaction_id_fkey"
+            columns: ["refunds_transaction_id"]
+            isOneToOne: false
             referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
@@ -2536,7 +2557,201 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      ledger_lines: {
+        Row: {
+          appointment_id: string | null
+          checked_out_by: string | null
+          client_id: string | null
+          created_at: string | null
+          discount_cents: number | null
+          discount_reason: string | null
+          fees_cents: number | null
+          gift_card_id: string | null
+          gift_cards_sold_cents: number | null
+          id: string | null
+          is_refund: boolean | null
+          kind: string | null
+          local_day: string | null
+          local_month: string | null
+          local_week: string | null
+          location_id: string | null
+          name_snapshot: string | null
+          organization_id: string | null
+          product_id: string | null
+          quantity: number | null
+          refunds_transaction_id: string | null
+          retail_cents: number | null
+          revenue_cents: number | null
+          service_cents: number | null
+          staff_id: string | null
+          tax_cents: number | null
+          timezone: string | null
+          tips_cents: number | null
+          total_cents: number | null
+          transaction_id: string | null
+          unit_price_cents: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_items_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_gift_card_id_fkey"
+            columns: ["gift_card_id"]
+            isOneToOne: false
+            referencedRelation: "gift_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_items_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_checked_out_by_fkey"
+            columns: ["checked_out_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunds_transaction_id_fkey"
+            columns: ["refunds_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunds_transaction_id_fkey"
+            columns: ["refunds_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ledger_transactions: {
+        Row: {
+          appointment_id: string | null
+          checked_out_by: string | null
+          client_id: string | null
+          created_at: string | null
+          discount_cents: number | null
+          id: string | null
+          is_refund: boolean | null
+          local_day: string | null
+          local_month: string | null
+          local_week: string | null
+          location_id: string | null
+          note: string | null
+          organization_id: string | null
+          refunds_transaction_id: string | null
+          subtotal_cents: number | null
+          tax_cents: number | null
+          timezone: string | null
+          tip_cents: number | null
+          total_cents: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_checked_out_by_fkey"
+            columns: ["checked_out_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunds_transaction_id_fkey"
+            columns: ["refunds_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "ledger_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_refunds_transaction_id_fkey"
+            columns: ["refunds_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_staff_invite: {
