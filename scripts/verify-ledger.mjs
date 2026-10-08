@@ -17,9 +17,18 @@
  *      POST /api/checkout once, again (same id), with an edited cart
  *      under the same key (409 naming the first), then
  *      POST /api/transactions/:id/refund (the mirror), and again (409).
+ *   3. the invariants at COMMIT (PR 2): for each rule an unbalanced
+ *      write is rejected with that rule's name and nothing survives, a
+ *      balanced one is accepted; a second refund of an original and a
+ *      refund of a refund are refused; update, delete and truncate are
+ *      refused under the service role on all three tables; an
+ *      authenticated session cannot call assert_ledger_transaction; a
+ *      client with sales history cannot be deleted, one without can.
  *
  * Cleanup removes this run's rows through the direct postgres connection
- * (the only path allowed to touch ledger rows, behind the localhost guard).
+ * with session_replication_role = replica — the only path past the
+ * append-only block, behind the localhost guard. The service role has
+ * no such path, which is what makes the block hold in production.
  *
  *   SUPABASE_LOCAL=true node scripts/verify-ledger.mjs   (app up on E2E_BASE_URL or :3300)
  */
@@ -39,6 +48,8 @@ if (!LOCAL_MODE || !isLocalUrl(url) || !isLocalUrl(dsn)) {
 const base = (process.env.E2E_BASE_URL ?? "http://localhost:3300").replace(/\/$/, "");
 
 const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+const db = new pg.Client({ connectionString: dsn, ssl: pgSsl(dsn) });
+await db.connect();
 const run = randomBytes(4).toString("hex");
 const TAG = `VERIFY-LEDGER-${run}`;
 
@@ -62,6 +73,9 @@ async function must(p, what) {
 }
 
 const made = { users: [], staff: [], roleRows: [], roles: [], clients: [], products: [], giftCards: [], transactions: [], locations: [], orgs: [] };
+
+/** A session's rpc as that session; returns { data, error }. */
+const rpcAs = (session, fn, args) => session.client.rpc(fn, args);
 
 async function staffMember(orgId, label, roleId) {
   const email = `verify-ledger-${label}-${run}@verify.test`;
@@ -90,7 +104,7 @@ async function staffMember(orgId, label, roleId) {
   for (let i = 0; i < 20 && !jar.size; i++) await new Promise((r) => setTimeout(r, 25));
   if (!jar.size) throw new Error(`signIn ${label}: no cookies were written`);
   const cookie = [...jar].map(([n, v]) => `${n}=${v}`).join("; ");
-  return { id: row.id, cookie };
+  return { id: row.id, cookie, client: ssr };
 }
 async function roleWith(orgId, name, keys) {
   const role = await must(admin.from("roles").insert({ organization_id: orgId, name: `${TAG} ${name}`, is_system: false }).select("id").single(), `role ${name}`);
@@ -259,6 +273,94 @@ async function main() {
     check("a zero-total sale (fully discounted) writes with no payment rows", !error && !!zeroId && (await rowsOf(zeroId)).payments.length === 0, error?.message ?? "");
   }
 
+  // ── 3. the invariants, at commit ─────────────────────────────────────
+  console.log("\nthe invariants — checked at commit (PR 2); each rule by name, nothing surviving a rejection");
+  const rule = async (name, expectedRule, h, items, pays, keySuffix) => {
+    const key = `vl-${run}:inv:${keySuffix}`;
+    const { error } = await write(ORG, key, h, items, pays);
+    const named = error?.code === "LD010" && (error?.message ?? "").includes(`ledger.${expectedRule}:`);
+    check(`${name} → ledger.${expectedRule}, and nothing survives`, named && (await countByKey(ORG, key)) === 0, `${error?.code ?? "no error"}: ${(error?.message ?? "").slice(0, 100)}`);
+  };
+  await rule("payments short of the total", "payments", header(), [lotionLine], [cash(2_000)], "payments");
+  await rule("a zero total with a payment row", "zero_total", header({ discount_cents: 2_500, total_cents: 0 }), [lotionLine, line("discount", { unit_price_cents: -2_500, total_cents: -2_500, discount_reason: "comp" })], [cash(0)], "zero");
+  await rule("sale lines not summing to the subtotal", "subtotal", header({ subtotal_cents: 2_600, total_cents: 2_600 }), [lotionLine], [cash(2_600)], "subtotal");
+  await rule("a discount line not matching discount_cents", "discount", header({ discount_cents: 500, total_cents: 2_000 }), [lotionLine, line("discount", { unit_price_cents: -400, total_cents: -400, discount_reason: "x" })], [cash(2_000)], "discount");
+  await rule("a tip line not matching tip_cents", "tip", header({ tip_cents: 500, total_cents: 3_000 }), [lotionLine, line("tip", { staff_id: cashier.id, unit_price_cents: 400, total_cents: 400 })], [cash(3_000)], "tip");
+  await rule("line tax not matching tax_cents", "tax", header({ tax_cents: 200, total_cents: 2_700 }), [{ ...lotionLine, taxable: true, tax_cents: 100 }], [cash(2_700)], "tax");
+  {
+    // No lines at all: the function refuses that before the trigger, so
+    // the trigger is proven on the direct connection, as the postgres role.
+    let err = null;
+    try {
+      await db.query("begin");
+      await db.query(`insert into transactions (organization_id, location_id, client_id, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, checked_out_by, note, idempotency_key) values ($1,$2,$3,0,0,0,0,0,$4,$5,$6)`, [ORG, LOC, noor, cashier.id, TAG, `vl-${run}:inv:nolines`]);
+      await db.query("commit");
+    } catch (e) { err = e; await db.query("rollback").catch(() => {}); }
+    check("a header with no lines is rejected at commit on the direct connection → ledger.lines (the trigger binds the postgres role too)", err?.code === "LD010" && /ledger\.lines:/.test(err?.message ?? "") && (await countByKey(ORG, `vl-${run}:inv:nolines`)) === 0, `${err?.code ?? "no error"}: ${(err?.message ?? "").slice(0, 80)}`);
+  }
+  {
+    const { error } = await write(ORG, `vl-${run}:inv:qty`, header({ subtotal_cents: 5_000, total_cents: 5_000 }), [{ ...lotionLine, quantity: 2, unit_price_cents: 2_500, total_cents: 5_001 }], [cash(5_001)]);
+    check("a line whose total is not quantity × unit price is refused immediately (check constraint 23514)", error?.code === "23514", error?.code ?? "no error");
+  }
+  // Refunds of the balanced sale id1: the broken mirrors first, then the real one.
+  const mirrorHeader = (over = {}) => ({ location_id: LOC, client_id: noor, appointment_id: null, refunds_transaction_id: id1, subtotal_cents: -2_500, discount_cents: 0, tax_cents: 0, tip_cents: 0, total_cents: -2_500, checked_out_by: cashier.id, note: `${TAG} refund`, ...over });
+  const mirrorLine = { ...lotionLine, unit_price_cents: -2_500, total_cents: -2_500 };
+  await rule("a refund whose client differs from the original's", "refund_header", mirrorHeader({ client_id: null }), [mirrorLine], [cash(-2_500)], "rh");
+  await rule("a refund with the right sums but two lines where the original has one", "refund_lines", mirrorHeader(), [{ ...mirrorLine, unit_price_cents: -1_250, total_cents: -1_250 }, { ...mirrorLine, unit_price_cents: -1_250, total_cents: -1_250 }], [cash(-2_500)], "rl");
+  await rule("a refund with two payments where the original has one", "refund_payments", mirrorHeader(), [mirrorLine], [cash(-1_250), cash(-1_250)], "rp");
+  const { data: refund1, error: refundErr } = await write(ORG, `refund:${id1}`, mirrorHeader(), [mirrorLine], [cash(-2_500)]);
+  if (refund1) made.transactions.push(refund1);
+  check("the exact mirror is accepted", !refundErr && !!refund1, refundErr?.message ?? "");
+  {
+    const { error } = await write(ORG, `vl-${run}:inv:second-refund`, mirrorHeader(), [mirrorLine], [cash(-2_500)]);
+    check("a second refund of the same original is refused by the partial unique index (23505)", error?.code === "23505" && (await countByKey(ORG, `vl-${run}:inv:second-refund`)) === 0, error?.code ?? "no error");
+  }
+  await rule("a refund of a refund", "refund_of_refund", mirrorHeader({ refunds_transaction_id: refund1, subtotal_cents: 2_500, total_cents: 2_500 }), [lotionLine], [cash(2_500)], "rr");
+
+  console.log("\nappend-only — update, delete and truncate refused for the service role");
+  {
+    const u = await admin.from("transactions").update({ note: "edited" }).eq("id", id1);
+    const d = await admin.from("transactions").delete().eq("id", id1);
+    const ui = await admin.from("transaction_items").update({ name_snapshot: "edited" }).eq("transaction_id", id1);
+    const di = await admin.from("transaction_items").delete().eq("transaction_id", id1);
+    const up = await admin.from("payments").update({ reference: "edited" }).eq("transaction_id", id1);
+    const dp = await admin.from("payments").delete().eq("transaction_id", id1);
+    const all = [u, d, ui, di, up, dp];
+    check("update and delete on transactions, transaction_items and payments all raise LD003 through the service-role API", all.every((r) => r.error?.code === "LD003"), all.map((r) => r.error?.code ?? "no error").join(","));
+    const r = await rowsOf(id1);
+    check("…and the rows are untouched", r.txn?.note === TAG && r.items.length === 1 && r.payments.length === 1);
+    let trunc = null;
+    try {
+      await db.query("begin");
+      await db.query("set local role service_role");
+      await db.query("truncate transactions");
+    } catch (e) { trunc = e; }
+    await db.query("rollback").catch(() => {});
+    check("truncate transactions as service_role is refused (42501: the privilege is gone)", trunc?.code === "42501", trunc?.code ?? "no error");
+    let direct = null;
+    try {
+      await db.query("begin");
+      await db.query("set local role service_role");
+      await db.query("delete from payments where transaction_id = $1", [id1]);
+    } catch (e) { direct = e; }
+    await db.query("rollback").catch(() => {});
+    check("a delete as service_role on a direct connection raises LD003 too (the block is a trigger, not a policy)", direct?.code === "LD003", direct?.code ?? "no error");
+  }
+  {
+    const { error } = await rpcAs(cashier, "assert_ledger_transaction", { p_transaction_id: id1 });
+    check("an authenticated session calling assert_ledger_transaction directly gets a permission error (42501)", error?.code === "42501", error?.code ?? "no error");
+  }
+  {
+    const { error } = await admin.from("clients").delete().eq("id", noor);
+    const still = (await admin.from("clients").select("id").eq("id", noor).maybeSingle()).data;
+    check("deleting a client with sales history is refused by the foreign key (23503) and the client remains", error?.code === "23503" && !!still, error?.code ?? "no error");
+    const ghost = await client(ORG, "Ghost");
+    const { error: e2 } = await admin.from("clients").delete().eq("id", ghost);
+    const gone = !(await admin.from("clients").select("id").eq("id", ghost).maybeSingle()).data;
+    check("a client with no history is deleted normally", !e2 && gone, e2?.message ?? "still there");
+    made.clients = made.clients.filter((c) => c !== ghost);
+  }
+
   // ── 2. the routes ─────────────────────────────────────────────────────
   console.log("\nthe routes — checkout and refund through the running app, with a real session");
   const ping = await fetch(base).catch(() => null);
@@ -290,21 +392,26 @@ async function main() {
 }
 
 async function cleanup() {
-  // Ledger rows go through the direct postgres connection ONLY (localhost
-  // guarded above): the API path is never used to remove a ledger row.
-  const c = new pg.Client({ connectionString: dsn, ssl: pgSsl(dsn) });
-  await c.connect();
+  // Ledger rows go through the direct postgres connection ONLY, with the
+  // append-only block skipped for this one transaction (localhost
+  // guarded above): the API path cannot remove a ledger row, by design.
   try {
-    const { rows } = await c.query("select id from transactions where idempotency_key like $1 or note = $2 or organization_id = any($3::uuid[])", [`%${run}%`, TAG, made.orgs]);
+    const { rows } = await db.query("select id from transactions where idempotency_key like $1 or note like $2 or organization_id = any($3::uuid[])", [`%${run}%`, `${TAG}%`, made.orgs]);
     const ids = [...new Set([...made.transactions, ...rows.map((r) => r.id)])];
     if (ids.length) {
-      await c.query("delete from payments where transaction_id = any($1::uuid[])", [ids]);
-      await c.query("delete from transaction_items where transaction_id = any($1::uuid[])", [ids]);
-      await c.query("delete from transactions where id = any($1::uuid[]) and refunds_transaction_id is not null", [ids]);
-      await c.query("delete from transactions where id = any($1::uuid[])", [ids]);
+      await db.query("begin");
+      await db.query("set local session_replication_role = replica");
+      await db.query("delete from payments where transaction_id = any($1::uuid[])", [ids]);
+      await db.query("delete from transaction_items where transaction_id = any($1::uuid[])", [ids]);
+      await db.query("delete from transactions where id = any($1::uuid[]) and refunds_transaction_id is not null", [ids]);
+      await db.query("delete from transactions where id = any($1::uuid[])", [ids]);
+      await db.query("commit");
     }
+  } catch (e) {
+    await db.query("rollback").catch(() => {});
+    console.error(`ledger cleanup failed: ${e.message}`);
   } finally {
-    await c.end();
+    await db.end().catch(() => {});
   }
   if (made.giftCards.length) await admin.from("gift_cards").delete().in("id", made.giftCards);
   if (made.products.length) await admin.from("products").delete().in("id", made.products);

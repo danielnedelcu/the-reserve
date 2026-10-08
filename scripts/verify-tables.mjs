@@ -46,8 +46,9 @@
  *   node scripts/verify-tables.mjs
  */
 import { createClient } from "@supabase/supabase-js";
+import pg from "pg";
 import { randomBytes } from "node:crypto";
-import { LOCAL_MODE, guard, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
 import { LOW_STOCK_THRESHOLD } from "../apps/reserve/shared/products/stock.ts";
 
 const { url, anonKey, serviceKey } = supabaseEnv();
@@ -142,29 +143,61 @@ async function txnsAs(session, args) {
  * discount_cents POSITIVE on the header (the line is negative), total =
  * subtotal - discount + tax + tip.
  */
+/**
+ * The ledger fixtures are written through the DIRECT postgres connection
+ * (local stack only), each transaction inside one begin…commit with the
+ * ledger's triggers ACTIVE — the invariants are checked at that commit,
+ * so a fixture is balanced or it does not exist. The API path cannot
+ * write a back-dated transaction (write_ledger_transaction takes no
+ * created_at), and three autocommitted inserts would fail the first
+ * commit's "at least one line" check. Cleanup is the one place
+ * session_replication_role = replica is set (ledger-integrity-design.md).
+ */
+let ledgerDb = null;
+async function ledger() {
+  if (!ledgerDb) {
+    guard(["DATABASE_URL"]);
+    const dsn = get("DATABASE_URL");
+    ledgerDb = new pg.Client({ connectionString: dsn, ssl: pgSsl(dsn) });
+    await ledgerDb.connect();
+  }
+  return ledgerDb;
+}
 async function txn(orgId, locationId, cashierId, { clientId = null, at, items, payment, note = null, refunds = null }) {
   const subtotal = items.filter((i) => ["service", "product", "gift_card", "late_cancellation_fee"].includes(i.kind)).reduce((a, i) => a + i.total_cents, 0);
   const discount = -items.filter((i) => i.kind === "discount").reduce((a, i) => a + i.total_cents, 0);
   const tax = items.reduce((a, i) => a + (i.tax_cents ?? 0), 0);
   const tip = items.filter((i) => i.kind === "tip").reduce((a, i) => a + i.total_cents, 0);
   const total = subtotal - discount + tax + tip;
-  const row = await must(
-    admin.from("transactions").insert({
-      organization_id: orgId, location_id: locationId, client_id: clientId, refunds_transaction_id: refunds,
-      subtotal_cents: subtotal, discount_cents: discount, tax_cents: tax, tip_cents: tip, total_cents: total,
-      checked_out_by: cashierId, note, created_at: at,
-      idempotency_key: `fixture:${run}:${randomBytes(6).toString("hex")}`, // not an app writer; the key is required
-    }).select("id").single(),
-    `transaction ${note ?? at}`,
-  );
-  made.transactions.push(row.id);
-  await must(admin.from("transaction_items").insert(items.map((i) => ({
-    transaction_id: row.id, kind: i.kind, name_snapshot: i.name, quantity: 1, unit_price_cents: i.total_cents,
-    taxable: (i.tax_cents ?? 0) > 0, tax_cents: i.tax_cents ?? 0, total_cents: i.total_cents, staff_id: i.staff_id ?? null,
-  }))), `items ${note ?? at}`);
-  // payments_stripe_intent_presence: a stripe_card payment carries its intent id.
-  await must(admin.from("payments").insert({ transaction_id: row.id, method: payment.method, amount_cents: total, reference: payment.reference ?? null, stripe_payment_intent_id: payment.method === "stripe_card" ? payment.reference : null }), `payment ${note ?? at}`);
-  return { id: row.id, total };
+  const db = await ledger();
+  let id;
+  try {
+    await db.query("begin");
+    const { rows } = await db.query(
+      `insert into transactions (organization_id, location_id, client_id, refunds_transaction_id, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, checked_out_by, note, created_at, idempotency_key)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
+      [orgId, locationId, clientId, refunds, subtotal, discount, tax, tip, total, cashierId, note, at, `fixture:${run}:${randomBytes(6).toString("hex")}`],
+    );
+    id = rows[0].id;
+    for (const i of items) {
+      await db.query(
+        `insert into transaction_items (transaction_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents, staff_id)
+         values ($1,$2,$3,1,$4,$5,$6,$4,$7)`,
+        [id, i.kind, i.name, i.total_cents, (i.tax_cents ?? 0) > 0, i.tax_cents ?? 0, i.staff_id ?? null],
+      );
+    }
+    // payments_stripe_intent_presence: a stripe_card payment carries its intent id.
+    await db.query(
+      `insert into payments (transaction_id, method, amount_cents, reference, stripe_payment_intent_id) values ($1,$2,$3,$4,$5)`,
+      [id, payment.method, total, payment.reference ?? null, payment.method === "stripe_card" ? payment.reference : null],
+    );
+    await db.query("commit"); // the invariants are checked here
+  } catch (e) {
+    await db.query("rollback").catch(() => {});
+    throw new Error(`transaction ${note ?? at}: ${e.message}`);
+  }
+  made.transactions.push(id);
+  return { id, total };
 }
 
 async function product(orgId, name, extra = {}) {
@@ -497,14 +530,26 @@ try {
   failed++;
   failures.push(`harness error: ${e.message}`);
 } finally {
-  // The ledger fixtures (local stack only): lines and payments first,
-  // refunds before the originals they point at.
+  // The ledger fixtures (local stack only): the ledger is append-only for
+  // every role, so they go through the direct postgres connection with
+  // the triggers skipped — lines and payments first, refunds before the
+  // originals they point at. The API cannot do this, which is the point.
   if (made.transactions.length) {
-    await admin.from("payments").delete().in("transaction_id", made.transactions);
-    await admin.from("transaction_items").delete().in("transaction_id", made.transactions);
-    await admin.from("transactions").delete().in("id", made.transactions).not("refunds_transaction_id", "is", null);
-    await admin.from("transactions").delete().in("id", made.transactions);
+    const db = await ledger();
+    try {
+      await db.query("begin");
+      await db.query("set local session_replication_role = replica");
+      await db.query("delete from payments where transaction_id = any($1::uuid[])", [made.transactions]);
+      await db.query("delete from transaction_items where transaction_id = any($1::uuid[])", [made.transactions]);
+      await db.query("delete from transactions where id = any($1::uuid[]) and refunds_transaction_id is not null", [made.transactions]);
+      await db.query("delete from transactions where id = any($1::uuid[])", [made.transactions]);
+      await db.query("commit");
+    } catch (e) {
+      await db.query("rollback").catch(() => {});
+      console.log(`  note  ledger fixtures were not removed: ${e.message}`);
+    }
   }
+  if (ledgerDb) await ledgerDb.end().catch(() => {});
   if (made.clients.length) await admin.from("clients").delete().in("id", made.clients);
   if (made.products.length) await admin.from("products").delete().in("id", made.products);
   for (const r of made.roleRows) await admin.from("staff_roles").delete().eq("staff_id", r.staff_id).eq("role_id", r.role_id);

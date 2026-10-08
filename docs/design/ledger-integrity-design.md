@@ -1,6 +1,6 @@
 # Ledger integrity — atomic writes, idempotency, enforced invariants
 
-STATUS: approved 2026-10-07 (rulings 1–7 below); PR 1 BUILT 2026-10-08 (as-built notes inline), PR 2 queued.
+STATUS: approved 2026-10-07 (rulings 1–7 below); PR 1 BUILT 2026-10-08; PR 2 BUILT 2026-10-08 (as-built notes inline).
 
 ## Why
 
@@ -100,6 +100,17 @@ never deleted.** The e2e cleanup deletes clients and appointments under
 the service role, which is fine only while journeys write no ledger rows
 (they do not; docs/testing-design.md, the money-journey decision).
 
+`[AS-BUILT]` PR 2 (2026-10-08, ruled at stop 1): the eleven `no action`
+keys are now `restrict`, stated. The app offers no delete of a client,
+staff member, product, location, appointment or gift card today; the
+`clients_delete`, `products_manage` and `locations_manage` policies stay
+as they are (a direct API delete of a record with sales history fails on
+the foreign key, 23503). **Any future delete UI for those records must
+check ledger history first and offer deactivate instead, with a plain
+explanation — never let the foreign-key error reach the screen.** A
+client with sales history also cannot be erased on request: see the
+board's client-data-erasure item (anonymise the record, keep the row).
+
 ## The write function (PR 1)
 
 ```
@@ -178,6 +189,42 @@ PR 2's triggers take it over at commit.
   rejected at commit with the trigger's message and a balanced set is
   accepted; an update and a delete on each table are refused for the
   service role; the three real writers' rows pass.
+
+## PR 2 as built (migration 20261008021248_ledger_integrity)
+
+- `assert_ledger_transaction(uuid)` checks a whole transaction; deferred
+  constraint triggers on all three tables call it for the transaction a
+  new row belongs to, at COMMIT. Rules by name in the error (`LD010`):
+  `ledger.lines`, `ledger.subtotal`, `ledger.discount`, `ledger.tip`,
+  `ledger.tax`, `ledger.zero_total`, `ledger.payments`,
+  `ledger.refund_header` (money negated; client, appointment and location
+  equal), `ledger.refund_lines`, `ledger.refund_payments`,
+  `ledger.refund_of_refund`. Security definer, execute revoked from
+  public, anon and authenticated; only the triggers call it.
+- One refund per original: a partial unique index on
+  `refunds_transaction_id` (23505), structural.
+- `transaction_items.total_cents = quantity * unit_price_cents`: an
+  immediate CHECK (23514).
+- Append-only for every role: `ledger_block_change` raises `LD003` on
+  update or delete on all three tables, an ORIGIN trigger so the service
+  role is bound too. TRUNCATE revoked from service_role (TRUNCATE fires
+  no row trigger; the privilege is what covers it).
+- Fixtures and seed: the verify-tables ledger fixture and the load seed
+  insert through the direct postgres connection, each transaction (or
+  batch) inside one begin…commit with the triggers ACTIVE, so they are
+  proof as well as data; `write_ledger_transaction` takes no created_at,
+  which back-dated fixtures need. Cleanup — verify-tables, verify-ledger,
+  the seed's `--clean` — sets `session_replication_role = replica` inside
+  one transaction on that connection, behind the localhost guard. The
+  API roles have no such path.
+- Proof: verify-ledger grew to cover every rule (an unbalanced write
+  rejected at commit with the rule's name and nothing surviving, the
+  balanced one accepted), the second refund, the refund of a refund,
+  update/delete/truncate under the service role through the API and on
+  a direct connection, the permission error for a session calling
+  `assert_ledger_transaction`, and a client's deletion refused with
+  history and allowed without; the real writers still pass through their
+  routes and the fee's exact rows.
 
 ## Deliberately deferred
 

@@ -3181,7 +3181,7 @@
     {
       "name": "public.transactions",
       "type": "BASE TABLE",
-      "comment": "The immutable money ledger: one row per checkout. NEVER updated or deleted (no policies exist). Refunds are new rows with negative amounts referencing the original via refunds_transaction_id. All financial reporting reads from here.",
+      "comment": "The immutable money ledger: one row per checkout. Append-only for EVERY role, the service role included (trg_transactions_append_only); corrections are refunds — new rows with negative amounts referencing the original via refunds_transaction_id, one per original. Balanced at commit by assert_ledger_transaction. All financial reporting reads from here.",
       "columns": [
         {
           "name": "id",
@@ -3316,6 +3316,14 @@
             "organization_id",
             "idempotency_key"
           ]
+        },
+        {
+          "name": "transactions_one_refund_per_original",
+          "def": "CREATE UNIQUE INDEX transactions_one_refund_per_original ON public.transactions USING btree (refunds_transaction_id) WHERE (refunds_transaction_id IS NOT NULL)",
+          "table": "public.transactions",
+          "columns": [
+            "refunds_transaction_id"
+          ]
         }
       ],
       "constraints": [
@@ -3334,9 +3342,16 @@
           ]
         },
         {
+          "name": "trg_ledger_transactions_balanced",
+          "type": "TRIGGER",
+          "def": "CREATE CONSTRAINT TRIGGER trg_ledger_transactions_balanced AFTER INSERT ON public.transactions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction()",
+          "table": "public.transactions",
+          "referenced_table": ""
+        },
+        {
           "name": "transactions_organization_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)",
+          "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT",
           "table": "public.transactions",
           "referenced_table": "public.organizations",
           "columns": [
@@ -3349,7 +3364,7 @@
         {
           "name": "transactions_location_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (location_id) REFERENCES locations(id)",
+          "def": "FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE RESTRICT",
           "table": "public.transactions",
           "referenced_table": "public.locations",
           "columns": [
@@ -3362,7 +3377,7 @@
         {
           "name": "transactions_checked_out_by_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (checked_out_by) REFERENCES staff(id)",
+          "def": "FOREIGN KEY (checked_out_by) REFERENCES staff(id) ON DELETE RESTRICT",
           "table": "public.transactions",
           "referenced_table": "public.staff",
           "columns": [
@@ -3375,7 +3390,7 @@
         {
           "name": "transactions_client_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (client_id) REFERENCES clients(id)",
+          "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT",
           "table": "public.transactions",
           "referenced_table": "public.clients",
           "columns": [
@@ -3388,7 +3403,7 @@
         {
           "name": "transactions_appointment_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)",
+          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE RESTRICT",
           "table": "public.transactions",
           "referenced_table": "public.appointments",
           "columns": [
@@ -3411,7 +3426,7 @@
         {
           "name": "transactions_refunds_transaction_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id)",
+          "def": "FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT",
           "table": "public.transactions",
           "referenced_table": "public.transactions",
           "columns": [
@@ -3420,6 +3435,16 @@
           "referenced_columns": [
             "id"
           ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_ledger_transactions_balanced",
+          "def": "CREATE CONSTRAINT TRIGGER trg_ledger_transactions_balanced AFTER INSERT ON public.transactions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction()"
+        },
+        {
+          "name": "trg_transactions_append_only",
+          "def": "CREATE TRIGGER trg_transactions_append_only BEFORE DELETE OR UPDATE ON public.transactions FOR EACH ROW EXECUTE FUNCTION ledger_block_change()"
         }
       ]
     },
@@ -3560,9 +3585,28 @@
           ]
         },
         {
+          "name": "transaction_items_total_is_qty_times_unit",
+          "type": "CHECK",
+          "def": "CHECK ((total_cents = (quantity * unit_price_cents)))",
+          "table": "public.transaction_items",
+          "referenced_table": "",
+          "columns": [
+            "total_cents",
+            "quantity",
+            "unit_price_cents"
+          ]
+        },
+        {
+          "name": "trg_ledger_items_balanced",
+          "type": "TRIGGER",
+          "def": "CREATE CONSTRAINT TRIGGER trg_ledger_items_balanced AFTER INSERT ON public.transaction_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction()",
+          "table": "public.transaction_items",
+          "referenced_table": ""
+        },
+        {
           "name": "transaction_items_staff_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)",
+          "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE RESTRICT",
           "table": "public.transaction_items",
           "referenced_table": "public.staff",
           "columns": [
@@ -3575,7 +3619,7 @@
         {
           "name": "transaction_items_appointment_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)",
+          "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE RESTRICT",
           "table": "public.transaction_items",
           "referenced_table": "public.appointments",
           "columns": [
@@ -3588,7 +3632,7 @@
         {
           "name": "transaction_items_product_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (product_id) REFERENCES products(id)",
+          "def": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT",
           "table": "public.transaction_items",
           "referenced_table": "public.products",
           "columns": [
@@ -3601,7 +3645,7 @@
         {
           "name": "transaction_items_gift_card_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)",
+          "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT",
           "table": "public.transaction_items",
           "referenced_table": "public.gift_cards",
           "columns": [
@@ -3637,8 +3681,16 @@
       ],
       "triggers": [
         {
+          "name": "trg_ledger_items_balanced",
+          "def": "CREATE CONSTRAINT TRIGGER trg_ledger_items_balanced AFTER INSERT ON public.transaction_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction()"
+        },
+        {
           "name": "trg_product_sale",
           "def": "CREATE TRIGGER trg_product_sale AFTER INSERT ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION apply_product_sale()"
+        },
+        {
+          "name": "trg_transaction_items_append_only",
+          "def": "CREATE TRIGGER trg_transaction_items_append_only BEFORE DELETE OR UPDATE ON public.transaction_items FOR EACH ROW EXECUTE FUNCTION ledger_block_change()"
         }
       ]
     },
@@ -3751,9 +3803,16 @@
           ]
         },
         {
+          "name": "trg_ledger_payments_balanced",
+          "type": "TRIGGER",
+          "def": "CREATE CONSTRAINT TRIGGER trg_ledger_payments_balanced AFTER INSERT ON public.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction()",
+          "table": "public.payments",
+          "referenced_table": ""
+        },
+        {
           "name": "payments_gift_card_id_fkey",
           "type": "FOREIGN KEY",
-          "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)",
+          "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT",
           "table": "public.payments",
           "referenced_table": "public.gift_cards",
           "columns": [
@@ -3791,6 +3850,14 @@
         {
           "name": "trg_gift_card_payment",
           "def": "CREATE TRIGGER trg_gift_card_payment AFTER INSERT ON public.payments FOR EACH ROW EXECUTE FUNCTION apply_gift_card_payment()"
+        },
+        {
+          "name": "trg_ledger_payments_balanced",
+          "def": "CREATE CONSTRAINT TRIGGER trg_ledger_payments_balanced AFTER INSERT ON public.payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION trg_assert_ledger_transaction()"
+        },
+        {
+          "name": "trg_payments_append_only",
+          "def": "CREATE TRIGGER trg_payments_append_only BEFORE DELETE OR UPDATE ON public.payments FOR EACH ROW EXECUTE FUNCTION ledger_block_change()"
         }
       ]
     },
@@ -7145,7 +7212,7 @@
         "id"
       ],
       "parent_cardinality": "exactly_one",
-      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id)"
+      "def": "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transactions",
@@ -7158,7 +7225,7 @@
         "id"
       ],
       "parent_cardinality": "exactly_one",
-      "def": "FOREIGN KEY (location_id) REFERENCES locations(id)"
+      "def": "FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transactions",
@@ -7171,7 +7238,7 @@
         "id"
       ],
       "parent_cardinality": "exactly_one",
-      "def": "FOREIGN KEY (checked_out_by) REFERENCES staff(id)"
+      "def": "FOREIGN KEY (checked_out_by) REFERENCES staff(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transactions",
@@ -7184,7 +7251,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (client_id) REFERENCES clients(id)"
+      "def": "FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transactions",
@@ -7197,7 +7264,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)"
+      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transactions",
@@ -7210,7 +7277,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id)"
+      "def": "FOREIGN KEY (refunds_transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transaction_items",
@@ -7223,7 +7290,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id)"
+      "def": "FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transaction_items",
@@ -7236,7 +7303,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id)"
+      "def": "FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transaction_items",
@@ -7249,7 +7316,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (product_id) REFERENCES products(id)"
+      "def": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transaction_items",
@@ -7262,7 +7329,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)"
+      "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.transaction_items",
@@ -7288,7 +7355,7 @@
         "id"
       ],
       "parent_cardinality": "zero_or_one",
-      "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)"
+      "def": "FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT"
     },
     {
       "table": "public.payments",
@@ -9342,6 +9409,24 @@
       "name": "public.write_ledger_transaction",
       "return_type": "uuid",
       "arguments": "p_organization_id uuid, p_idempotency_key text, p_header jsonb, p_items jsonb, p_payments jsonb",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.assert_ledger_transaction",
+      "return_type": "void",
+      "arguments": "p_transaction_id uuid",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.trg_assert_ledger_transaction",
+      "return_type": "trigger",
+      "arguments": "",
+      "type": "FUNCTION"
+    },
+    {
+      "name": "public.ledger_block_change",
+      "return_type": "trigger",
+      "arguments": "",
       "type": "FUNCTION"
     }
   ],

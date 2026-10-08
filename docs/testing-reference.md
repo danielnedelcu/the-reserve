@@ -331,10 +331,14 @@ In order of value:
   but none of the Connect specifics do.
 - **`private.booking_records` and `session_replication_role`
   cleanups.** Lokl deletes bookings in tests because its schema forbids
-  deleting them in real use. The Reserve's ledger is append-only with
-  the revoke stated in the migration; a cleanup that deletes
-  `transactions` under the service role would be exercising exactly the
-  path the schema forbids. The honest shape for The Reserve is tagged
+  deleting them in real use. The Reserve's ledger is append-only for
+  every role since 2026-10-08 (an update/delete trigger and a TRUNCATE
+  revoke, ledger-integrity-design.md; before that only the absence of
+  policies, which the service role bypassed); a cleanup that deletes
+  `transactions` under the service role is REFUSED, and the local
+  harnesses and seed remove their rows only on the direct postgres
+  connection with `session_replication_role = replica`, behind the
+  localhost guard. The honest shape for The Reserve is tagged
   test rows that are LEFT, as the phase 4 C2 baseline was, or a
   test-only organisation whose rows are never mixed with the real one.
   Decide this before the first money journey, not after.

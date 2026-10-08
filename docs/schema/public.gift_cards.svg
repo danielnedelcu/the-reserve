@@ -249,7 +249,7 @@
 <title>public.transaction_items:gift_card_id&#45;&gt;public.gift_cards:id</title>
 <path fill="none" stroke="black" d="M3362.03,-1846.93C3417.46,-1822.56 3395.6,-1590.22 3351.04,-1544 3281.26,-1471.62 2516.92,-1580.17 2446.92,-1508 2413.62,-1473.67 2398.1,-1400.4 2445.92,-1400.4"/>
 <polygon fill="black" stroke="black" points="3362.16,-1846.9 3351.46,-1844.53 3356.94,-1847.99 3352.7,-1848.86 3352.7,-1848.86 3352.7,-1848.86 3356.94,-1847.99 3353.28,-1853.34 3362.16,-1846.9"/>
-<text text-anchor="start" x="3359.04" y="-1859" font-family="Arial" font-size="10.00">FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)</text>
+<text text-anchor="start" x="3359.04" y="-1859" font-family="Arial" font-size="10.00">FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT</text>
 </g>
 <!-- public.payments -->
 <g id="node3" class="node">
@@ -291,7 +291,7 @@
 <title>public.payments:gift_card_id&#45;&gt;public.gift_cards:id</title>
 <path fill="none" stroke="black" d="M3444.35,-1785.32C3379.26,-1754.86 3500.98,-1400.4 3418.32,-1400.4"/>
 <polygon fill="black" stroke="black" points="3444.17,-1785.28 3453.03,-1791.74 3449.39,-1786.37 3453.63,-1787.26 3453.63,-1787.26 3453.63,-1787.26 3449.39,-1786.37 3454.88,-1782.93 3444.17,-1785.28"/>
-<text text-anchor="start" x="3461.28" y="-1797.4" font-family="Arial" font-size="10.00">FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id)</text>
+<text text-anchor="start" x="3461.28" y="-1797.4" font-family="Arial" font-size="10.00">FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT</text>
 </g>
 </g>
 </svg>

@@ -2548,6 +2548,10 @@ export type Database = {
         }
         Returns: string
       }
+      assert_ledger_transaction: {
+        Args: { p_transaction_id: string }
+        Returns: undefined
+      }
       clients_page: {
         Args: {
           p_active?: string
