@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { periodRange, todayKey } from "~~/shared/time/period";
+import { timeLabel as zonedTimeLabel } from "~~/shared/time/zone";
+
 const supabase = useSupabaseClient();
 const { can } = usePermissions();
 const toast = useToast();
@@ -18,12 +21,15 @@ interface Appt {
   appointment_services: { name_snapshot: string }[];
 }
 
+// Today at the SPA: the location's midnight to its next, through the
+// shared period helpers (business time, CLAUDE.md). A browser in another
+// zone used to build this window from its own midnight and file a 12:30 AM
+// appointment under the previous day (e2e/journeys/09-dashboard.spec.ts).
+const { data: timezone } = await useLocationTimezone();
 function todayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { from: start.toISOString(), to: end.toISOString() };
+  const tz = timezone.value;
+  const { from, to } = periodRange({ period: "day", anchor: todayKey(tz) }, tz);
+  return { from: from.toISOString(), to: to.toISOString() };
 }
 
 const { data: appointments, refresh } = await useAsyncData(
@@ -120,12 +126,7 @@ function clientName(appt: Appt) {
     ? `${appt.client.first_name} ${appt.client.last_name}`
     : "Client";
 }
-function timeLabel(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const timeLabel = (iso: string) => zonedTimeLabel(iso, timezone.value);
 
 const STATUS_DOT: Record<string, string> = {
   booked: "bg-muted-foreground/40",
@@ -138,7 +139,7 @@ const STATUS_DOT: Record<string, string> = {
 <template>
   <!-- Capped card, pinned title, the whole list scrolls (section headings
        scroll with their groups): DashboardScrollFrame. -->
-  <DashboardScrollFrame class="max-h-[450px] p-5">
+  <DashboardScrollFrame role="region" aria-label="Today's appointments" class="max-h-[450px] p-5">
     <template #header>
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Today's appointments</h2>

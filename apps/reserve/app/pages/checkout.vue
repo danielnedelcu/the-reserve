@@ -1,5 +1,11 @@
 <script setup lang="ts">
+import { dateTimeLabel } from "~~/shared/time/format";
 import type { SearchOption } from "~/components/ServerSearchSelect.vue";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 
 definePageMeta({ middleware: "can", permission: "pos.checkout" });
 useSeoMeta({ title: "Checkout — The Reserve" });
@@ -62,7 +68,7 @@ if (context.value) {
   appointmentId.value = appt.id;
   clientId.value = appt.client_id;
   serviceStaffId.value = appt.staff_id;
-  appointmentLabel.value = `${appt.clients?.first_name ?? ""} ${appt.clients?.last_name ?? ""} · ${appt.staff?.display_name ?? ""} · ${new Date(appt.starts_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+  appointmentLabel.value = `${appt.clients?.first_name ?? ""} ${appt.clients?.last_name ?? ""} · ${appt.staff?.display_name ?? ""} · ${dateTimeLabel(appt.starts_at, tz())}`;
   cart.value.push({
     key: `service-${appt.id}`,
     kind: "service",

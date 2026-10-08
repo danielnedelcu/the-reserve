@@ -35,8 +35,28 @@
   the page reads it once via useLocationTimezone(). Never the browser's
   clock for business time: a Los Angeles browser drew a 10:00 AM New York
   appointment at 7:00 AM (the two-timezone seam, fixed 2026-10-06, proved
-  by e2e/journeys/03-scheduler.spec.ts). PERSONAL event time — when a
-  message was sent, when a note was written — may use the viewer's clock.
+  by e2e/journeys/03-scheduler.spec.ts). The classification, applied to
+  every surface 2026-10-07 (journey 09 is the proof):
+  (1) BUSINESS time — appointments, opening hours, which day or week
+  something falls on, and records of what the business did: sales,
+  communications and campaigns sent, leads received, time off, a client's
+  record, forms and notes — formats through `shared/time/format.ts`
+  (dateLabel, dateTimeLabel, rangeLabel, monthName; the zone is a
+  REQUIRED argument, no default) and buckets through `period.ts`
+  (periodRange, rollingDays, Sunday weeks). No surface makes its own
+  Intl date call or Date-getter arithmetic.
+  (2) PERSONAL event time — when a message was sent in the messaging
+  thread — may use the viewer's clock. It is the only allowlist entry in
+  `tests/guards/browserClock.test.ts`, which fails the suite on any
+  toLocale*/Intl.DateTimeFormat/Date getter-setter in app/ otherwise.
+  (3) DATE-ONLY values — a date of birth, any `date` column — never pass
+  through a zone or a Date at all: `keyLabel` formats the "YYYY-MM-DD"
+  string itself. `new Date("1990-05-03")` is UTC midnight and reads as
+  May 2 in a US browser. Calendar arithmetic on keys is `shiftDays`/
+  `shiftMonths`/`weekdayOf`; the only browser-zone read is
+  `shared/time/picker.ts`, recovering the day a date picker's Date
+  denotes. Row counts: `shared/format/count.ts`, so `toLocaleString` is
+  banned in app/ outright.
 - Silent-failure assumptions: when a change depends on something that
   produces NO error if false — a cache hits, a prefix is stable, a harness
   actually connected, an optimization fires — make verifying it a build

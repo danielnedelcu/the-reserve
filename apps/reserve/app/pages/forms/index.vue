@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { localDateKey } from "~~/shared/time/format";
 import type { SearchOption } from "~/components/ServerSearchSelect.vue";
 import {
   FIELD_TYPES,
@@ -7,6 +8,11 @@ import {
 } from "~~/shared/forms/fields";
 import type { FormField, FormFieldType } from "~~/shared/forms/fields";
 import { FORM_TEMPLATES } from "~~/shared/forms/templates";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 
 /**
  * Form authoring — create a form, edit its questions, and send it.
@@ -475,11 +481,7 @@ function fieldSummary(field: FormField): string {
               <template v-if="def.currentVersion">
                 Version {{ def.currentVersion.version }} ·
                 {{ def.currentVersion.fields.length }} questions · published
-                {{
-                  new Date(def.currentVersion.publishedAt).toLocaleDateString(
-                    "en-CA",
-                  )
-                }}
+                {{ localDateKey(def.currentVersion.publishedAt, tz()) }}
               </template>
               <template v-else>No published version yet</template>
             </p>

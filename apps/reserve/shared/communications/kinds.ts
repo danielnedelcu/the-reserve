@@ -1,3 +1,4 @@
+import { dateTimeLabel } from "../time/format";
 /**
  * The vocabulary of communications_sent.kind, humanized — shared by the
  * profile's history view (app) and the resend route (server) so the two
@@ -58,20 +59,13 @@ export function isResendable(kind: string): boolean {
  */
 export function appointmentReference(
   metadata: unknown,
-  timeZone?: string,
+  timeZone: string, // the location's; required, so no caller falls back to the process clock
 ): string | null {
   const m = (metadata ?? {}) as { service_name?: unknown; starts_at?: unknown };
   const service = typeof m.service_name === "string" ? m.service_name : null;
   const startsAt =
     typeof m.starts_at === "string" && !Number.isNaN(Date.parse(m.starts_at))
-      ? new Date(m.starts_at).toLocaleString("en-US", {
-          timeZone,
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        })
+      ? dateTimeLabel(m.starts_at, timeZone, { weekday: "short" })
       : null;
   if (!service && !startsAt) return null;
   return [service, startsAt].filter(Boolean).join(" · ");

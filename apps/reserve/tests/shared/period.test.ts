@@ -1,15 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, afterEach } from "vitest";
-import {
-  periodDays,
-  periodRange,
-  previousPeriod,
-  shiftPeriod,
-  shiftDays,
-  rollingDays,
-  todayKey,
-  periodFromQuery,
-} from "../../shared/time/period";
+import { periodDays, periodRange, previousPeriod, shiftPeriod, shiftDays, rollingDays, todayKey, periodFromQuery, keyLabel, monthLabel, weekdayLabel, dayOfMonth, daysInMonth, monthStartOf, shiftMonths } from "../../shared/time/period";
 
 // The one derivation of a reporting window: keys for the calendar,
 // instants in the LOCATION's zone for the edges. The zones here differ
@@ -159,5 +150,38 @@ describe("none of it depends on the process's own zone", () => {
       expect(periodDays({ period: "week", anchor: "2026-10-06" }).fromKey).toBe("2026-10-04");
       expect(todayKey("Pacific/Auckland", new Date("2026-10-06T02:30:00.000Z"))).toBe("2026-10-06");
     }
+  });
+});
+
+describe("key labels — words from a key alone, no Date, no zone", () => {
+  it("keyLabel shapes", () => {
+    expect(keyLabel("2026-10-07")).toBe("Oct 7");
+    expect(keyLabel("2026-10-07", { year: true })).toBe("Oct 7, 2026");
+    expect(keyLabel("2026-10-07", { weekday: "long", month: "long" })).toBe("Wednesday, October 7");
+    expect(keyLabel("2026-10-07", { month: "long", day: false, year: true })).toBe("October 2026");
+    expect(keyLabel("1990-05-03", { month: "long", year: true })).toBe("May 3, 1990"); // a date of birth, as stored
+  });
+  it("a date of birth never shifts a day, whatever the process zone", () => {
+    const original = process.env.TZ;
+    try {
+      for (const tz of ["Pacific/Auckland", "America/Los_Angeles", "UTC"]) {
+        process.env.TZ = tz;
+        expect(keyLabel("1990-05-03", { month: "long", year: true })).toBe("May 3, 1990");
+      }
+    } finally {
+      process.env.TZ = original;
+    }
+  });
+  it("monthLabel, weekdayLabel, dayOfMonth, daysInMonth, monthStartOf, shiftMonths", () => {
+    expect(monthLabel("2026-02-14")).toBe("February");
+    expect(weekdayLabel("2026-10-07")).toBe("Wed");
+    expect(weekdayLabel("2026-10-07", "long")).toBe("Wednesday");
+    expect(dayOfMonth("2026-10-07")).toBe(7);
+    expect(daysInMonth("2028-02-10")).toBe(29);
+    expect(daysInMonth("2026-02-10")).toBe(28);
+    expect(daysInMonth("2026-12-31")).toBe(31);
+    expect(monthStartOf("2026-10-07")).toBe("2026-10-01");
+    expect(shiftMonths("2026-10-07", 1)).toBe("2026-11-01");
+    expect(shiftMonths("2026-01-31", -1)).toBe("2025-12-01");
   });
 });

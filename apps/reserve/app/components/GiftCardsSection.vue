@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { dateLabel } from "~~/shared/time/format";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 /**
  * GiftCardsSection — the ledger-adjacent gift card registry.
  * Drop into transactions.vue below the transactions list:
@@ -102,13 +108,7 @@ const cardColumns = [
   },
 ];
 
-function soldDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+const soldDate = (iso: string) => dateLabel(iso, tz());
 </script>
 
 <template>

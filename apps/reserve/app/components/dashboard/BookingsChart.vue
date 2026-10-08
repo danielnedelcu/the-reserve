@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ApexOptions } from "apexcharts";
+import { dayOfMonth, daysInMonth, monthLabel, periodRange, previousPeriod, todayKey, type PeriodRange } from "~~/shared/time/period";
+import { localDateKey } from "~~/shared/time/zone";
 
 /**
  * Bookings by day of month: this month's wave over last month's, aligned
@@ -22,24 +24,22 @@ import type { ApexOptions } from "apexcharts";
  * appointments would see their own rhythm drawn as the club's, which is
  * the misleading case this chart exists to avoid.
  *
- * Days are bucketed on the viewer's browser clock, like the dashboard's
- * other day-granular reads (the today card, the week calendar). The
- * schedule itself moved onto the location's zone (shared/time/zone.ts,
- * 2026-10-06); the dashboard has not, and docs/testing-design.md lists
- * what still reads the browser's clock.
+ * Both months are the LOCATION's calendar months (business time,
+ * CLAUDE.md): periodRange bounds each by the spa's midnights, and an
+ * appointment is filed under the day it falls on at the spa, never the
+ * day the viewer's browser puts it on.
  */
 const supabase = useSupabaseClient();
 const { can } = usePermissions();
 
 const allowed = computed(() => can("appointments.view.any"));
 
-const now = new Date();
-const thisStart = new Date(now.getFullYear(), now.getMonth(), 1);
-const lastStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-const nextStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-const daysIn = (monthStart: Date) =>
-  new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
-const monthName = (d: Date) => d.toLocaleDateString("en-US", { month: "long" });
+const { data: timezone } = await useLocationTimezone();
+const today = todayKey(timezone.value);
+const thisMonth = periodRange({ period: "month", anchor: today }, timezone.value);
+const lastMonth = periodRange(previousPeriod({ period: "month", anchor: today }), timezone.value);
+const daysIn = (month: PeriodRange) => daysInMonth(month.fromKey);
+const monthName = (month: PeriodRange) => monthLabel(month.fromKey);
 
 const { data: rows, pending } = await useAsyncData(
   "dashboard-bookings-by-day",
@@ -48,8 +48,8 @@ const { data: rows, pending } = await useAsyncData(
     const { data, error } = await supabase
       .from("appointments")
       .select("starts_at, status")
-      .gte("starts_at", lastStart.toISOString())
-      .lt("starts_at", nextStart.toISOString());
+      .gte("starts_at", lastMonth.from.toISOString())
+      .lt("starts_at", thisMonth.to.toISOString());
     if (error) throw error;
     return data ?? [];
   },
@@ -57,15 +57,15 @@ const { data: rows, pending } = await useAsyncData(
 
 /** Same rule as the KPI cards and the schedule: everything but cancelled. */
 const counts = computed(() => {
-  const thisMonth = new Array<number>(daysIn(thisStart)).fill(0);
-  const lastMonth = new Array<number>(daysIn(lastStart)).fill(0);
+  const current = new Array<number>(daysIn(thisMonth)).fill(0);
+  const previous = new Array<number>(daysIn(lastMonth)).fill(0);
   for (const r of rows.value ?? []) {
     if (r.status === "cancelled") continue;
-    const d = new Date(r.starts_at);
-    const bucket = d < thisStart ? lastMonth : thisMonth;
-    bucket[d.getDate() - 1]!++;
+    const key = localDateKey(r.starts_at, timezone.value);
+    const bucket = key < thisMonth.fromKey ? previous : current;
+    bucket[dayOfMonth(key) - 1]!++;
   }
-  return { thisMonth, lastMonth };
+  return { thisMonth: current, lastMonth: previous };
 });
 
 const totals = computed(() => ({
@@ -91,15 +91,15 @@ const belowBaseline = computed(
     totals.value.lastMonth > 0 && totals.value.lastMonth < TREND_MIN_BASELINE,
 );
 
-const dayCount = computed(() => Math.max(daysIn(thisStart), daysIn(lastStart)));
+const dayCount = computed(() => Math.max(daysIn(thisMonth), daysIn(lastMonth)));
 
 /** A month shorter than the axis gets nulls past its last day, not zeros. */
 const pad = (arr: number[]) =>
   Array.from({ length: dayCount.value }, (_, i) => arr[i] ?? null);
 
 const series = computed(() => [
-  { name: monthName(thisStart), data: pad(counts.value.thisMonth) },
-  { name: monthName(lastStart), data: pad(counts.value.lastMonth) },
+  { name: monthName(thisMonth), data: pad(counts.value.thisMonth) },
+  { name: monthName(lastMonth), data: pad(counts.value.lastMonth) },
 ]);
 
 // Onward palette: purple for this month, teal for last.
@@ -137,7 +137,7 @@ const options = computed<ApexOptions>(() => ({
   annotations: {
     xaxis: [
       {
-        x: now.getDate(),
+        x: dayOfMonth(today),
         strokeDashArray: 2,
         borderColor: "var(--color-muted-foreground)",
         label: {
@@ -157,7 +157,7 @@ const options = computed<ApexOptions>(() => ({
 
 const summary = computed(() => {
   const t = totals.value;
-  return `${t.thisMonth} booking${t.thisMonth === 1 ? "" : "s"} on the calendar in ${monthName(thisStart)}, ${t.lastMonth} in ${monthName(lastStart)}.`;
+  return `${t.thisMonth} booking${t.thisMonth === 1 ? "" : "s"} on the calendar in ${monthName(thisMonth)}, ${t.lastMonth} in ${monthName(lastMonth)}.`;
 });
 </script>
 
@@ -166,7 +166,7 @@ const summary = computed(() => {
     <UiCardHeader class="p-4 pb-0">
       <UiCardTitle class="text-base">Bookings by day</UiCardTitle>
       <UiCardDescription>
-        {{ monthName(thisStart) }} over {{ monthName(lastStart) }}, aligned by
+        {{ monthName(thisMonth) }} over {{ monthName(lastMonth) }}, aligned by
         day of month
       </UiCardDescription>
     </UiCardHeader>
@@ -195,8 +195,8 @@ const summary = computed(() => {
           />
         </div>
         <p class="sr-only">
-          {{ summary }} Solid line is {{ monthName(thisStart) }}, dashed line is
-          {{ monthName(lastStart) }}.
+          {{ summary }} Solid line is {{ monthName(thisMonth) }}, dashed line is
+          {{ monthName(lastMonth) }}.
         </p>
 
         <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -218,7 +218,7 @@ const summary = computed(() => {
               class="size-4"
             />
             {{ change.direction === "up" ? "Up" : "Down" }} {{ change.pct }}% vs
-            {{ monthName(lastStart) }}
+            {{ monthName(lastMonth) }}
           </span>
           <span
             v-else-if="belowBaseline"
@@ -226,7 +226,7 @@ const summary = computed(() => {
           >
             <Icon name="lucide:info" class="size-4" />
             No comparison yet — fewer than {{ TREND_MIN_BASELINE }} bookings in
-            {{ monthName(lastStart) }}
+            {{ monthName(lastMonth) }}
           </span>
           <span class="text-muted-foreground">{{ summary }}</span>
         </div>

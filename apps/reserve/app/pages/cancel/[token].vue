@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { dateTimeLabel } from "~~/shared/time/format";
 /**
  * /cancel/<token> — the public cancel-via-link page (client
  * communications, phase 4). Reached from the confirmation and reminder
@@ -50,17 +51,11 @@ const loadErrorMessage = computed(
       ?.statusMessage ?? "This link is no longer valid.",
 );
 
-const when = computed(() => {
-  if (!link.value) return "";
-  return new Date(link.value.startsAt).toLocaleString("en-US", {
-    timeZone: link.value.timezone,
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-});
+// The appointment's time at the SPA: the link carries the location's
+// zone, and the shared formatter takes it (business time, CLAUDE.md).
+const when = computed(() =>
+  link.value ? dateTimeLabel(link.value.startsAt, link.value.timezone, { weekday: "long", month: "long" }) : "",
+);
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
