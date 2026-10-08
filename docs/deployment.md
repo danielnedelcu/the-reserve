@@ -123,6 +123,12 @@ Three things keep it so:
 - `server/plugins/config-report.ts` prints at startup one line per
   setting, set or NOT SET with what refuses — never a value — from the
   registry `shared/config/settings.ts`.
+- Every route that needs a setting refuses with a 503 that names its
+  `NUXT_` variable, the Stripe client included: `useStripe()` throws that
+  503, so card-on-file checkout, card refunds, the late-cancellation fee
+  charge and the webhook never surface a missing key as a generic 500,
+  and the Stripe webhook checks its own signing secret before anything
+  else. `verify-build-secrets` probes the webhook for exactly this.
 
 The old bare names (`STRIPE_SECRET_KEY`, `ASK_DATABASE_URL`, …) are no
 longer read by the app at all. `scripts/_env.mjs` still accepts them for

@@ -13,10 +13,14 @@
  *      secret keys, JWTs, connection strings with credentials), and the
  *      inlined runtime config in the Nitro bundle must hold an empty
  *      string for every private setting.
- *   3. STARTUP. The built server starts with every setting blank; its
- *      startup report must name every one as NOT SET, and two routes
- *      that check their setting before anything else must answer 503
- *      naming it. Then the server is stopped.
+ *   3. STARTUP. The built server starts with every setting blank except
+ *      the Stripe webhook's signing secret (a sentinel, so the webhook
+ *      gets past its own check to the Stripe client); its startup report
+ *      must name every blank one as NOT SET, two routes that check their
+ *      setting before anything else must answer 503 naming it, and the
+ *      Stripe webhook — the one Stripe-dependent route reachable without
+ *      a session or a database — must answer 503 naming
+ *      NUXT_STRIPE_SECRET_KEY, never a generic 500. Then the server stops.
  *
  * Exit 1 on any finding. Prints names, counts and status codes; never a
  * value. The build it leaves behind is a normal one (nothing baked), so
@@ -96,7 +100,8 @@ for (const [what, re] of SHAPES) {
 }
 
 // ---- 3. the startup report and two fail-closed routes, with everything blank
-const blank = { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: "production", PORT: String(PORT), HOST: "127.0.0.1", NUXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321", NUXT_PUBLIC_SUPABASE_KEY: "not-a-key" };
+const webhookSentinel = `whsec_sentinel_${randomBytes(12).toString("hex")}`;
+const blank = { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: "production", PORT: String(PORT), HOST: "127.0.0.1", NUXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321", NUXT_PUBLIC_SUPABASE_KEY: "not-a-key", NUXT_STRIPE_WEBHOOK_SECRET: webhookSentinel };
 const server = spawn(process.execPath, [join(OUT, "server/index.mjs")], { env: blank, stdio: ["ignore", "pipe", "pipe"] });
 let log = "";
 server.stdout.on("data", (d) => (log += d));
@@ -105,15 +110,16 @@ const until = async (pred, ms) => { const t0 = Date.now(); while (Date.now() - t
 try {
   const reported = await until(() => /\[config\] \d+ setting\(s\) set; \d+ not set|\[config\] every setting is set/.test(log), 20_000);
   check("the built server prints its startup report", reported, "no [config] summary line within 20 s");
-  const expectedMissing = SETTINGS.filter((s) => !s.config.startsWith("public.supabase."));
+  const expectedMissing = SETTINGS.filter((s) => !s.config.startsWith("public.supabase.") && s.env !== "NUXT_STRIPE_WEBHOOK_SECRET");
+  check("the report counts the webhook secret as set and prints no part of it", log.includes("[config] NUXT_STRIPE_WEBHOOK_SECRET: NOT SET") === false && !log.includes(webhookSentinel));
   const notReported = expectedMissing.filter((s) => !log.includes(`[config] ${s.env}: NOT SET`));
   check(`the report names every blank setting as NOT SET (${expectedMissing.length})`, notReported.length === 0, notReported.map((s) => s.env).join(", "));
   check("the report prints no value (no sentinel, no key shape)", ![...sentinels.values()].some((v) => log.includes(v)) && !SHAPES.some(([, re]) => re.test(log)));
   const up = await until(() => { try { return true; } catch { return false; } }, 0);
-  const probe = async (path, expectName) => {
+  const probe = async (path, expectName, headers = {}) => {
     for (let i = 0; i < 50; i++) {
       try {
-        const r = await fetch(`http://127.0.0.1:${PORT}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        const r = await fetch(`http://127.0.0.1:${PORT}${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: "{}" });
         const body = await r.text();
         return { status: r.status, names: body.includes(expectName) };
       } catch { await new Promise((res) => setTimeout(res, 200)); }
@@ -124,6 +130,8 @@ try {
   check("POST /api/webhooks/resend with no secret answers 503 naming NUXT_RESEND_WEBHOOK_SECRET", resend.status === 503 && resend.names, `status ${resend.status}`);
   const jobs = await probe("/api/jobs/communications", "NUXT_COMMUNICATIONS_JOB_SECRET");
   check("POST /api/jobs/communications with no secret answers 503 naming NUXT_COMMUNICATIONS_JOB_SECRET", jobs.status === 503 && jobs.names, `status ${jobs.status}`);
+  const webhook = await probe("/api/stripe/webhook", "NUXT_STRIPE_SECRET_KEY", { "stripe-signature": "t=1,v1=0000" });
+  check("POST /api/stripe/webhook with its signing secret but no Stripe key answers 503 naming NUXT_STRIPE_SECRET_KEY (not a generic 500)", webhook.status === 503 && webhook.names, `status ${webhook.status}`);
   void up;
 } finally {
   server.kill("SIGTERM");

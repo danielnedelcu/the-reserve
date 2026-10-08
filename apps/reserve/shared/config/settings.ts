@@ -23,8 +23,8 @@ export interface Setting {
 }
 
 export const SETTINGS: Setting[] = [
-  { env: "NUXT_STRIPE_SECRET_KEY", config: "stripeSecretKey", secret: true, build: false, without: "card charges, card refunds and the late-cancellation fee charge refuse (useStripe throws)" },
-  { env: "NUXT_STRIPE_WEBHOOK_SECRET", config: "stripeWebhookSecret", secret: true, build: false, without: "POST /api/stripe/webhook answers 500" },
+  { env: "NUXT_STRIPE_SECRET_KEY", config: "stripeSecretKey", secret: true, build: false, without: "card-on-file checkout, card refunds, the late-cancellation fee charge and the webhook answer 503" },
+  { env: "NUXT_STRIPE_WEBHOOK_SECRET", config: "stripeWebhookSecret", secret: true, build: false, without: "POST /api/stripe/webhook answers 503" },
   { env: "NUXT_ANTHROPIC_API_KEY", config: "anthropicApiKey", secret: true, build: false, without: "Ask answers 503" },
   { env: "NUXT_ASK_DATABASE_URL", config: "askDatabaseUrl", secret: true, build: false, without: "Ask's read-only connection refuses" },
   { env: "NUXT_FORM_IP_PEPPER", config: "formIpPepper", secret: true, build: false, without: "the public form submission routes answer 503" },
