@@ -68,7 +68,17 @@
   `scripts/_cleanup.mjs` (direct postgres connection, replica mode,
   localhost guard). The 30 orphan audit rows this rule exists for were
   harness residue on hosted, deleted by the audit_log_organization
-  migration.
+  migration. A script that must never run against hosted (ledger and
+  audit harnesses, the load seed, the benchmark, the app starter) calls
+  the shared `requireLocalStack()` from `scripts/_env.mjs`, never an
+  inline guard: that call is the marker
+  `tests/guards/ciLocalOnly.test.ts` reads, and it fails the unit suite
+  on any CI step that runs such a script without SUPABASE_LOCAL=true.
+- After a hosted push: `npm run schema:compare` (hosted versus the local
+  stack built from the migrations) must report zero differences. Since
+  2026-10-08 it compares views by definition, options and owner and
+  triggers by enabled state; every zero-differences result before that
+  compared views by column list only.
 - Command chains: steps are joined so a failure stops the chain (`&&`,
   or `set -e` in a script), never with a plain `;`. An irreversible step
   — a hosted db push, a merge, a delete — never runs in the same chain
@@ -139,7 +149,25 @@
 - Types: npm run typecheck (root, via turbo) or npx nuxt typecheck (from
   apps/reserve) must stay at 0; payloads feeding insert+update
   typed as Omit<TablesInsert<"t">, "organization_id">
-- Every new table: organization_id + org-scoped RLS (see docs/design/multi-tenancy-status.md)
+- Every new table: organization_id + org-scoped RLS (see docs/design/multi-tenancy-status.md).
+  A child table reaches its organisation through its parent in the policy
+  (`exists (select 1 from parent …)`) UNLESS it is read at volume: the
+  ledger's lines and payments carry their own organization_id, kept equal
+  to the transaction's by a composite foreign key, because the per-row
+  parent lookup was ~90ms of every year-wide financials query
+  (policy-sweep-design.md, PR 2). Same rule for the next hot child.
+- RLS policies: every helper call is wrapped as a scalar subquery —
+  `organization_id = (select current_org_id()) and (select
+  has_permission('x'))` — so Postgres evaluates it once per statement
+  instead of once per row (255ms → 0.7ms on a 10,000-row count).
+  `scripts/verify-policies.mjs` runs in CI and fails on a bare call; its
+  only allowlist is the four correlated `is_conversation_participant(…)`
+  calls, which take the row's own column by design.
+- Append-only tables (the ledger's three, audit_log) refuse UPDATE and
+  DELETE for EVERY role through one shared trigger function,
+  `append_only_block()`, and TRUNCATE is revoked from service_role; "no
+  policy" alone never bound the service role. A new append-only table
+  gets the same trigger and revoke, not a comment.
 - Tests, by what the code is: a new pure-logic utility or composable
   gets a unit test as it is built (tests/ mirrors the source path);
   a new feature whose rules live in Postgres gets harness coverage as

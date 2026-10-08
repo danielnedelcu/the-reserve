@@ -1,6 +1,7 @@
 # Multi-Tenancy Status — The Reserve
 
-_Last updated: August 2026 (post migration 4a). Update when tenancy-relevant
+_Last updated: 2026-10-08 (post policy sweep, audit_log organisation and
+the ledger's own organisation column). Update when tenancy-relevant
 decisions are made._
 
 ## Intent
@@ -23,11 +24,11 @@ single-site shortcuts, inventoried below.
 
 | Area                                    | Status                                                                                                                                          |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `organization_id` on every domain table | ✅ From migration 1 through the POS ledger (products, gift_cards, transactions, items via txn, notifications, audit_log, all scheduling tables) |
-| RLS scoped through `current_org_id()`   | ✅ Every policy. Two orgs in this database today could not see each other's data — isolation is enforced, not aspirational                      |
+| `organization_id` on every domain table | ✅ From migration 1 through the POS ledger (products, gift_cards, transactions, notifications, all scheduling tables). Since 2026-10-08 the ledger's `transaction_items` and `payments` carry their OWN column, kept equal to the transaction's by a composite foreign key (they used to reach it through the transaction, per row), and `audit_log` carries it too (backfilled from the entity each row records, else its actor; its policy scopes on it — before that any holder of `audit_log.view` could read every organisation's audit rows). Join rows and participants still scope through their parent |
+| RLS scoped through `current_org_id()`   | ✅ Every policy, with the helper calls wrapped as `(select …)` so they run once per query (`verify:policies` in CI; the four correlated `is_conversation_participant` calls are the only exceptions). Two orgs in this database today could not see each other's data — proven by two-organisation cases in `verify:tables`, `verify:presets`, `verify:audit` and `verify:messages` with real sessions — isolation is enforced, not aspirational |
 | Roles & permissions as per-org DATA     | ✅ Each org can diverge its permission matrix without code changes                                                                              |
 | `locations` table                       | ✅ With per-location `timezone` and `tax_rate_bps` — the two things that genuinely differ by city                                               |
-| Staff, invites, notifications, audit    | ✅ All org-anchored                                                                                                                             |
+| Staff, invites, notifications, audit    | ✅ All org-anchored; the audit log and the ledger are append-only for every role (one shared block trigger, TRUNCATE revoked from the service role) |
 | Auth → staff linkage                    | ✅ `staff.user_id`; `current_staff_id()` / `current_org_id()` resolve per-session                                                               |
 
 **The standing rule that keeps this true:** every new table gets
@@ -97,3 +98,12 @@ Additional gaps beyond `.limit(1)`:
   locations) is maintained on every migration; the shortcuts are grep-able
   and deferred deliberately. Building pickers/provisioning for hypothetical
   tenants = gold-plating the wrong things.
+- **2026-10-08 (policy sweep, docs/design/policy-sweep-design.md):** one
+  isolation hole found and closed — `audit_log` had no organisation
+  column, so its read policy was the permission alone; it now carries the
+  column and scopes on it. Every policy's helpers evaluate once per query
+  (a performance change with the same truth value, guarded by
+  `verify:policies` in CI). The ledger's lines and payments carry their
+  own organisation, kept equal to the transaction's by a composite
+  foreign key. The rule for the next child table: scope through the
+  parent unless it is read at volume, then carry the column with the key.

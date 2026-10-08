@@ -68,10 +68,12 @@ join (values
 
 alter table <table_name> enable row level security;
 
+-- Helper calls WRAPPED as scalar subqueries: evaluated once per statement,
+-- not per row. verify-policies fails CI on a bare call.
 create policy <table_name>_read on <table_name>
-  for select using (organization_id = current_org_id() and has_permission('<domain>.view'));
+  for select using (organization_id = (select current_org_id()) and (select has_permission('<domain>.view')));
 create policy <table_name>_manage on <table_name>
-  for all using (organization_id = current_org_id() and has_permission('<domain>.manage'));
+  for all using (organization_id = (select current_org_id()) and (select has_permission('<domain>.manage')));
 
 -- If writes belong to a server route instead, omit the write policy and
 -- replace it with the reason, e.g.:
@@ -79,8 +81,18 @@ create policy <table_name>_manage on <table_name>
 -- and prices/calls out mid-flight, so it lives in a server route under the
 -- service role — same as the ledger.
 
--- If the table is append-only, say so where the policies would have been:
--- Append-only: no update/delete policies.
+-- If the table is append-only, say so where the policies would have been,
+-- and bind EVERY role (no policy keeps out the API roles; the trigger and
+-- the revoke keep out the service role):
+-- Append-only: no update/delete policies; the trigger below refuses them for every role.
+-- create trigger trg_<table_name>_append_only
+--   before update or delete on <table_name>
+--   for each row execute function append_only_block();
+-- revoke truncate on <table_name> from service_role;
+
+-- A new security definer function that reads across organisations or
+-- writes for the caller gets its revoke in this same migration:
+-- revoke execute on function <fn>(<arg types>) from public, anon, authenticated;
 
 -- ------------------------------------------------------------
 -- REALTIME (only if the UI subscribes)

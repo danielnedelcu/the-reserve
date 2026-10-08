@@ -7,6 +7,14 @@ project" item, and a Playwright end-to-end suite. Companion to
 `docs/turborepo-reference.md`. Lokl and The Reserve share no accounts,
 keys or code; this document copies SHAPES, never values.
 
+This is a dated reading of another codebase; what The Reserve then built
+from it is in `docs/testing-design.md` (as-built sections), and that doc
+is the one to trust for which harness runs where. In particular, since
+2026-10-08 The Reserve's harnesses that create staff or write ledger or
+audit rows run on the local stack ONLY (a hosted run skips or refuses),
+and a unit test fails CI on any workflow step that runs one without
+`SUPABASE_LOCAL=true`.
+
 Lokl's testing has four layers, and the layer a check lives in is chosen
 by WHERE THE RULE LIVES:
 

@@ -1,7 +1,7 @@
 # The Reserve — architecture
 
-Status: current as of 2026-09-19 (post-4b, post-ask, post-intake-forms,
-post-leads).
+Status: current as of 2026-10-08 (post-4b, post-ask, post-intake-forms,
+post-leads, post-ledger-integrity, post-policy-sweep).
 Update when a new lane or external service is added — not for new tables
 or routes that follow the existing shapes.
 
@@ -26,12 +26,12 @@ flowchart TB
     LEAD["Marketing-site visitor — NO ACCOUNT, NO TOKEN<br/>the open door: anyone on the internet<br/>honeypot · per-IP limit · exact-origin CORS · org from config, fail closed"]
     B["Browser — Nuxt app, signed in<br/>can() gates UI only"]
 
-    PR["PostgREST + Realtime<br/>RLS enforced, sockets too"]
+    PR["PostgREST + Realtime<br/>RLS enforced, sockets too<br/>every policy: organisation column + permission,<br/>helpers evaluated once per query"]
     SR["Server routes<br/>checkout · refund · cards · webhook<br/>ask · public form submit · public lead capture"]
     ASK["ask_readonly connection<br/>SELECT on an allowlist, read-only"]
 
     subgraph PG["Postgres — where the rules live"]
-        LED["Append-only ledger"]
+        LED["Append-only ledger + audit log<br/>one block trigger, every role; balanced at commit;<br/>lines and payments carry their organisation"]
         TRG["Triggers + constraints"]
         OPS["Operational tables"]
         CRON["pg_cron — no caller at all<br/>30d intake · 24h telemetry · 1mo unconverted leads"]
@@ -160,15 +160,33 @@ privileged session; give the session a user that is already the floor.**
   the PaymentIntent, the refund route pushes the Stripe refund, and only
   on success are ledger rows written. A decline writes nothing; ledger
   and bank cannot disagree.
-- **The ledger is append-only, for every role.** A trigger refuses
-  update and delete on transactions, lines and payments — the service
-  role included — and TRUNCATE is revoked; before 2026-10-08 this
+- **The ledger and the audit log are append-only, for every role.** One
+  shared trigger (`append_only_block()`) refuses update and delete on
+  transactions, lines, payments and `audit_log` — the service role
+  included — and TRUNCATE is revoked from it; before 2026-10-08 this
   rested on the absence of policies, which the service role bypasses.
   Every transaction is balanced at commit by deferred constraint
   triggers, and every write goes through one function
   (docs/design/ledger-integrity-design.md). Refunds are negative-mirror
   transactions referencing the original, one per original. Gift cards
-  and (future) membership credits are liabilities, not revenue.
+  and (future) membership credits are liabilities, not revenue. Local
+  test cleanup is the only thing that removes such rows, on the direct
+  postgres connection in replica mode behind the localhost guard; a
+  hosted harness run never writes into either table.
+- **Isolation is a column on every row, checked once per query.** Every
+  table carries `organization_id` and every policy reads it against
+  `(select current_org_id())` with the permission in `(select
+  has_permission('…'))`, so the helpers run once per statement rather
+  than per row (docs/design/policy-sweep-design.md; `verify:policies`
+  fails CI on a bare call). The ledger's lines and payments carry their
+  own column, kept equal to their transaction's by a composite foreign
+  key, so a year of financials no longer looks up the parent per line;
+  `audit_log` carries it too, so a holder of `audit_log.view` reads
+  only their organisation's history. The remaining child tables (join
+  rows, participants) still scope through their parent, with the same
+  wrapped helpers. Hosted matches a stack built from the migrations at
+  zero differences — views by definition and options, triggers by
+  enabled state — after every push (`npm run schema:compare`).
 - **The webhook reconciles; it does not drive.** Signature-verified
   against the raw body, idempotent via `stripe_events` (insert-first;
   duplicate → 200, any other failure → 500 so Stripe redelivers). A

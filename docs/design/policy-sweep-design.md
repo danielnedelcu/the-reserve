@@ -1,6 +1,6 @@
 # The policy sweep — helpers evaluated once, and the ledger's own `organization_id`
 
-STATUS: design approved 2026-10-08 with the rulings below; PR 1 (the wrap and the guard) in build.
+STATUS: BUILT, all of it, 2026-10-08 — PR 1 (the wrap, 70 policies, and `verify-policies` in CI: migration policies_evaluate_once), the audit log's organisation column as its own PR (audit_log_organization), PR 2 (the ledger's own organisation: ledger_organization), the CI local-only guard, and the view-aware schema comparison. As-built notes inline, each dated; the sections below are the design as approved, with its rulings.
 
 ## Why
 

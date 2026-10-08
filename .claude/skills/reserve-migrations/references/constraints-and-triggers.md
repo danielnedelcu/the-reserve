@@ -200,12 +200,19 @@ begin
 ```
 
 **Service-role-only functions** are locked down after creation — the
-signature must be spelled out in full:
+signature must be spelled out in full, in the SAME migration that creates
+the function, because Postgres grants EXECUTE to PUBLIC by default and a
+`security definer` function that reads across organisations is otherwise
+callable by any signed-in session:
 
 ```sql
 revoke execute on function accept_staff_invite(uuid, uuid, text, text)
   from public, anon, authenticated;
 ```
+
+The ledger's `write_ledger_transaction`, `assert_ledger_transaction` and
+the block trigger's function are the current examples; the explicit
+function-grants migration (20261006003546) restates every such revoke.
 
 Use `create or replace function` throughout; that is also how a later
 migration repairs a function's behavior (`pos_refund_fix` replaced
@@ -226,6 +233,33 @@ create trigger trg_gift_card_payment
 
 `before` for guards and mutations of the row being written, `after` for
 side effects (balances, stock, notifications, audit rows).
+
+**Append-only tables** use one shared `before update or delete` trigger
+function, `append_only_block()`, which raises `LD003` with the table's
+name — an ORIGIN trigger, so it binds the service role too — plus a
+TRUNCATE revoke, since TRUNCATE fires no row trigger:
+
+```sql
+create trigger trg_<table>_append_only
+  before update or delete on <table>
+  for each row execute function append_only_block();
+revoke truncate on <table> from service_role;
+```
+
+The ledger's three tables and `audit_log` carry it. Local test cleanup is
+the only thing that goes past it (`session_replication_role = replica`
+on the direct connection, `scripts/_cleanup.mjs`); a migration that must
+backfill such a table disables the trigger by name, updates, re-enables,
+and asserts `pg_trigger.tgenabled = 'O'` in the same transaction
+(`ledger_organization`, the one sanctioned exception). `verify-ledger`
+asserts all seven ledger and audit triggers enabled, so a migration that
+forgets cannot pass.
+
+**Deferred constraint triggers** check an invariant at COMMIT, across the
+rows of one transaction (the ledger's balance:
+`trg_ledger_*_balanced`, `deferrable initially deferred`, calling
+`assert_ledger_transaction`), and raise with a stable error code and the
+rule's name so a harness can assert which rule fired.
 
 **`updated_at`** — the shared function, defined once in the service catalog
 migration, attached to every mutable table:

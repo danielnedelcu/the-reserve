@@ -1,6 +1,11 @@
 # Server-side tables — survey of The Reserve as it stands
 
-Read 2026-10-06, read-only, on main at `52a000b`. This is stage 2 of the
+Read 2026-10-06, read-only, on main at `52a000b`. A dated survey: the
+policy table below shows the policies AS THEY WERE — every helper call
+has since been wrapped as `(select …)` (policy sweep PR 1, 2026-10-08),
+and `transaction_items` / `payments` now carry their own
+`organization_id` with the plain column check instead of the `exists`
+lookup (PR 2). This is stage 2 of the
 server-side tables work: what `/clients`, `/products` and the Transactions
 table on `/financials` do today, what gates them, what RLS applies, and
 every place that computes money totals with its definition of revenue.

@@ -1,6 +1,6 @@
 # Testing infrastructure — design
 
-Status: DESIGN, not built. Written 2026-10-05.
+Status: BUILT — PR A (the `database` CI job) and PR B (the built app, `verify:leads` in CI, the Playwright journeys) landed 2026-10-05/06; the harness-mode rule, the local-only gates and the CI guard 2026-10-08 (sections at the end). Written 2026-10-05 as a design; the as-built sections are dated.
 Reference: docs/testing-reference.md (Lokl's proven patterns).
 
 ## What this covers
@@ -384,6 +384,33 @@ side by side.
    fix and the TestData fixture before the harder journeys.
 3. **`verify:messages` harness**: still on the punch list — add it to
    PR A alongside the localhost guard, since the CI stack enables it.
+
+## As built, 2026-10-08: harness modes, the CI guard, the comparison
+
+**Which harness runs where.** Every harness reads its credentials
+through `scripts/_env.mjs`: the local stack under `SUPABASE_LOCAL=true`
+(from `supabase status -o env`), else hosted from `apps/reserve/.env`.
+CI runs all of them against the local stack. By hand:
+
+| Harness | Hosted | Why |
+| --- | --- | --- |
+| `verify:policies` | read-only, yes | reads `pg_policies` only |
+| `verify:ask` | yes | reads as `ask_readonly` |
+| `verify:presets` | read-only cases only | the ledger fixture is local |
+| `verify:forms`, `verify:messages`, `verify:tables`, `verify:leads` | skip line, exit 0 | they create staff and grant roles, which writes append-only audit rows |
+| `verify:ledger`, `verify:audit`, `seed:tables`, `bench:tables`, `app:start` | refuse, exit 1 | they write ledger or audit rows, or start the app for the journeys |
+
+The refusing scripts share one gate, `requireLocalStack()` in
+`scripts/_env.mjs`; the skipping ones share `localOnlyOrSkip()`. Those
+two calls are the MARKER `apps/reserve/tests/guards/ciLocalOnly.test.ts`
+reads: it derives the local-only scripts from the source, maps each to
+its npm scripts, parses `.github/workflows/ci.yml`, and fails the unit
+suite on any step that runs one without `SUPABASE_LOCAL=true` in its
+step, job or workflow env — naming the job, step and harness. It was
+written after a workflow edit split `verify:ledger` from its env block
+and the harness refused in CI (run 37727683375), and it found one more
+step on its first run. Proven non-vacuous against a fixture copy of the
+workflow with that bug reintroduced.
 
 **The schema comparison (2026-10-08).** `npm run schema:compare` dumps
 the public schema's shape on hosted (TBLS_DSN) and on the local stack

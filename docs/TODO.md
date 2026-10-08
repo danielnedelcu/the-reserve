@@ -214,8 +214,15 @@ QUEUED (in order):
   other organisation's rows never appear. `bench:tables`' index rule is
   scoped to clients and products until then.
 
-- EVERY read in the app pays a cost that grows with the data: every RLS
-  policy calls current_org_id() and has_permission() PER ROW. Measured
+- ~~EVERY read in the app pays a cost that grows with the data~~ DONE
+  2026-10-08, the policy sweep (docs/design/policy-sweep-design.md): PR 1
+  wrapped the helper calls in all 70 remaining policies as `(select …)`
+  (the schedule's month view 119 → 2ms as an admin, 294 → 2.5ms as a
+  provider) with `verify:policies` guarding it in CI; the audit log got
+  its organisation column and a scoped policy (its own PR); PR 2 gave
+  the ledger's lines and payments theirs (the DONE note at the end of
+  this item). The record as it stood: every RLS
+  policy called current_org_id() and has_permission() PER ROW. Measured
   2026-10-06 by the server-tables benchmark on clients: 255ms for a bare
   count(*) over 10,000 rows, 0.7ms once the two calls are wrapped as
   `(select current_org_id())` and `(select has_permission(…))` so
@@ -497,19 +504,25 @@ QUEUED (in order):
   proven by verify:messages' two-organisation check (local stack only).
 - Audit hand-written SQL that reached hosted outside migrations. The
   time-off trigger was written in the SQL editor and skipped review; the
-  2026-10-06 zero-structural-difference comparison proves nothing ELSE
-  differs now, but only the drift check below keeps it that way. Look
+  comparison (`npm run schema:compare`, zero differences after every push
+  since, views and trigger state included since 2026-10-08) proves
+  nothing ELSE differs now, but only running it keeps it that way. Look
   through the SQL editor's history for anything run against hosted that
   is not in supabase/migrations/, and for every hit decide: capture it
   as a migration, or revert it.
 - Schema drift check before deploys. Before the Vercel deploy and before
-  any new hosted project (staging, production), compare hosted against a
-  stack rebuilt from the migrations — the grants + structure dumps used
-  on 2026-10-06 (tables, sequences, functions, triggers, policies,
-  indexes, constraints, default privileges, cron), or
-  `supabase db diff --linked` — and require ZERO differences. Two
-  functions and a trigger reached hosted with no migration; this is the
-  gate that stops the next one.
+  any new hosted project (staging, production), run `npm run
+  schema:compare` (hosted against a stack rebuilt from the migrations:
+  tables and views by column, constraints, indexes, policies, triggers
+  with their enabled state, functions, views by definition, options and
+  owner, grants, default privileges, cron, publication — in the repo
+  since 2026-10-08, scripts/schema-compare.mjs) and require ZERO
+  differences. It already runs after every hosted push (zero across
+  2,381 objects on 2026-10-08); the open part is making it a step of the
+  deploy checklist (docs/deployment.md has the line). Two functions and
+  a trigger reached hosted with no migration; this is the gate that
+  stops the next one. Every "zero differences" result before 2026-10-08
+  compared views by column list only.
 - `scripts/` is not linted: the ESLint config moved into apps/reserve/
   with the Turborepo migration (2026-10-05), so the root `npm run lint`
   (turbo lint) no longer covers the harnesses or `_env.mjs`. Either a

@@ -97,22 +97,51 @@ exceptions. This is the expensive-to-retrofit layer and it is currently
 100% intact — see `docs/design/multi-tenancy-status.md`. Two organizations
 in this database today genuinely cannot see each other's rows. A single
 table that skips it silently ends that property. Child tables that have no
-natural `organization_id` (line items, participants) inherit scope through
-their parent in the policy instead — see `references/rls-patterns.md`.
+natural `organization_id` (join rows, participants) inherit scope through
+their parent in the policy — see `references/rls-patterns.md` §2 — UNLESS
+they are read at volume: the ledger's `transaction_items` and `payments`
+carry their own `organization_id`, kept equal to their transaction's by a
+composite foreign key `(transaction_id, organization_id) → transactions
+(id, organization_id)`, because the per-row parent lookup cost ~90ms of
+every year-wide financials query (policy-sweep-design.md, PR 2). The next
+hot child table gets the same treatment, and the composite key REPLACES
+the single-column one: with both, PostgREST sees two relationships and
+refuses every embedded select.
 
-**2. Money is append-only.** The ledger (`transactions`,
+**2. Money is append-only, for every role.** The ledger (`transactions`,
 `transaction_items`, `payments`) has no UPDATE or DELETE policies and never
-will. Refunds are new transactions with negative amounts pointing at the
-original via `refunds_transaction_id`. Gift cards and credits are
-liabilities, not revenue. All pricing math happens in server routes, never
-in the client and never trusted from the client.
+will — and since 2026-10-08 that is not what enforces it, because the
+service role bypasses policies. A trigger (`append_only_block()`, shared
+with `audit_log`) raises `LD003` on any update or delete, for every role,
+and TRUNCATE is revoked from `service_role`. Refunds are new transactions
+with negative amounts pointing at the original via
+`refunds_transaction_id`, one per original, and every transaction is
+balanced at commit by deferred constraint triggers; the one writer is
+`write_ledger_transaction` (ledger-integrity-design.md). Gift cards and
+credits are liabilities, not revenue. All pricing math happens in server
+routes, never in the client and never trusted from the client.
 
-**3. Append-only means "no policy exists", and it must be commented.**
-Postgres denies what no policy permits, so append-only tables are created
-by *omission*. That is invisible to the next reader unless you say so —
-every such table carries a comment stating it. `audit_log` goes further
-with an explicit `revoke update, delete on audit_log from authenticated, anon;`
-as a belt-and-braces statement of intent.
+**3. Append-only means a trigger and a revoke, and it must be commented.**
+Postgres denies what no policy permits, which keeps the API roles out;
+the service role is kept out by the trigger. An append-only table gets
+all three, and a comment saying so where the policies would have been:
+
+```sql
+create trigger trg_<table>_append_only
+  before update or delete on <table>
+  for each row execute function append_only_block();
+revoke truncate on <table> from service_role;
+```
+
+`append_only_block()` names the table in its message ("<table> is
+append-only: rows are never edited or removed (UPDATE refused)"). The
+only way past it is `session_replication_role = replica` on a direct
+postgres connection, which local test cleanup uses behind the localhost
+guard (`scripts/_cleanup.mjs`) and the API never has. A migration that
+must backfill an append-only table disables the trigger BY NAME, updates,
+re-enables, and asserts in the same transaction that it is enabled again
+(`ledger_organization` is the one example and the one sanctioned
+exception).
 
 ## House style
 
@@ -218,16 +247,26 @@ const { data: allowed } = await userClient.rpc("has_permission", { perm: "pos.re
 ## RLS
 
 Enable RLS on every new table in one aligned block, then write policies.
-The canonical org-scoped pair:
+The canonical org-scoped pair — **every helper call wrapped as a scalar
+subquery**, so Postgres evaluates it once per statement rather than once
+per row (255ms → 0.7ms on a 10,000-row count; policy-sweep-design.md):
 
 ```sql
 alter table products enable row level security;
 
 create policy products_read on products
-  for select using (organization_id = current_org_id() and has_permission('products.view'));
+  for select using (organization_id = (select current_org_id()) and (select has_permission('products.view')));
 create policy products_manage on products
-  for all using (organization_id = current_org_id() and has_permission('products.manage'));
+  for all using (organization_id = (select current_org_id()) and (select has_permission('products.manage')));
 ```
+
+`scripts/verify-policies.mjs` runs in the CI database job and fails on
+any bare `current_org_id()`, `current_staff_id()`, `has_permission()`,
+`is_admin()` or `auth.uid()` in any policy, naming the table, policy and
+clause. Its only allowlist is the four correlated
+`is_conversation_participant(conversation_id)` calls, which take the row's
+own column and cannot be hoisted. A new policy written the old way fails
+CI before it ships a per-row cost.
 
 Policies are named `<table>_read` / `<table>_manage` / `<table>_insert` /
 `<table>_update` / `<table>_delete`. The three helper functions every policy
@@ -264,8 +303,11 @@ The database enforces the rules that must not be violable:
   notifications — deliberately at the database level so that manual SQL and
   any future UI are covered too.
 - **Functions** are `language sql|plpgsql security definer set search_path = public`,
-  `stable` for read-only helpers. Service-role-only functions are locked
-  down with `revoke execute ... from public, anon, authenticated`.
+  `stable` for read-only helpers. **Every new `security definer` function
+  that reads across organisations or writes on the caller's behalf gets an
+  explicit `revoke execute … from public, anon, authenticated` in the same
+  migration** (Postgres grants EXECUTE to PUBLIC by default); only the
+  helpers every policy calls stay callable by `authenticated`.
 
 Naming: triggers `trg_<subject>`, `trg_<table>_touch` for the shared
 `touch_updated_at()`. Functions read as verbs — `apply_`, `notify_`,
@@ -327,7 +369,11 @@ Before asking for the go-ahead:
   schema-shape change
 - `organization_id` + RLS enabled + policies written (or a comment
   explaining why writes go through a server route instead)
-- append-only intent stated in a comment where policies are deliberately absent
+- an append-only table has the `append_only_block()` trigger, the TRUNCATE
+  revoke from `service_role`, and a comment where the policies would have been
+- every policy's helper calls wrapped as `(select …)` — run
+  `npm run verify:policies` against the local stack
+- a new `security definer` function has its `revoke execute` in the same migration
 - `comment on table` written, plus columns whose names under-sell them
 - new permission keys seeded *and* granted to roles, with no duplicate of
   an existing key
@@ -341,6 +387,8 @@ Before asking for the go-ahead:
 After approval and `npm run db:push`:
 
 - `npm run typecheck` still at 0
+- `npm run schema:compare` at zero differences (hosted versus the local
+  stack built from the migrations; views and trigger state included)
 - new/changed RPC signatures re-read from the regenerated
   `shared/types/database.ts` before any call site is written
 - any type shim added to bridge the gap is **deleted now**, not later

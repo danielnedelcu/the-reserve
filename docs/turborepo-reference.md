@@ -299,7 +299,8 @@ In rough order of value for a single-app repo:
    missing piece that would let the `verify:*.mjs` harnesses run in CI
    instead of only locally against the hosted project. This answers the
    board's "dedicated CI Supabase project" item differently and better:
-   no second hosted project, a throwaway local stack per run.
+   no second hosted project, a throwaway local stack per run. (Built
+   2026-10-05 as the `database` and `e2e` jobs; docs/testing-design.md.)
 8. **Per-workspace `.env.example` plus a root `.env` only for `db:*`.**
    The Reserve's deployment matrix already separates runtime from tooling
    variables (`TBLS_DSN` "NOT deployed"); the monorepo makes that split
@@ -347,12 +348,14 @@ In rough order of value for a single-app repo:
   isolates money with RLS and append-only policies in `public`, and
   nothing here argues for changing that.
 - **`db:test` as a gate inside `db:push`.** Lokl has pgTAP suites that
-  rebuild the local database from migrations; The Reserve's harnesses
-  run against the hosted project under the service role and are not a
-  from-scratch rebuild. Chaining them into `db:push` would gate a push
-  on the state of the database it is about to change. Adopt the gate
-  only once The Reserve has a local-stack rebuild test to put there
-  (pattern 7 above is the prerequisite).
+  rebuild the local database from migrations; when this was written The
+  Reserve's harnesses ran against the hosted project under the service
+  role and were not a from-scratch rebuild. Chaining them into `db:push`
+  would gate a push on the state of the database it is about to change.
+  Since 2026-10-05 the harnesses do run against a stack rebuilt from the
+  migrations (in CI), and since 2026-10-08 the ones that write
+  append-only rows run ONLY there; the push itself is still gated by
+  review and by `schema:compare` before and after, not by chaining.
 - **Email mode switches, the admin-origin allowlist, the Anthropic
   guide drafts, Sanity, Lenis, Swiper, the `.email-previews` folder.**
   Product features of a marketplace; none of them are monorepo
