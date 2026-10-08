@@ -98,8 +98,8 @@ const env = {
   NUXT_LEADS_ALLOWED_ORIGINS: shared.LEADS_ALLOWED_ORIGINS,
   NUXT_COMMUNICATIONS_JOB_SECRET: process.env.COMMUNICATIONS_JOB_SECRET || randomBytes(32).toString("hex"),
   // No email leaves a test run; sendMail logs and returns false without a key.
-  RESEND_API_KEY: "",
-  MAIL_FROM: "",
+  NUXT_RESEND_API_KEY: "",
+  NUXT_MAIL_FROM: "",
   // No Stripe key in a test app unless a money journey supplies a test one.
   // A secret or a restricted key, test mode either way (the e2e-stripe job
   // hands over a restricted rk_test_ one). The app reads it from
@@ -107,7 +107,6 @@ const env = {
   // NUXT_STRIPE_SECRET_KEY; the bare name only reaches the app when it was
   // in the environment at BUILD time (a laptop's .env), which is how the
   // first e2e-stripe run started the app with no key at all (2026-10-08).
-  STRIPE_SECRET_KEY: /^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY ?? "") ? process.env.STRIPE_SECRET_KEY : "",
   NUXT_STRIPE_SECRET_KEY: /^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY ?? "") ? process.env.STRIPE_SECRET_KEY : "",
 };
 

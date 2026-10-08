@@ -101,7 +101,7 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 503,
       statusMessage:
-        "Scheduled communications are not configured on this server (missing COMMUNICATIONS_JOB_SECRET).",
+        "Scheduled communications are not configured on this server (missing NUXT_COMMUNICATIONS_JOB_SECRET).",
     });
   }
   const presented = (getHeader(event, "authorization") ?? "").replace(

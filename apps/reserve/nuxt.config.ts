@@ -51,45 +51,63 @@ export default defineNuxtConfig({
   colorMode: {
     classSuffix: "", // ui-thing/Tailwind expect 'dark' class, not 'dark-mode'
   },
+  // Every server-only setting is read AT RUN TIME under its NUXT_ name
+  // (NUXT_STRIPE_SECRET_KEY, NUXT_ASK_DATABASE_URL, …): the defaults here
+  // are literal empty strings, never process.env, so a build made with a
+  // laptop's .env in the environment bakes nothing into the server bundle
+  // (docs/deployment.md, "Secrets at runtime"; tests/guards/
+  // runtimeConfigDefaults.test.ts fails on a process.env default; scripts/
+  // verify-build-secrets.mjs builds with sentinels and proves none lands).
+  // The registry of names, with what each setting gates, is
+  // shared/config/settings.ts; server/plugins/config-report.ts logs at
+  // startup which are set and which are not.
   runtimeConfig: {
-    stripeSecretKey: process.env.STRIPE_SECRET_KEY,
-    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    stripeSecretKey: "",
+    stripeWebhookSecret: "",
     // Ask The Reserve: question + schema go out, result rows never do.
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    anthropicApiKey: "",
     // Connection string for the ask_readonly role. Its session user IS
     // the safety boundary — never point this at a privileged role.
-    askDatabaseUrl: process.env.ASK_DATABASE_URL,
+    askDatabaseUrl: "",
     // Keyed-hash secret for public form submission attempt logs. IPs are
     // HMAC'd under this, never stored raw and never plainly hashed (an
     // unsalted IPv4 digest is precomputable, so plaintext-equivalent).
     // Absent => the public submission route refuses to serve.
-    formIpPepper: process.env.FORM_IP_PEPPER,
+    formIpPepper: "",
     // Public lead capture (/api/public/leads). A landing-page POST carries
     // no session and no token, so the organisation a lead belongs to is a
     // SERVER-SIDE fact set here, never a client claim. Absent => the route
     // refuses to serve.
-    leadsOrganizationId: process.env.LEADS_ORGANIZATION_ID,
+    leadsOrganizationId: "",
     // Bearer secret the scheduled communications route requires
     // (POST /api/jobs/communications). pg_cron presents the same value
     // from Vault (communications_job_secret). Absent => the route refuses
     // to serve — fail-closed, like the pepper and the leads org.
-    communicationsJobSecret: process.env.COMMUNICATIONS_JOB_SECRET,
+    communicationsJobSecret: "",
     // Resend's webhook signing secret (marketing campaigns, phase 2).
     // Fail-closed: the webhook route refuses to serve without it.
-    resendWebhookSecret: process.env.RESEND_WEBHOOK_SECRET,
+    resendWebhookSecret: "",
     // Exact origins (comma-separated) allowed to call it from a browser —
     // the marketing site. Never `*`. Absent => no cross-origin caller.
-    leadsAllowedOrigins: process.env.LEADS_ALLOWED_ORIGINS,
-    // ...existing server-side entries...
+    leadsAllowedOrigins: "",
+    // Outbound email (server/utils/mailer.ts): without both, sendMail logs
+    // and returns false — nothing is sent, nothing fails.
+    resendApiKey: "",
+    mailFrom: "",
+    // The Supabase module reads these at run time too (NUXT_SUPABASE_SECRET_KEY);
+    // empty here so the module's build-time env lookup cannot bake one.
+    supabase: {
+      secretKey: "",
+      serviceKey: "",
+    },
     public: {
-      stripePublishableKey: process.env.NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      stripePublishableKey: "",
       // The address links in outbound email point at (the cancel link, and
       // in phase 3 the reminders, which are sent by jobs with no request
       // to take an origin from). Unset in dev => the route falls back to
       // its own request origin, so a link mailed from staging cannot point
       // at production. Set it in every deployed environment.
-      siteUrl: process.env.NUXT_PUBLIC_SITE_URL ?? "",
-      // ...existing public entries...
+      siteUrl: "",
     },
   },
   build: {

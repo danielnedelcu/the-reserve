@@ -24,7 +24,7 @@ export function assertIpPepperConfigured(): void {
     throw createError({
       statusCode: 503,
       statusMessage:
-        "Public form submission is not configured on this server (missing FORM_IP_PEPPER).",
+        "Public form submission is not configured on this server (missing NUXT_FORM_IP_PEPPER).",
     });
   }
 }

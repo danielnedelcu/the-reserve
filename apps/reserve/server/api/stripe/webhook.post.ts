@@ -9,7 +9,7 @@
 //
 // Registration (dev): stripe listen --forward-to localhost:3000/api/stripe/webhook
 // Registration (prod): Dashboard -> Developers -> Webhooks -> add endpoint.
-// Either yields the signing secret -> STRIPE_WEBHOOK_SECRET in .env.
+// Either yields the signing secret -> NUXT_STRIPE_WEBHOOK_SECRET in .env.
 
 import { dateLabel } from "~~/shared/time/format";
 import type Stripe from "stripe";
@@ -19,13 +19,15 @@ import type { Database } from "~~/shared/types/database";
 import { notifyStaffWithPermission } from "~~/server/utils/notifyStaff";
 
 export default defineEventHandler(async (event) => {
-  const stripe = useStripe();
+  // The signing secret first, before Stripe or anything else: a missing
+  // secret is a 503 that names it (fail-closed, like the pepper).
   const secret = useRuntimeConfig().stripeWebhookSecret;
   if (!secret) {
-    console.error("[stripe webhook] STRIPE_WEBHOOK_SECRET not configured");
+    console.error("[stripe webhook] NUXT_STRIPE_WEBHOOK_SECRET not configured");
     throw createError({
-      statusCode: 500,
-      statusMessage: "Webhook not configured",
+      statusCode: 503,
+      statusMessage:
+        "The Stripe webhook is not configured on this server (missing NUXT_STRIPE_WEBHOOK_SECRET).",
     });
   }
 
@@ -38,6 +40,7 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Missing signature or body",
     });
   }
+  const stripe = useStripe(); // 503 naming NUXT_STRIPE_SECRET_KEY when the key is missing
 
   let stripeEvent: Stripe.Event;
   try {

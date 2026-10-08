@@ -404,6 +404,7 @@ CI runs all of them against the local stack. By hand:
 | `verify:presets` | read-only cases only | the ledger fixture is local |
 | `verify:forms`, `verify:messages`, `verify:tables`, `verify:leads` | skip line, exit 0 | they create staff and grant roles, which writes append-only audit rows |
 | `verify:ledger`, `verify:audit`, `seed:tables`, `bench:tables`, `app:start` | refuse, exit 1 | they write ledger or audit rows, or start the app for the journeys |
+| `verify:build-secrets` | anywhere; no database | builds with sentinel secrets and proves none is baked, then starts the built server blank and checks its startup report (docs/deployment.md, "Secrets at runtime") |
 
 The refusing scripts share one gate, `requireLocalStack()` in
 `scripts/_env.mjs`; the skipping ones share `localOnlyOrSkip()`. Those

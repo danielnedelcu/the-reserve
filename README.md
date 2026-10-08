@@ -78,13 +78,19 @@ cp .env.example apps/reserve/.env      # then fill it in
 ```
 
 The one env file lives at `apps/reserve/.env`: Nuxt reads it there, and
-the root `db:*` and `verify:*` scripts load it from that path. It needs
-Supabase URL + anon + service keys, and — per feature —
-`RESEND_API_KEY` / `MAIL_FROM`, `STRIPE_SECRET_KEY` /
-`NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `ANTHROPIC_API_KEY`,
-`ASK_DATABASE_URL` (the `ask_readonly` DSN — never point it at a privileged
-role), `FORM_IP_PEPPER`, and `TBLS_DSN` for schema docs. Missing secrets
-fail loudly at the routes that need them rather than degrading quietly.
+the root `db:*` and `verify:*` scripts load it from that path. Every
+server-side setting is read AT RUN TIME under its `NUXT_` name
+(`shared/config/settings.ts` is the registry; `docs/deployment.md` the
+matrix): the Supabase URL, publishable and secret keys, and — per feature
+— `NUXT_RESEND_API_KEY` / `NUXT_MAIL_FROM`, `NUXT_STRIPE_SECRET_KEY` /
+`NUXT_STRIPE_WEBHOOK_SECRET` / `NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`,
+`NUXT_ANTHROPIC_API_KEY`, `NUXT_ASK_DATABASE_URL` (the `ask_readonly` DSN
+— never point it at a privileged role), `NUXT_FORM_IP_PEPPER`,
+`NUXT_COMMUNICATIONS_JOB_SECRET`, `NUXT_RESEND_WEBHOOK_SECRET`,
+`NUXT_LEADS_*`, and `TBLS_DSN` for schema docs and the comparison. Nothing
+is baked into a build (`npm run verify:build-secrets` proves it), the
+server lists what is missing at startup, and a missing secret fails
+loudly at the route that needs it rather than degrading quietly.
 
 ```bash
 npm run dev             # http://localhost:3000 — the port is fixed
