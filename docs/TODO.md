@@ -191,6 +191,13 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
+- The `e2e-stripe` gate (.github/workflows/ci.yml) sits in the same job
+  as the journeys, so every later step carries
+  `if: steps.gate.outputs.run == 'true'` (14 of them). Move the gate into
+  its own job that outputs `run`, and make the journeys a dependent job
+  conditioned on that output, so the skip condition lives in one place.
+  Suggested 2026-10-08 at the money-journeys PR 2 review.
+
 - `/transactions` shows a card-on-file payment as the raw value
   `stripe_card`: its METHOD_LABELS map has card_external, gift_card and
   cash but not stripe_card, so the row and the detail dialog print the
