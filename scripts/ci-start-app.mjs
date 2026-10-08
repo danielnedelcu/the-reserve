@@ -101,8 +101,14 @@ const env = {
   RESEND_API_KEY: "",
   MAIL_FROM: "",
   // No Stripe key in a test app unless a money journey supplies a test one.
-  // A secret or a restricted key, test mode either way (the e2e-stripe job hands over a restricted rk_test_ one).
+  // A secret or a restricted key, test mode either way (the e2e-stripe job
+  // hands over a restricted rk_test_ one). The app reads it from
+  // runtimeConfig.stripeSecretKey, whose RUN-TIME override is
+  // NUXT_STRIPE_SECRET_KEY; the bare name only reaches the app when it was
+  // in the environment at BUILD time (a laptop's .env), which is how the
+  // first e2e-stripe run started the app with no key at all (2026-10-08).
   STRIPE_SECRET_KEY: /^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY ?? "") ? process.env.STRIPE_SECRET_KEY : "",
+  NUXT_STRIPE_SECRET_KEY: /^(sk|rk)_test_/.test(process.env.STRIPE_SECRET_KEY ?? "") ? process.env.STRIPE_SECRET_KEY : "",
 };
 
 const log = fs.openSync(`${ROOT}/apps/reserve/.output-check/server.log`, "w");

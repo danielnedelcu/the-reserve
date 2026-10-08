@@ -839,8 +839,20 @@ themselves are cheap.
   raw value (board item); the journey asserts the amount and the intent.
 - Locally both ran against the test-mode key in `apps/reserve/.env`
   (accepted by the gate in place of the sandbox key, with the same
-  account check): 2 of 2 in 13.5 s; the ordinary suite excludes them. The
-  first run on the restricted sandbox key is the pull request's.
+  account check): 2 of 2 in 13.5 s; the ordinary suite excludes them.
+- **The first CI run found a silent gap.** The gate and the account
+  check passed on the restricted key, every later step ran, and both
+  journeys failed with the app throwing "STRIPE_SECRET_KEY is not
+  configured": the app reads the key from `runtimeConfig.stripeSecretKey`,
+  whose run-time override is `NUXT_STRIPE_SECRET_KEY`, and the starter
+  passed only the bare name — which reaches the app solely when the key
+  was in the environment at BUILD time, as a laptop's `.env` is. Locally
+  the key was baked into the build and the journeys passed; in CI the
+  build has no key. The starter now passes `NUXT_STRIPE_SECRET_KEY`, and
+  the local proof is a build with the key blanked at build time (the
+  built server carries no key prefix) started through the starter: 2 of
+  2, no "not configured" line in the server log. No Stripe call was
+  refused under the restricted key.
 
 ### Open for the review
 
