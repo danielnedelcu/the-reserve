@@ -22,6 +22,7 @@ Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history).
 | tax_cents        | integer | 0                 | false    |          |                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | total_cents      | integer |                   | false    |          |                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | discount_reason  | text    |                   | true     |          |                                               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| organization_id  | uuid    |                   | false    |          | [public.transactions](public.transactions.md) | The line's own organisation, always equal to its transaction's by the composite foreign key (transaction_id, organization_id) → transactions (id, organization_id). Set by write_ledger_transaction; backfilled once from the parent by ledger_organization (2026-10-08), the ledger's one sanctioned UPDATE. Read policy is the plain column check.                                                                                                                                                                                                                     |
 
 ## Constraints
 
@@ -35,8 +36,8 @@ Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history).
 | transaction_items_appointment_id_fkey     | FOREIGN KEY | FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE RESTRICT                                                                                                              |
 | transaction_items_product_id_fkey         | FOREIGN KEY | FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT                                                                                                                      |
 | transaction_items_gift_card_id_fkey       | FOREIGN KEY | FOREIGN KEY (gift_card_id) REFERENCES gift_cards(id) ON DELETE RESTRICT                                                                                                                  |
-| transaction_items_transaction_id_fkey     | FOREIGN KEY | FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE RESTRICT                                                                                                              |
 | transaction_items_pkey                    | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                                         |
+| transaction_items_transaction_org_fkey    | FOREIGN KEY | FOREIGN KEY (transaction_id, organization_id) REFERENCES transactions(id, organization_id) ON DELETE RESTRICT                                                                            |
 
 ## Indexes
 
@@ -46,6 +47,7 @@ Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history).
 | transaction_items_txn       | CREATE INDEX transaction_items_txn ON public.transaction_items USING btree (transaction_id)                          |
 | transaction_items_staff     | CREATE INDEX transaction_items_staff ON public.transaction_items USING btree (staff_id) WHERE (staff_id IS NOT NULL) |
 | transaction_items_name_trgm | CREATE INDEX transaction_items_name_trgm ON public.transaction_items USING gin (name_snapshot gin_trgm_ops)          |
+| transaction_items_org_txn   | CREATE INDEX transaction_items_org_txn ON public.transaction_items USING btree (organization_id, transaction_id)     |
 
 ## Triggers
 

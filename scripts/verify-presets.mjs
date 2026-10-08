@@ -163,14 +163,14 @@ async function txn(orgId, locationId, cashierId, { clientId = null, at, items, p
     id = rows[0].id;
     for (const i of items) {
       await db.query(
-        `insert into transaction_items (transaction_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents, staff_id, product_id, gift_card_id, discount_reason)
-         values ($1,$2,$3,1,$4,$5,$6,$4,$7,$8,$9,$10)`,
-        [id, i.kind, i.name, i.total_cents, (i.tax_cents ?? 0) > 0, i.tax_cents ?? 0, i.staff_id ?? null, i.product_id ?? null, i.gift_card_id ?? null, i.kind === "discount" ? "fixture" : null],
+        `insert into transaction_items (transaction_id, organization_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents, staff_id, product_id, gift_card_id, discount_reason)
+         values ($1,$11,$2,$3,1,$4,$5,$6,$4,$7,$8,$9,$10)`,
+        [id, i.kind, i.name, i.total_cents, (i.tax_cents ?? 0) > 0, i.tax_cents ?? 0, i.staff_id ?? null, i.product_id ?? null, i.gift_card_id ?? null, i.kind === "discount" ? "fixture" : null, orgId],
       );
     }
     if (total !== 0) {
-      await db.query(`insert into payments (transaction_id, method, amount_cents, reference, stripe_payment_intent_id) values ($1,$2,$3,$4,$5)`,
-        [id, payment.method, total, payment.reference ?? null, payment.method === "stripe_card" ? payment.reference : null]);
+      await db.query(`insert into payments (transaction_id, organization_id, method, amount_cents, reference, stripe_payment_intent_id) values ($1,$6,$2,$3,$4,$5)`,
+        [id, payment.method, total, payment.reference ?? null, payment.method === "stripe_card" ? payment.reference : null, orgId]);
     }
     await db.query("commit");
   } catch (e) {
@@ -196,14 +196,14 @@ async function refundOf(orig, orgId, locationId, cashierId, at) {
     id = rows[0].id;
     for (const l of lines) {
       await db.query(
-        `insert into transaction_items (transaction_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents, staff_id, product_id, gift_card_id, discount_reason)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [id, l.kind, `Refund — ${l.name_snapshot}`, l.quantity, -l.unit_price_cents, l.taxable, -l.tax_cents, -l.total_cents, l.staff_id, l.product_id, l.gift_card_id, l.discount_reason],
+        `insert into transaction_items (transaction_id, organization_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents, staff_id, product_id, gift_card_id, discount_reason)
+         values ($1,$13,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [id, l.kind, `Refund — ${l.name_snapshot}`, l.quantity, -l.unit_price_cents, l.taxable, -l.tax_cents, -l.total_cents, l.staff_id, l.product_id, l.gift_card_id, l.discount_reason, orgId],
       );
     }
     for (const p of pays) {
-      await db.query(`insert into payments (transaction_id, method, amount_cents, reference, stripe_payment_intent_id, gift_card_id) values ($1,$2,$3,$4,$5,$6)`,
-        [id, p.method, -p.amount_cents, p.reference ? `refund: ${p.reference}` : null, p.stripe_payment_intent_id, p.gift_card_id]);
+      await db.query(`insert into payments (transaction_id, organization_id, method, amount_cents, reference, stripe_payment_intent_id, gift_card_id) values ($1,$7,$2,$3,$4,$5,$6)`,
+        [id, p.method, -p.amount_cents, p.reference ? `refund: ${p.reference}` : null, p.stripe_payment_intent_id, p.gift_card_id, orgId]);
     }
     await db.query("commit");
   } catch (e) {

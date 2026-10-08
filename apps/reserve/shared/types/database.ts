@@ -1669,6 +1669,7 @@ export type Database = {
           gift_card_id: string | null
           id: string
           method: string
+          organization_id: string
           reference: string | null
           stripe_payment_intent_id: string | null
           transaction_id: string
@@ -1679,6 +1680,7 @@ export type Database = {
           gift_card_id?: string | null
           id?: string
           method: string
+          organization_id: string
           reference?: string | null
           stripe_payment_intent_id?: string | null
           transaction_id: string
@@ -1689,6 +1691,7 @@ export type Database = {
           gift_card_id?: string | null
           id?: string
           method?: string
+          organization_id?: string
           reference?: string | null
           stripe_payment_intent_id?: string | null
           transaction_id?: string
@@ -1702,18 +1705,18 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "payments_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "payments_transaction_org_fkey"
+            columns: ["transaction_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "ledger_transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
           {
-            foreignKeyName: "payments_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "payments_transaction_org_fkey"
+            columns: ["transaction_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -2375,6 +2378,7 @@ export type Database = {
           id: string
           kind: string
           name_snapshot: string
+          organization_id: string
           product_id: string | null
           quantity: number
           staff_id: string | null
@@ -2391,6 +2395,7 @@ export type Database = {
           id?: string
           kind: string
           name_snapshot: string
+          organization_id: string
           product_id?: string | null
           quantity?: number
           staff_id?: string | null
@@ -2407,6 +2412,7 @@ export type Database = {
           id?: string
           kind?: string
           name_snapshot?: string
+          organization_id?: string
           product_id?: string | null
           quantity?: number
           staff_id?: string | null
@@ -2446,18 +2452,18 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "transaction_items_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "transaction_items_transaction_org_fkey"
+            columns: ["transaction_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "ledger_transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
           {
-            foreignKeyName: "transaction_items_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "transaction_items_transaction_org_fkey"
+            columns: ["transaction_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -2631,18 +2637,18 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "transaction_items_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "transaction_items_transaction_org_fkey"
+            columns: ["transaction_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "ledger_transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
           {
-            foreignKeyName: "transaction_items_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "transaction_items_transaction_org_fkey"
+            columns: ["transaction_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "transactions_checked_out_by_fkey"
@@ -2663,13 +2669,6 @@ export type Database = {
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {

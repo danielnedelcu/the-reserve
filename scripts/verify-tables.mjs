@@ -183,15 +183,15 @@ async function txn(orgId, locationId, cashierId, { clientId = null, at, items, p
     id = rows[0].id;
     for (const i of items) {
       await db.query(
-        `insert into transaction_items (transaction_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents, staff_id)
-         values ($1,$2,$3,1,$4,$5,$6,$4,$7)`,
-        [id, i.kind, i.name, i.total_cents, (i.tax_cents ?? 0) > 0, i.tax_cents ?? 0, i.staff_id ?? null],
+        `insert into transaction_items (transaction_id, organization_id, kind, name_snapshot, quantity, unit_price_cents, taxable, tax_cents, total_cents, staff_id)
+         values ($1,$8,$2,$3,1,$4,$5,$6,$4,$7)`,
+        [id, i.kind, i.name, i.total_cents, (i.tax_cents ?? 0) > 0, i.tax_cents ?? 0, i.staff_id ?? null, orgId],
       );
     }
     // payments_stripe_intent_presence: a stripe_card payment carries its intent id.
     await db.query(
-      `insert into payments (transaction_id, method, amount_cents, reference, stripe_payment_intent_id) values ($1,$2,$3,$4,$5)`,
-      [id, payment.method, total, payment.reference ?? null, payment.method === "stripe_card" ? payment.reference : null],
+      `insert into payments (transaction_id, organization_id, method, amount_cents, reference, stripe_payment_intent_id) values ($1,$6,$2,$3,$4,$5)`,
+      [id, payment.method, total, payment.reference ?? null, payment.method === "stripe_card" ? payment.reference : null, orgId],
     );
     await db.query("commit"); // the invariants are checked here
   } catch (e) {

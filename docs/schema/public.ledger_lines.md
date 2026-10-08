@@ -11,7 +11,7 @@ THE revenue definition, one row per transaction line (docs/design/server-tables-
 CREATE VIEW ledger_lines AS (
  SELECT i.id,
     i.transaction_id,
-    t.organization_id,
+    i.organization_id,
     t.location_id,
     t.client_id,
     t.checked_out_by,
@@ -109,7 +109,7 @@ CREATE VIEW ledger_lines AS (
 
 | Name                                                    | Columns | Comment                                                                                                                                                                                                                                                                                                                                                           | Type       |
 | ------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| [public.transaction_items](public.transaction_items.md) | 14      | Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history). kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting.                                                                      | BASE TABLE |
+| [public.transaction_items](public.transaction_items.md) | 15      | Line items with name/price SNAPSHOTS (catalog edits never rewrite sold history). kind=service carries appointment + staff attribution; kind=tip carries staff attribution for payroll reads; kind=discount is negative; kind=gift_card is a liability sale, excluded from revenue reporting.                                                                      | BASE TABLE |
 | [public.transactions](public.transactions.md)           | 15      | The immutable money ledger: one row per checkout. Append-only for EVERY role, the service role included (trg_transactions_append_only); corrections are refunds — new rows with negative amounts referencing the original via refunds_transaction_id, one per original. Balanced at commit by assert_ledger_transaction. All financial reporting reads from here. | BASE TABLE |
 | [public.locations](public.locations.md)                 | 14      |                                                                                                                                                                                                                                                                                                                                                                   | BASE TABLE |
 

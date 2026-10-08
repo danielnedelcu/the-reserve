@@ -191,6 +191,29 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
+- Trigram search never reaches its index under RLS (found 2026-10-08 by
+  the policy-sweep PR 2 benchmark): `ILIKE`'s operator function
+  (`texticlike`) is not leakproof, so in a security-barrier scan Postgres
+  will not evaluate it ahead of the policy, and the GIN trigram indexes on
+  `transaction_items.name_snapshot`, `payments.reference` and the clients
+  columns are never used by the authenticated role — with sequential scans
+  disabled the planner falls back to the organisation index and filters
+  every row. Without RLS the same patterns use the trigram index at 4ms
+  (payments) and 9ms (lines). Every search is therefore a filtered scan of
+  the organisation's rows: fine at today's sizes (the ledger's year
+  searches run at 80–240ms p50 on 87k lines), linear in the organisation's
+  row count. The remedy, when a search case crosses its budget: a
+  SECURITY DEFINER search function that scopes by organisation itself and
+  checks the permission explicitly, so the trigram index condition is
+  allowed (marking the operator leakproof needs superuser, which hosted
+  does not give). That reopens server-tables decision 1 (the page
+  functions run as the caller so RLS stays the backstop), so it needs
+  the same conditions decision 1 set: a literal organisation predicate
+  in every query the function builds, the permission check first, and
+  the two-organisation harness case with real sessions proving the
+  other organisation's rows never appear. `bench:tables`' index rule is
+  scoped to clients and products until then.
+
 - EVERY read in the app pays a cost that grows with the data: every RLS
   policy calls current_org_id() and has_permission() PER ROW. Measured
   2026-10-06 by the server-tables benchmark on clients: 255ms for a bare
@@ -219,6 +242,13 @@ QUEUED (in order):
   400ms / 800ms, up from about 160 to 325ms p50 — so the ledger
   `organization_id` change above is the recorded remedy, and the next
   benchmark that crosses the budget takes it.
+  DONE 2026-10-08 (policy sweep PR 2, migration ledger_organization):
+  `organization_id` on transaction_items and payments, kept equal to the
+  transaction's by a composite foreign key (no trigger), backfilled once
+  as the ledger's one sanctioned UPDATE, the two read policies the plain
+  column check. Year window 392 → 283 ms p50 on the 50k seed; no
+  regression elsewhere (docs/design/policy-sweep-design.md, PR 2
+  as-built).
 - ~~Pickers that load every row (found by the server-tables benchmark
   2026-10-06, when 10,000 seeded clients pushed a test client past the
   1,000-row cap): the schedule's booking dialog loads all active clients
