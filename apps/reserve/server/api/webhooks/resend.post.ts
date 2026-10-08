@@ -30,7 +30,7 @@ import {
  *
  * Registration: Resend dashboard → Webhooks → add the deployed URL,
  * subscribe to opened / clicked / unsubscribed / complained / bounced,
- * copy the signing secret into RESEND_WEBHOOK_SECRET. Cannot be reached
+ * copy the signing secret into NUXT_RESEND_WEBHOOK_SECRET. Cannot be reached
  * from Resend locally; the local proof is a signed simulated POST.
  */
 export default defineEventHandler(async (event) => {
@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 503,
       statusMessage:
-        "The Resend webhook is not configured on this server (missing RESEND_WEBHOOK_SECRET).",
+        "The Resend webhook is not configured on this server (missing NUXT_RESEND_WEBHOOK_SECRET).",
     });
   }
 

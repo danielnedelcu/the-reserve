@@ -116,8 +116,12 @@ jobs:
         run: npx supabase db reset --local
       - name: Export the local stack's URL and keys
         run: npx supabase status -o env | sed -E 's/^([A-Z_0-9]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
-      - name: Build the app into its own folders
-        run: npm run build:check
+      # Builds the app with a distinct SENTINEL value for every secret in the
+      # environment and proves none is baked into the output, then starts the
+      # built server with everything blank and checks its startup report and
+      # two fail-closed routes. The build it leaves is the app under test.
+      - name: Build with sentinel secrets — nothing baked, everything reported
+        run: npm run verify:build-secrets
       # Starts the built server on 3300 against the stack and writes the
       # values a harness must share with the app (the seeded organisation,
       # the allowed origin, the pepper) to node_modules/.cache/ci-app.env.
@@ -224,9 +228,9 @@ jobs:
       - name: Export the local stack's URL and keys
         if: steps.gate.outputs.run == 'true'
         run: npx supabase status -o env | sed -E 's/^([A-Z_0-9]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
-      - name: Build the app into its own folders
+      - name: Build with sentinel secrets — nothing baked, everything reported
         if: steps.gate.outputs.run == 'true'
-        run: npm run build:check
+        run: npm run verify:build-secrets
       - name: Start the app with the sandbox key
         if: steps.gate.outputs.run == 'true'
         run: npm run app:start && cat node_modules/.cache/ci-app.env >> "$GITHUB_ENV"

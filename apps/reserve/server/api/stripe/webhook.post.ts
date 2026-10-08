@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
   const stripe = useStripe();
   const secret = useRuntimeConfig().stripeWebhookSecret;
   if (!secret) {
-    console.error("[stripe webhook] STRIPE_WEBHOOK_SECRET not configured");
+    console.error("[stripe webhook] NUXT_STRIPE_WEBHOOK_SECRET not configured");
     throw createError({
       statusCode: 500,
       statusMessage: "Webhook not configured",

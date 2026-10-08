@@ -79,6 +79,15 @@
   2026-10-08 it compares views by definition, options and owner and
   triggers by enabled state; every zero-differences result before that
   compared views by column list only.
+- Secrets and server settings: read at RUN TIME from runtimeConfig under
+  the NUXT_ name, with a literal empty default in nuxt.config.ts — never
+  `process.env` there, which Nuxt inlines into the server bundle at
+  build (a laptop build carried nine secrets, 2026-10-08). The registry
+  is `shared/config/settings.ts`; `tests/guards/runtimeConfigDefaults.test.ts`
+  fails on a process.env default; `verify:build-secrets` builds with
+  sentinels in CI and proves none lands; `server/plugins/config-report.ts`
+  names what is missing at startup, never a value. A route that needs a
+  setting refuses with a 503 that names the NUXT_ variable.
 - Command chains: steps are joined so a failure stops the chain (`&&`,
   or `set -e` in a script), never with a plain `;`. An irreversible step
   — a hosted db push, a merge, a delete — never runs in the same chain

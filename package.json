@@ -29,6 +29,7 @@
     "verify:ledger": "node scripts/verify-ledger.mjs",
     "verify:audit": "node scripts/verify-audit.mjs",
     "verify:policies": "node scripts/verify-policies.mjs",
+    "verify:build-secrets": "node --experimental-strip-types scripts/verify-build-secrets.mjs",
     "schema:compare": "node scripts/schema-compare.mjs",
     "seed:tables": "node scripts/seed-tables-load.mjs",
     "bench:tables": "node scripts/bench-tables.mjs",

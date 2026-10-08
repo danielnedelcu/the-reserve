@@ -132,7 +132,7 @@ async function generateSql(
   if (!apiKey) {
     throw createError({
       statusCode: 503,
-      statusMessage: "Ask is not configured on this server (missing API key).",
+      statusMessage: "Ask is not configured on this server (missing NUXT_ANTHROPIC_API_KEY).",
     });
   }
 

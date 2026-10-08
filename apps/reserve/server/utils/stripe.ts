@@ -6,7 +6,7 @@ let client: Stripe | null = null;
 export function useStripe(): Stripe {
   if (!client) {
     const key = useRuntimeConfig().stripeSecretKey;
-    if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+    if (!key) throw new Error("NUXT_STRIPE_SECRET_KEY is not configured");
     client = new Stripe(key);
   }
   return client;

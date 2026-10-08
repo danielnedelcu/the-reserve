@@ -34,7 +34,7 @@ export function leadOrganizationId(): string {
     throw createError({
       statusCode: 503,
       statusMessage:
-        "Lead capture is not configured on this server (missing LEADS_ORGANIZATION_ID).",
+        "Lead capture is not configured on this server (missing NUXT_LEADS_ORGANIZATION_ID).",
     });
   }
   return id;

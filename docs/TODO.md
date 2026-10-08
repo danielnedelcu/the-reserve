@@ -191,6 +191,13 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
+- On or after 2026-11-08: remove the bare pre-NUXT_ names
+  (`ASK_DATABASE_URL`, `FORM_IP_PEPPER`, `LEADS_ORGANIZATION_ID`,
+  `LEADS_ALLOWED_ORIGINS`, `STRIPE_SECRET_KEY`) from the alias maps in
+  `scripts/_env.mjs`. The app stopped reading them on 2026-10-08
+  (docs/deployment.md, "Secrets at runtime"); the harnesses accept both
+  until then so an older laptop `.env` keeps working.
+
 - The `e2e-stripe` gate (.github/workflows/ci.yml) sits in the same job
   as the journeys, so every later step carries
   `if: steps.gate.outputs.run == 'true'` (14 of them). Move the gate into

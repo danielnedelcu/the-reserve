@@ -36,12 +36,14 @@ export async function sendMailDetailed(options: {
   text?: string;
   headers?: Record<string, string>;
 }): Promise<{ ok: true; id: string | null } | { ok: false }> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.MAIL_FROM;
+  // Read at run time under NUXT_RESEND_API_KEY / NUXT_MAIL_FROM (nuxt.config).
+  const config = useRuntimeConfig();
+  const apiKey = config.resendApiKey;
+  const from = config.mailFrom;
 
   if (!apiKey || !from) {
     console.warn(
-      "[mailer] RESEND_API_KEY or MAIL_FROM not set — email not sent:",
+      "[mailer] NUXT_RESEND_API_KEY or NUXT_MAIL_FROM not set — email not sent:",
       options.subject,
     );
     return { ok: false };

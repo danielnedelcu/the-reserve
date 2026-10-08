@@ -94,31 +94,69 @@ to the lead-capture endpoint) is a SEPARATE surface. Decide where it lives
 LEADS_ALLOWED_ORIGINS point at a known Vercel origin. Its origin is what
 goes in LEADS_ALLOWED_ORIGINS on the app's production env.
 
+## Secrets at runtime (2026-10-08)
+
+Every server-side setting is read AT RUN TIME from `runtimeConfig` under
+its `NUXT_` name, and `nuxt.config.ts` gives each an empty default —
+never `process.env`. Before this, every private value took its default
+from the build environment, which Nuxt INLINES into the server bundle:
+a local build made with the laptop's `.env` carried nine secrets (both
+webhook secrets, the Anthropic key, the ask connection string with its
+password, the pepper, the job secret, the Supabase secret key) in
+`.output-check`. The built outputs never left the machine: no build
+folder was ever committed (full history, all refs), and the three CI
+artifacts ever uploaded and every job log hold only the CLI's public
+local keys and expired local test sessions.
+
+Three things keep it so:
+
+- `tests/guards/runtimeConfigDefaults.test.ts` fails the unit suite if
+  any private `runtimeConfig` value in `nuxt.config.ts`, the Supabase
+  module's keys included, takes its default from `process.env`.
+- `npm run verify:build-secrets` (both e2e CI jobs build through it):
+  builds with a distinct SENTINEL value for every setting in the
+  environment, fails if any sentinel or any secret-shaped string is in
+  the output or any private setting is inlined non-empty, then starts
+  the built server with everything blank and asserts its startup report
+  names every missing setting and two fail-closed routes answer 503
+  naming theirs.
+- `server/plugins/config-report.ts` prints at startup one line per
+  setting, set or NOT SET with what refuses — never a value — from the
+  registry `shared/config/settings.ts`.
+
+The old bare names (`STRIPE_SECRET_KEY`, `ASK_DATABASE_URL`, …) are no
+longer read by the app at all. `scripts/_env.mjs` still accepts them for
+the harnesses UNTIL 2026-11-08, after which its alias maps lose them;
+`.env.example` and the harness docs use the `NUXT_` names only.
+
 ## Environment variables — the completeness matrix
 
-Every one must be set in Vercel, per environment. Many are FAIL-CLOSED:
-missing one is a visible feature outage, not a silent bug (by design).
-Several are environment-SPECIFIC (a prod value differs from dev).
+Every one must be set in Vercel, per environment, under EXACTLY this
+name. "Runtime" means the value is read when the server handles a
+request or starts; it need not exist at build. "Build" means the Supabase
+module validates it when the app is built, so set it for the build too
+(it is public). Many are FAIL-CLOSED: missing one is a visible feature
+outage, not a silent bug (by design), and the startup report names it.
 
-| Var | Prod value | Notes |
-|---|---|---|
-| NUXT_PUBLIC_SUPABASE_URL | prod project URL | public |
-| NUXT_PUBLIC_SUPABASE_KEY | publishable key | public, safe to expose |
-| NUXT_PUBLIC_SITE_URL | the deployment's own public URL | links in outbound email (cancel link, phase-3 reminders); per environment — preview gets the preview URL, never prod's |
-| COMMUNICATIONS_JOB_SECRET | `openssl rand -hex 32` | fail-closed; the scheduled communications route refuses without it; SAME value as the Vault entry below |
-| NUXT_SUPABASE_SECRET_KEY | the ROTATED secret key | server-only; rotated 2026-09-20 |
-| ASK_DATABASE_URL | POOLER DSN (6543, tx mode) | NOT the direct connection — see decision 1 |
-| RESEND_API_KEY | rotate before launch | was chat-exposed; pre-launch rotation |
-| MAIL_FROM | verified sender domain | must be verified in Resend |
-| STRIPE_SECRET_KEY | LIVE key | test key in preview only |
-| NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY | LIVE publishable | test in preview |
-| STRIPE_WEBHOOK_SECRET | PROD webhook's secret | per-endpoint; NOT the CLI whsec_ |
-| RESEND_WEBHOOK_SECRET | the PROD Resend webhook's signing secret (whsec_…) | fail-closed; per-endpoint; campaign engagement events (marketing campaigns, phase 2) |
-| ANTHROPIC_API_KEY | the-reserve project key | server-only |
-| FORM_IP_PEPPER | a DIFFERENT prod value | fail-closed; per-env; openssl rand -hex 32 |
-| LEADS_ORGANIZATION_ID | the real org id | fail-closed; empty in preview |
-| LEADS_ALLOWED_ORIGINS | the marketing site's real origin | never *; fail-closed cross-origin |
-| TBLS_DSN | NOT deployed | tooling only |
+| Var | Build or runtime | Prod value | Notes |
+|---|---|---|---|
+| NUXT_PUBLIC_SUPABASE_URL | build + runtime | prod project URL | public |
+| NUXT_PUBLIC_SUPABASE_KEY | build + runtime | publishable key | public, safe to expose |
+| NUXT_PUBLIC_SITE_URL | runtime | the deployment's own public URL | links in outbound email (cancel link, phase-3 reminders); per environment — preview gets the preview URL, never prod's |
+| NUXT_PUBLIC_STRIPE_PUBLISHABLE_KEY | runtime | LIVE publishable | test in preview |
+| NUXT_SUPABASE_SECRET_KEY | runtime | the ROTATED secret key | server-only; rotated 2026-09-20; the Supabase module reads it at run time |
+| NUXT_ASK_DATABASE_URL | runtime | POOLER DSN (6543, tx mode) | NOT the direct connection — see decision 1 |
+| NUXT_ANTHROPIC_API_KEY | runtime | the-reserve project key | server-only |
+| NUXT_STRIPE_SECRET_KEY | runtime | LIVE key | test key in preview only |
+| NUXT_STRIPE_WEBHOOK_SECRET | runtime | PROD webhook's secret | per-endpoint; NOT the CLI whsec_ |
+| NUXT_RESEND_API_KEY | runtime | rotate before launch | was chat-exposed; pre-launch rotation |
+| NUXT_MAIL_FROM | runtime | verified sender domain | must be verified in Resend |
+| NUXT_RESEND_WEBHOOK_SECRET | runtime | the PROD Resend webhook's signing secret (whsec_…) | fail-closed; per-endpoint; campaign engagement events (marketing campaigns, phase 2) |
+| NUXT_COMMUNICATIONS_JOB_SECRET | runtime | `openssl rand -hex 32` | fail-closed; the scheduled communications route refuses without it; SAME value as the Vault entry below |
+| NUXT_FORM_IP_PEPPER | runtime | a DIFFERENT prod value | fail-closed; per-env; openssl rand -hex 32 |
+| NUXT_LEADS_ORGANIZATION_ID | runtime | the real org id | fail-closed; empty in preview |
+| NUXT_LEADS_ALLOWED_ORIGINS | runtime | the marketing site's real origin | never *; fail-closed cross-origin |
+| TBLS_DSN | neither — NOT deployed | — | tooling only (schema docs, schema:compare) |
 
 ### Supabase Vault entries (the scheduled communications, phase 3)
 
@@ -131,14 +169,14 @@ is in the repo or in the migration.
 | Vault name | Value |
 |---|---|
 | `communications_site_url` | the deployed app's base URL — the SAME value as NUXT_PUBLIC_SITE_URL |
-| `communications_job_secret` | the bearer secret — the SAME value as COMMUNICATIONS_JOB_SECRET (`openssl rand -hex 32`) |
-| `resend_webhook_secret` | the Resend webhook's signing secret — the SAME value as RESEND_WEBHOOK_SECRET. Recorded here so every secret is in one place; nothing in Postgres reads it (Nitro routes cannot reach Vault, so the route reads the env var) |
+| `communications_job_secret` | the bearer secret — the SAME value as NUXT_COMMUNICATIONS_JOB_SECRET (`openssl rand -hex 32`) |
+| `resend_webhook_secret` | the Resend webhook's signing secret — the SAME value as NUXT_RESEND_WEBHOOK_SECRET. Recorded here so every secret is in one place; nothing in Postgres reads it (Nitro routes cannot reach Vault, so the route reads the env var) |
 
 The Resend webhook (marketing campaigns, phase 2) is the other
 deploy-only path: Resend cannot POST to localhost, so `POST
 /api/webhooks/resend` is registered in the Resend dashboard against the
 deployed URL (events: opened, clicked, unsubscribed, complained,
-bounced) and its signing secret goes into RESEND_WEBHOOK_SECRET. Locally
+bounced) and its signing secret goes into NUXT_RESEND_WEBHOOK_SECRET. Locally
 it is proven with a signed simulated POST — see the phase-2 PR.
 
 The path is pg_cron → `run_communication_job()` → pg_net → `POST
@@ -148,7 +186,7 @@ directly with the job secret as a Bearer token and `{"job":
 "day_before_reminder"}` (or whichever job) as the body; the same
 verification applies — check the sent-log, confirm the email.
 
-FORM_IP_PEPPER, in more detail (moved here from the board): it keys the
+NUXT_FORM_IP_PEPPER, in more detail (moved here from the board): it keys the
 HMAC over visitor IPs on the public intake form, so it must DIFFER per
 environment, and rotating it re-anonymises history — existing
 form_submission_attempts rows stop matching new hashes, which resets the
@@ -164,26 +202,27 @@ Before first production deploy:
       build `turbo build --filter=@repo/reserve`, install `npm ci` at the
       repo root.
 - [ ] Vercel function region set to match Supabase (us-west-2).
-- [ ] ASK_DATABASE_URL set to the pooler DSN (6543, tx mode), pg client
+- [ ] NUXT_ASK_DATABASE_URL set to the pooler DSN (6543, tx mode), pg client
       configured for serverless; verified no connection-climb under a
       burst of ask queries.
 - [ ] All env vars above set in PRODUCTION with prod values; preview env
       set with non-prod (test Stripe, empty/non-prod leads, test pepper).
 - [ ] Stripe: live keys swapped in; prod webhook endpoint registered at
       the prod URL in the Stripe dashboard; its signing secret set as
-      STRIPE_WEBHOOK_SECRET (prod env only); webhook route reachable,
+      NUXT_STRIPE_WEBHOOK_SECRET (prod env only); webhook route reachable,
       NOT behind preview protection; a small real-money verification pass.
 - [ ] DB password rotated BEFORE this deploy (chat-exposed, and echoed by a
       failing script on 2026-10-05); then TBLS_DSN and the ask DSN updated.
 - [ ] Resend key rotated (chat-exposed; per pre-launch list)
       and MAIL_FROM's domain verified in Resend.
-- [ ] FORM_IP_PEPPER set to a fresh prod-specific value.
-- [ ] LEADS_ORGANIZATION_ID and LEADS_ALLOWED_ORIGINS set to real values
+- [ ] NUXT_FORM_IP_PEPPER set to a fresh prod-specific value.
+- [ ] NUXT_LEADS_ORGANIZATION_ID and NUXT_LEADS_ALLOWED_ORIGINS set to real values
       (origin = the deployed marketing site).
 - [ ] Node version: Vercel uses .nvmrc (22.22.2) or project setting;
       postinstall (nuxt prepare) runs in the Vercel build.
 - [ ] Build command is `turbo build --filter=@repo/reserve` only — does not
-      invoke harnesses.
+      invoke harnesses. Secrets need not be present at build (nothing is
+      baked; `verify:build-secrets` proves it on every CI run).
 - [ ] CI gate green on the deploying commit (it already gates PRs; confirm
       main is green before promoting a deploy).
 - [ ] Schema drift check: `npm run schema:compare` (hosted versus a local
