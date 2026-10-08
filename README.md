@@ -121,17 +121,36 @@ typegen types the call site instead of you writing a shim around it.
 
 ### Verification harnesses
 
-These run against the **live** database and prove security boundaries that
-unit tests cannot. They exist because every failure they check for is
-silent — the app returns 200 and looks healthy either way.
+These prove security boundaries that unit tests cannot, against a real
+database. They exist because every failure they check for is silent —
+the app returns 200 and looks healthy either way. CI runs them against a
+LOCAL stack rebuilt from the migrations; by hand they run wherever
+`scripts/_env.mjs` resolves (the local stack under `SUPABASE_LOCAL=true`,
+else hosted from `apps/reserve/.env`). Hosted harness runs never write
+into an append-only table: a harness that creates staff, grants a role
+or writes ledger or audit rows runs on the local stack only and prints a
+`skip` line (or refuses) on hosted — see `docs/testing-design.md`.
 
-| Script | Proves |
-| --- | --- |
-| `npm run verify:ask` | the `ask_readonly` boundary: read-only, allowlisted, RLS-scoped |
-| `npm run verify:presets` | every preset query runs, and each chip pairs with server SQL |
-| `npm run verify:forms` | anon has no write path; the health/non-health split holds; retention purges work in both directions |
-| `npm run e2e:forms` | the public submission endpoint over HTTP — token single-use, rate limit actually limits |
-| `npm run verify:leads` | the OPEN lead-capture endpoint, both directions — anon has no write path, honeypot rejects silently, per-IP limit limits, CORS is exact-origin, shape and interest set enforced, retention purge keeps `converted` (needs the dev server) |
+| Script | Proves | Where |
+| --- | --- | --- |
+| `npm run verify:policies` | every RLS policy evaluates its helpers once per query (`(select …)`), with the four correlated `is_conversation_participant` calls its only allowlist; every public table has RLS and a policy or is on the service-role-only list | local or hosted, read-only |
+| `npm run verify:ask` | the `ask_readonly` boundary: read-only, allowlisted, RLS-scoped | local or hosted |
+| `npm run verify:presets` | every preset query runs, and each chip pairs with server SQL; the two-organisation revenue cases | local (ledger fixture); hosted read-only |
+| `npm run verify:forms` | anon has no write path; the health/non-health split holds; retention purges work in both directions | local only |
+| `npm run verify:messages` | the conversation policies, the time-off bell scoped to the requester's organisation | local only |
+| `npm run verify:tables` | `clients_page`, `products_page`, `transactions_page`: search, sort, paging, the two-organisation isolation on each | local only |
+| `npm run verify:ledger` | the ledger's invariants at commit, idempotent writes, append-only for every role, the composite organisation key, all seven ledger and audit triggers enabled (needs the built app) | local only |
+| `npm run verify:audit` | `audit_log` carries its organisation, two-organisation isolation, append-only for every role (needs the built app) | local only |
+| `npm run verify:leads` | the OPEN lead-capture endpoint, both directions — anon has no write path, honeypot rejects silently, per-IP limit limits, CORS is exact-origin, shape and interest set enforced, retention purge keeps `converted` (needs the built app) | local only |
+| `npm run e2e:forms` | the public submission endpoint over HTTP — token single-use, rate limit actually limits | local |
+| `npm run test:e2e` | the Playwright journeys: a person's reachable path, end to end, in a browser (needs the built app) | local only |
+
+Tooling beside them: `npm run schema:compare` (hosted versus the local
+stack, zero differences required after every push; views by definition
+and options, triggers by enabled state), `npm run seed:tables` /
+`bench:tables` (the 50k-row load seed and the page-function benchmark,
+local only), and `scripts/_cleanup.mjs` (the only way a test run's
+append-only rows are removed: direct connection, replica mode, localhost).
 
 ## The rules that bite
 
@@ -139,10 +158,16 @@ Full list and reasoning in `CLAUDE.md`. The ones that cost real debugging
 time here:
 
 - **Every table gets `organization_id` + org-scoped RLS.** No exceptions;
-  child tables inherit scope through their parent in the policy.
-- **Money is append-only.** Refunds are new negative transactions, not edits.
-  All pricing math happens in server routes. Gift cards and credits are
-  liabilities, not revenue.
+  child tables inherit scope through their parent in the policy, unless
+  they are read at volume — the ledger's lines and payments carry their
+  own, kept equal to the transaction's by a composite foreign key. Every
+  policy wraps its helper calls as `(select …)`; `verify:policies` fails
+  CI on a bare call.
+- **Money is append-only, for every role.** Refunds are new negative
+  transactions, not edits; a trigger refuses update and delete on the
+  ledger and the audit log for the service role too, and TRUNCATE is
+  revoked. All pricing math happens in server routes. Gift cards and
+  credits are liabilities, not revenue.
 - **`requireUser(event)` returns DECODED JWT CLAIMS.** The auth id is the
   `sub` claim; `user.id` typechecks and is `undefined` at runtime. Use the
   `actorUserId()` helper.

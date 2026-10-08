@@ -1,6 +1,6 @@
 # Ledger integrity — atomic writes, idempotency, enforced invariants
 
-STATUS: approved 2026-10-07 (rulings 1–7 below); PR 1 BUILT 2026-10-08; PR 2 BUILT 2026-10-08 (as-built notes inline).
+STATUS: approved 2026-10-07 (rulings 1–7 below); PR 1 BUILT 2026-10-08; PR 2 BUILT 2026-10-08 (as-built notes inline). Two later changes, same day, recorded where they land below: the block function became the shared `append_only_block()` (audit_log carries it too), and the lines' and payments' single-column keys to transactions were replaced by composite keys when they gained their own `organization_id` (policy-sweep-design.md, PR 2).
 
 ## Why
 
@@ -101,7 +101,17 @@ the service role, which is fine only while journeys write no ledger rows
 (they do not; docs/testing-design.md, the money-journey decision).
 
 `[AS-BUILT]` PR 2 (2026-10-08, ruled at stop 1): the eleven `no action`
-keys are now `restrict`, stated. The app offers no delete of a client,
+keys are now `restrict`, stated — the outward keys: six on
+`transactions` (organisation, location, client, appointment, cashier,
+the refund self-reference), four on `transaction_items` (appointment,
+product, gift card, staff), one on `payments` (gift card). All eleven
+remain, verified against hosted 2026-10-08. The two line-to-transaction
+keys were never among them (already `restrict` from 4a); later the same
+day (ledger_organization, policy-sweep-design.md PR 2) those two were
+DROPPED and replaced by composite keys on `(transaction_id,
+organization_id)` referencing `transactions (id, organization_id)`,
+still `restrict`, because keeping both made PostgREST refuse every
+embedded select. Thirteen restrict keys on the three tables in all. The app offers no delete of a client,
 staff member, product, location, appointment or gift card today; the
 `clients_delete`, `products_manage` and `locations_manage` policies stay
 as they are (a direct API delete of a record with sales history fails on
@@ -205,10 +215,14 @@ PR 2's triggers take it over at commit.
   `refunds_transaction_id` (23505), structural.
 - `transaction_items.total_cents = quantity * unit_price_cents`: an
   immediate CHECK (23514).
-- Append-only for every role: `ledger_block_change` raises `LD003` on
+- Append-only for every role: the block trigger raises `LD003` on
   update or delete on all three tables, an ORIGIN trigger so the service
   role is bound too. TRUNCATE revoked from service_role (TRUNCATE fires
-  no row trigger; the privilege is what covers it).
+  no row trigger; the privilege is what covers it). `[AS-BUILT]` Built
+  as `ledger_block_change`; replaced the same day by the shared
+  `append_only_block()`, whose message names the table, when `audit_log`
+  took the same trigger (audit_log_organization) — the three ledger
+  triggers were recreated onto it and the old function dropped.
 - Fixtures and seed: the verify-tables ledger fixture and the load seed
   insert through the direct postgres connection, each transaction (or
   batch) inside one begin…commit with the triggers ACTIVE, so they are

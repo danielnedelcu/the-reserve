@@ -68,10 +68,12 @@ deploys. No Vercel Cron, no worker process needed.
 
 ### The verify:* harnesses and TBLS_DSN are tooling, not runtime
 
-The harnesses insert/delete against a live DB with the service role —
-they are LOCAL pre-merge / CI checks, never part of the deployed app.
-TBLS_DSN generates schema docs locally. None of this belongs in the
-Vercel runtime env or the deployed bundle. The Vercel build command is
+The harnesses insert/delete against a database with the service role —
+they are CI checks against a local stack and local pre-merge checks,
+never part of the deployed app (the ones that create staff or write
+ledger or audit rows refuse to run against hosted at all). TBLS_DSN
+generates schema docs locally and feeds `schema:compare`. None of this
+belongs in the Vercel runtime env or the deployed bundle. The Vercel build command is
 `turbo build --filter=@repo/reserve` with the project root at
 `apps/reserve/`; confirm it does not invoke scripts/ or the harnesses.
 
@@ -184,6 +186,15 @@ Before first production deploy:
       invoke harnesses.
 - [ ] CI gate green on the deploying commit (it already gates PRs; confirm
       main is green before promoting a deploy).
+- [ ] Schema drift check: `npm run schema:compare` (hosted versus a local
+      stack rebuilt from the migrations) at ZERO differences — tables,
+      constraints, indexes, policies, triggers with their enabled state,
+      functions, views by definition and options (`security_invoker` on
+      `ledger_lines` and `ledger_transactions` especially), grants,
+      default privileges, cron, publication. Before 2026-10-08 the
+      comparison was run by hand after each push and did not cover view
+      definitions; the two functions and the trigger that once reached
+      hosted outside a migration are what this gate exists for.
 
 After deploy, verify (the effect, both directions, per the house style):
 - [ ] A page loads; a service-role route works on the prod secret key.
@@ -197,9 +208,12 @@ After deploy, verify (the effect, both directions, per the house style):
 
 ## Deferred / later shape
 
-- Dedicated CI Supabase project so the verify:* harnesses can run in CI
-  (currently local pre-merge only). The pre-launch env work above does not
-  need it; gating DB-behavior tests in CI does.
+- ~~Dedicated CI Supabase project so the verify:* harnesses can run in CI~~
+  Done the other way (2026-10-05, docs/testing-design.md): the CI
+  `database` and `e2e` jobs start a LOCAL Supabase stack in the runner,
+  rebuild it from the migrations and run every harness and the journeys
+  against it. No second hosted project; nothing that writes into an
+  append-only table ever runs against hosted.
 - require-approvals on branch protection when the backend engineer joins
   (and the GitHub Team org if going private again).
 

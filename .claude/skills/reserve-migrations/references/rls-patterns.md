@@ -13,6 +13,16 @@ They are `security definer` so they can read `staff` / `staff_roles` without
 being subject to those tables' own policies. `has_permission`'s parameter is
 named `perm` — that's the name routes must use when calling it over RPC.
 
+**Every helper call in a policy is wrapped as a scalar subquery** —
+`(select current_org_id())`, `(select has_permission('…'))`,
+`(select current_staff_id())`, `(select auth.uid())` — so Postgres
+evaluates it once per statement and not once per row. The examples below
+all use that form; `scripts/verify-policies.mjs` fails CI on a bare call
+(policy-sweep-design.md, 2026-10-08: 70 policies rewritten, the schedule's
+month view from 119ms to 2ms). The only calls that stay bare are the four
+correlated `is_conversation_participant(conversation_id)` in §6, which take
+the row's own column and are allowlisted by name.
+
 Enable RLS for all of a migration's tables in one aligned block, then write
 the policies grouped by table:
 
@@ -30,9 +40,9 @@ For a table that owns an `organization_id` column:
 
 ```sql
 create policy products_read on products
-  for select using (organization_id = current_org_id() and has_permission('products.view'));
+  for select using (organization_id = (select current_org_id()) and (select has_permission('products.view')));
 create policy products_manage on products
-  for all using (organization_id = current_org_id() and has_permission('products.manage'));
+  for all using (organization_id = (select current_org_id()) and (select has_permission('products.manage')));
 ```
 
 `for all using (...)` with no `with check` clause is intentional and correct:
@@ -46,32 +56,58 @@ each verb needs a different permission — `clients` is the reference example:
 
 ```sql
 create policy clients_read on clients
-  for select using (organization_id = current_org_id() and has_permission('clients.view'));
+  for select using (organization_id = (select current_org_id()) and (select has_permission('clients.view')));
 create policy clients_insert on clients
-  for insert with check (organization_id = current_org_id() and has_permission('clients.create'));
+  for insert with check (organization_id = (select current_org_id()) and (select has_permission('clients.create')));
 create policy clients_update on clients
-  for update using (organization_id = current_org_id() and has_permission('clients.edit'));
+  for update using (organization_id = (select current_org_id()) and (select has_permission('clients.edit')));
 create policy clients_delete on clients
-  for delete using (organization_id = current_org_id() and has_permission('clients.delete'));
+  for delete using (organization_id = (select current_org_id()) and (select has_permission('clients.delete')));
 ```
 
 ---
 
-## 2. Child tables: scope through the parent
+## 2. Child tables: scope through the parent — or carry the column
 
-Line-item and join tables don't carry their own `organization_id`. They
-reach it with an `exists` subquery against the parent, which keeps the org
-boundary intact without denormalizing:
+Join and line tables that are read a few rows at a time reach their
+organisation with an `exists` subquery against the parent, which keeps the
+org boundary intact without denormalizing:
 
 ```sql
-create policy transaction_items_read on transaction_items
-  for select using (exists (select 1 from transactions t where t.id = transaction_id
-    and t.organization_id = current_org_id() and has_permission('transactions.view')));
+create policy service_staff_read on service_staff
+  for select using (exists (select 1 from services s where s.id = service_id
+    and s.organization_id = (select current_org_id())) and (select has_permission('services.view')));
 ```
 
-The same shape covers `service_staff` (via `services`), `resources` (via
-`locations`), `staff_roles` and `staff_locations` (via `staff`), and
-`appointment_services` (via `appointments`).
+The same shape covers `resources` (via `locations`), `staff_roles` and
+`staff_locations` (via `staff`), and `appointment_services` (via
+`appointments`). The helpers are wrapped; the `exists` itself is a
+per-row lookup by primary key, which is fine at these volumes.
+
+**A child read at volume carries its own `organization_id`.** The ledger's
+`transaction_items` and `payments` did the parent lookup for every line of
+a year-wide financials query — about 90ms a call at 50,000 transactions —
+so since 2026-10-08 (ledger_organization) each carries the column, kept
+equal to its transaction's by a composite foreign key, and the policy is
+the plain column check:
+
+```sql
+alter table transactions add constraint transactions_id_org_unique unique (id, organization_id);
+alter table transaction_items
+  add column organization_id uuid not null,
+  add constraint transaction_items_transaction_org_fkey
+    foreign key (transaction_id, organization_id)
+    references transactions (id, organization_id) on delete restrict;
+-- the composite key REPLACES the single-column one on transaction_id:
+-- with both, PostgREST sees two relationships and refuses every embed.
+create policy transaction_items_read on transaction_items
+  for select using (organization_id = (select current_org_id()) and (select has_permission('transactions.view')));
+```
+
+The writer sets the column from its own organisation argument; a line
+whose organisation differs from its transaction's cannot exist, by
+reference, with no trigger to keep it right. Reach for this shape when a
+child table's policy shows up in a benchmark; otherwise the `exists`.
 
 When the parent's own visibility is conditional, the child repeats the
 parent's condition rather than guessing:
@@ -80,9 +116,9 @@ parent's condition rather than guessing:
 create policy appointment_services_read on appointment_services
   for select using (
     exists (select 1 from appointments a where a.id = appointment_id
-            and a.organization_id = current_org_id()
-            and (has_permission('appointments.view.any')
-                 or (has_permission('appointments.view.own') and a.staff_id = current_staff_id())))
+            and a.organization_id = (select current_org_id())
+            and ((select has_permission('appointments.view.any'))
+                 or ((select has_permission('appointments.view.own')) and a.staff_id = (select current_staff_id()))))
   );
 ```
 
@@ -97,10 +133,10 @@ Permission keys ending `.own` and `.any` express "your rows" versus
 ```sql
 create policy appointments_read on appointments
   for select using (
-    organization_id = current_org_id()
+    organization_id = (select current_org_id())
     and (
-      has_permission('appointments.view.any')
-      or (has_permission('appointments.view.own') and staff_id = current_staff_id())
+      (select has_permission('appointments.view.any'))
+      or ((select has_permission('appointments.view.own')) and staff_id = (select current_staff_id()))
     )
   );
 ```
@@ -113,8 +149,8 @@ still `requested`:
 ```sql
 create policy availability_exceptions_update on availability_exceptions
   for update using (
-    has_permission('timeoff.approve')
-    or (staff_id = current_staff_id() and status = 'requested')
+    (select has_permission('timeoff.approve'))
+    or (staff_id = (select current_staff_id()) and status = 'requested')
   );
 ```
 
@@ -124,9 +160,9 @@ someone else:
 ```sql
 create policy appointments_insert on appointments
   for insert with check (
-    organization_id = current_org_id()
-    and has_permission('appointments.create')
-    and booked_by = current_staff_id()      -- can't book "as" another person
+    organization_id = (select current_org_id())
+    and (select has_permission('appointments.create'))
+    and booked_by = (select current_staff_id())      -- can't book "as" another person
   );
 ```
 
@@ -143,9 +179,9 @@ column value, rather than splitting the table:
 ```sql
 create policy client_notes_read on client_notes
   for select using (
-    has_permission('clients.view')
-    and (kind <> 'health' or has_permission('clients.notes.health.view'))
-    and exists (select 1 from clients c where c.id = client_id and c.organization_id = current_org_id())
+    (select has_permission('clients.view'))
+    and (kind <> 'health' or (select has_permission('clients.notes.health.view')))
+    and exists (select 1 from clients c where c.id = client_id and c.organization_id = (select current_org_id()))
   );
 ```
 
@@ -166,7 +202,7 @@ can't express "these columns only", so the policy is permissive and a
 
 ```sql
 create policy staff_self_update on staff
-  for update using (user_id = auth.uid());
+  for update using (user_id = (select auth.uid()));
 ```
 
 ```sql
@@ -223,7 +259,11 @@ create policy messages_read on messages
 ```
 
 Any time a table's policy needs to consult the same table (or a cycle of
-tables), reach for this shape.
+tables), reach for this shape. These calls are CORRELATED — they take the
+row's `conversation_id` — so they cannot be hoisted into `(select …)`;
+`verify-policies` allowlists exactly these four (the three reads and
+`messages_send`'s WITH CHECK) by name, and fails if an allowlisted policy
+stops matching, so the list cannot go stale.
 
 ---
 
@@ -234,9 +274,9 @@ authorization:
 
 ```sql
 create policy notifications_read on notifications
-  for select using (staff_id = current_staff_id());
+  for select using (staff_id = (select current_staff_id()));
 create policy notifications_update on notifications
-  for update using (staff_id = current_staff_id());
+  for update using (staff_id = (select current_staff_id()));
 -- No insert/delete policies: rows are created by triggers (security definer)
 -- or the service role only.
 ```
@@ -254,13 +294,26 @@ load-bearing and both get a comment.
 
 **Append-only.** No update or delete policies will ever exist:
 `transactions`, `transaction_items`, `payments`, `client_notes`, `messages`,
-`card_consents`, `audit_log`. `audit_log` adds an explicit belt-and-braces
-revoke:
+`card_consents`, `audit_log`. For the ledger's three tables and `audit_log`
+the absence of policies is NOT what enforces it — the service role bypasses
+policies — so each carries the shared block trigger and a TRUNCATE revoke,
+binding every role (ledger-integrity-design.md; audit_log since
+2026-10-08, policy-sweep-design.md):
 
 ```sql
--- No update/delete policies will ever be created: append-only by construction.
-revoke update, delete on audit_log from authenticated, anon;
+-- Append-only for every role, the service role included.
+create trigger trg_audit_log_append_only
+  before update or delete on audit_log
+  for each row execute function append_only_block();
+revoke truncate on audit_log from service_role;
 ```
+
+`audit_log` also keeps its older `revoke update, delete … from
+authenticated, anon` (migration 1); it is redundant now and harmless.
+`audit_log` carries `organization_id` like every other table (backfilled
+2026-10-08 from the entity each row records, else its actor) and
+`audit_read` scopes on it: `organization_id = (select current_org_id())
+and (select has_permission('audit_log.view'))`.
 
 **Writes belong to a server route.** When the operation is multi-step,
 prices things, or calls Stripe mid-flight, there is no authenticated insert

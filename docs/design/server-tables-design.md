@@ -1,8 +1,11 @@
 # Server-side tables — design
 
-Status: APPROVED 2026-10-06 with five refinements (folded in below, each
-marked `[APPROVED]`). PR 1 (`/clients`) in progress; PR 2 and PR 3 to
-follow the build order. Inputs: `docs/server-tables-reference.md` (how
+Status: SHIPPED — PR 1 (`/clients`), PR 2 (`/products`) and PR 3 (the
+Transactions table) on 2026-10-06, PR 4 (the server-searched pickers) on
+2026-10-07; approved 2026-10-06 with five refinements (folded in below,
+each marked `[APPROVED]`), as-built notes dated inline. The ledger line
+policies' per-row parent lookup recorded under PR 3 was removed on
+2026-10-08 by the policy sweep's PR 2 (policy-sweep-design.md). Inputs: `docs/server-tables-reference.md` (how
 Lokl does it, read 2026-10-06) and `server-tables-survey.md` (what The
 Reserve did on that date).
 
@@ -460,8 +463,10 @@ one provider 213ms, a reference search 172ms, an amount search 175ms,
 an item search ("facial", 16,652 matches) 324ms. Measured apart, the
 cost has two halves. (1) The ledger's line policies: `transaction_items_read`
 and `payments_read` keep an `exists` lookup on the parent transaction
-PER ROW (the helper calls were taken out of it; the lookup stays), and a
-year reads every line — 1.7 million primary-key lookups across the 20
+PER ROW (the helper calls were taken out of it; the lookup stays) — until
+2026-10-08, when policy-sweep PR 2 gave the lines their own
+`organization_id` and the plain column check (year 392 → 283ms p50) —
+and a year reads every line — 1.7 million primary-key lookups across the 20
 runs, about 90ms a run. Rewriting those two policies as
 `transaction_id in (select id from transactions where organization_id =
 (select current_org_id()))`, one hashed set per statement, brought the
