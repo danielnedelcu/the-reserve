@@ -32,14 +32,11 @@ import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { LOCAL_MODE, ROOT, get, guard, pgSsl, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, ROOT, get, guard, pgSsl, supabaseEnv, localOnlyOrSkip } from "./_env.mjs";
 import { scrubTestStaff } from "./_cleanup.mjs";
 
 const { url, anonKey, serviceKey } = supabaseEnv();
-if (!LOCAL_MODE) {
-  console.log("  skip  every case: this harness creates staff and grants roles, which writes append-only audit rows, so it runs on the LOCAL stack only (CLAUDE.md); nothing was run on this hosted stack");
-  process.exit(0);
-}
+localOnlyOrSkip(url);
 guard(["NUXT_PUBLIC_SUPABASE_URL", "DATABASE_URL"]);
 const DATABASE_URL = get("DATABASE_URL");
 if (!DATABASE_URL) {

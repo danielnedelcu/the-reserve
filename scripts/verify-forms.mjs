@@ -19,15 +19,12 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { LOCAL_MODE, get, guard, supabaseEnv } from "./_env.mjs";
+import { LOCAL_MODE, get, guard, supabaseEnv, localOnlyOrSkip } from "./_env.mjs";
 import { scrubTestStaff } from "./_cleanup.mjs";
 
 // Credentials and the SUPABASE_LOCAL guard live in scripts/_env.mjs.
 const { url, anonKey, serviceKey } = supabaseEnv();
-if (!LOCAL_MODE) {
-  console.log("  skip  every case: this harness creates staff and grants roles, which writes append-only audit rows, so it runs on the LOCAL stack only (CLAUDE.md); nothing was run on this hosted stack");
-  process.exit(0);
-}
+localOnlyOrSkip(url);
 guard(["DATABASE_URL"]);
 const env = { FORM_IP_PEPPER: get("FORM_IP_PEPPER") };
 
