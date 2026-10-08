@@ -1,12 +1,20 @@
 <script setup lang="ts">
+import { keyLabel, shiftDays, todayKey } from "~~/shared/time/period";
+import { pickerDate } from "~~/shared/time/picker";
+import { localDateKey, localToUtc, timeLabel } from "~~/shared/time/zone";
+
 const supabase = useSupabaseClient();
 
-function toDateStr(d: Date) {
-  return d.toLocaleDateString("en-CA"); // YYYY-MM-DD local
-}
+// Every day here is the LOCATION's (business time, CLAUDE.md): an
+// appointment is filed under the day it falls on at the spa, "today" is
+// the spa's today, and the window is bounded by the spa's midnights.
+// v-calendar itself speaks in browser Dates; pickerDate hands it a noon
+// anchor of each key, which no browser zone moves off the day.
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
 
-const selectedDate = ref(toDateStr(new Date()));
-const todayStr = toDateStr(new Date());
+const todayStr = todayKey(tz());
+const selectedDate = ref(todayStr);
 
 // ---------------------------------------------------------------------------
 // Appointments for a rolling window (±5 weeks around today).
@@ -27,11 +35,8 @@ interface Appt {
 const { data: appointments } = await useAsyncData(
   "dashboard-window",
   async () => {
-    const from = new Date();
-    from.setDate(from.getDate() - 14);
-    from.setHours(0, 0, 0, 0);
-    const to = new Date();
-    to.setDate(to.getDate() + 35);
+    const from = localToUtc(shiftDays(todayStr, -14), "00:00", tz());
+    const to = localToUtc(shiftDays(todayStr, 35), "00:00", tz());
     const { data, error } = await supabase
       .from("appointments")
       .select(
@@ -54,7 +59,7 @@ const attributes = computed(() => {
   // day -> provider -> { name, count }
   const byDay = new Map<string, Map<string, { name: string; count: number }>>();
   for (const appt of appointments.value ?? []) {
-    const day = toDateStr(new Date(appt.starts_at));
+    const day = localDateKey(appt.starts_at, tz());
     const providers = byDay.get(day) ?? new Map();
     const entry = providers.get(appt.staff_id) ?? {
       name: appt.staff?.display_name ?? "Provider",
@@ -69,7 +74,7 @@ const attributes = computed(() => {
   for (const [day, providers] of byDay) {
     for (const [staffId, entry] of providers) {
       attrs.push({
-        dates: new Date(`${day}T12:00:00`),
+        dates: pickerDate(day),
         dot: { style: { backgroundColor: providerColor(staffId) } },
         popover: {
           label: `${entry.name} · ${entry.count} appointment${entry.count === 1 ? "" : "s"}`,
@@ -84,7 +89,7 @@ const attributes = computed(() => {
   // Delete this and the dashboard opens ~2 weeks in the past.
   attrs.unshift({
     key: "today-anchor",
-    dates: new Date(),
+    dates: pickerDate(todayStr),
     highlight: { fillMode: "none" }, // renders nothing visible
   });
 
@@ -100,26 +105,18 @@ function onDayClick(day: { id: string }) {
 // ---------------------------------------------------------------------------
 const dayAppointments = computed(() =>
   (appointments.value ?? []).filter(
-    (appt) => toDateStr(new Date(appt.starts_at)) === selectedDate.value,
+    (appt) => localDateKey(appt.starts_at, tz()) === selectedDate.value,
   ),
 );
 
 const dayLabel = computed(() =>
   selectedDate.value === todayStr
     ? "Today"
-    : new Date(`${selectedDate.value}T12:00:00`).toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-      }),
+    : keyLabel(selectedDate.value, { weekday: "long", month: "long" }),
 );
 
 function timeRange(appt: Appt) {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
+  const fmt = (iso: string) => timeLabel(iso, tz());
   return `${fmt(appt.starts_at)} – ${fmt(appt.ends_at)}`;
 }
 </script>
@@ -129,7 +126,7 @@ function timeRange(appt: Appt) {
        day's list scrolls, "Open full schedule" stays visible below. The
        cap is taller than the other two cards' because the calendar itself
        takes the top ~230px. -->
-  <DashboardScrollFrame class="max-h-[600px] p-5">
+  <DashboardScrollFrame role="region" aria-label="Week calendar" class="max-h-[600px] p-5">
     <template #header>
       <!-- Weekly calendar: dots per provider, click a day to list it below -->
       <UiCalendar

@@ -1,10 +1,16 @@
 <script setup lang="ts">
+import { dateTimeLabel, localDateKey } from "~~/shared/time/format";
 import {
   LEAD_MANUAL_STATUSES,
   LEAD_INTEREST_LABELS,
   type LeadInterest,
   type LeadManualStatus,
 } from "~~/shared/leads/constants";
+
+// The location's zone (business time, CLAUDE.md: when the lead reached the business).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 
 /**
  * One lead: who they are, what they asked about, the notes thread, and
@@ -183,13 +189,7 @@ async function addNote() {
 }
 
 function when(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return dateTimeLabel(iso, tz(), { year: true });
 }
 </script>
 
@@ -235,7 +235,7 @@ function when(iso: string): string {
               aria-hidden="true"
             />
             <span v-if="lead.consent && lead.consent_at">
-              Given {{ new Date(lead.consent_at).toLocaleDateString("en-CA") }}
+              Given {{ localDateKey(lead.consent_at, tz()) }}
             </span>
             <span v-else>Not given</span>
           </dd>

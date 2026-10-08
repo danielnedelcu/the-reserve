@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { dateLabel, localDateKey } from "~~/shared/time/format";
+import { keyLabel } from "~~/shared/time/period";
+
+// The location's zone (business time, CLAUDE.md: a client's record, forms and notes are the business's).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 definePageMeta({ middleware: "can", permission: "clients.view" });
 
 const route = useRoute();
@@ -47,21 +54,11 @@ const address = computed(() => {
   return full || null;
 });
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+const formatDate = (iso: string) => dateLabel(iso, tz());
 
-function formatDob(dateStr: string) {
-  return new Date(`${dateStr}T12:00:00`).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
+// A date of birth is a DATE, not an instant: formatted from the stored
+// string itself and never through a Date or a zone (CLAUDE.md).
+const formatDob = (dateStr: string) => keyLabel(dateStr, { month: "long", year: true });
 
 // ---------------------------------------------------------------------------
 // Notes — preference/internal read directly (RLS filters); health notes read
@@ -366,7 +363,7 @@ const kindBadge: Record<string, string> = {
               </p>
               <p class="text-muted-foreground text-xs">
                 version {{ form.form_versions.version }} ·
-                {{ new Date(form.submitted_at).toLocaleDateString("en-CA") }}
+                {{ localDateKey(form.submitted_at, tz()) }}
               </p>
             </div>
 
@@ -396,7 +393,7 @@ const kindBadge: Record<string, string> = {
               />
               <span>
                 Agreed on
-                {{ new Date(form.consented_at).toLocaleDateString("en-CA") }}
+                {{ localDateKey(form.consented_at, tz()) }}
                 <template v-if="form.consent_text">
                   — the exact wording they agreed to is stored with this
                   submission.

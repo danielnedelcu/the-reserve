@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { localDateKey } from "~~/shared/time/format";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 /**
  * One prospect's submission, and the decision.
  *
@@ -157,7 +163,7 @@ async function decide(status: "under_review" | "approved" | "rejected") {
             aria-hidden="true"
           />
           Agreed to the terms on
-          {{ new Date(data.submission.consentedAt).toLocaleDateString("en-CA") }}
+          {{ localDateKey(data.submission.consentedAt, tz()) }}
         </div>
       </div>
 
@@ -207,7 +213,7 @@ async function decide(status: "under_review" | "approved" | "rejected") {
               class="text-muted-foreground font-normal"
             >
               on
-              {{ new Date(prospect.reviewed_at).toLocaleDateString("en-CA") }}
+              {{ localDateKey(prospect.reviewed_at, tz()) }}
             </span>
           </span>
         </div>

@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { rangeLabel } from "~~/shared/time/format";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 definePageMeta({ middleware: "can", permission: "timeoff.approve" });
 useSeoMeta({ title: "Time off — The Reserve" });
 
@@ -66,16 +72,7 @@ const KIND_LABELS: Record<string, string> = {
   extra_shift: "Extra shift",
 };
 
-function formatRange(startIso: string, endIso: string) {
-  const opts: Intl.DateTimeFormatOptions = {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  };
-  return `${new Date(startIso).toLocaleString("en-US", opts)} → ${new Date(endIso).toLocaleString("en-US", opts)}`;
-}
+const formatRange = (startIso: string, endIso: string) => rangeLabel(startIso, endIso, tz(), { weekday: "short" });
 
 function requestedAgo(iso: string) {
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);

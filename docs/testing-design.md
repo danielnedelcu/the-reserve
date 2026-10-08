@@ -326,9 +326,14 @@ route's instant and the grid's pixel come from the same conversion in
 the same zone; `tests/shared/zone.test.ts` round-trips both directions
 across zones that differ from the runner's. The journey's assertions
 were not changed; it passed once the page agreed with the route, and it
-is what keeps the seam closed. Still on the browser clock, outside the
-schedule: the dashboard's today card and week calendar, the client
-profile's dates, the communication history — listed on the board.
+is what keeps the seam closed. The rest of the app followed on
+2026-10-07: every business-time surface formats through
+`shared/time/format.ts` in the location's zone, date-only values go from
+the key to words without a Date, and `tests/guards/browserClock.test.ts`
+fails the suite on any browser-clock call in `app/` outside the
+messaging thread. `e2e/journeys/09-dashboard.spec.ts` is the proof: a
+12:30 AM New York appointment on the location's day in a Los Angeles
+browser, and a date of birth reading as stored.
 
 ### The money journey decision (confirm before building)
 

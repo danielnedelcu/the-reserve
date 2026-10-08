@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatCount } from "~~/shared/format/count";
 import { z } from "zod";
 import { toTypedSchema } from "@vee-validate/zod";
 import type { TablesInsert } from "~~/shared/types/database";
@@ -288,7 +289,7 @@ const saveClient = handleSubmit(async (values) => {
         Show inactive
       </label>
       <p class="text-muted-foreground text-sm" aria-live="polite">
-        {{ table.totalExact.value ? "" : "About " }}{{ table.total.value.toLocaleString("en-US") }}
+        {{ table.totalExact.value ? "" : "About " }}{{ formatCount(table.total.value) }}
         {{ table.total.value === 1 ? "client" : "clients" }}
       </p>
       <UiButton

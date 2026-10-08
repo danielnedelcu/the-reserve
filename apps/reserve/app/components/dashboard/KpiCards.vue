@@ -13,18 +13,15 @@ const dollars = (cents: number) =>
   );
 
 // ---------------------------------------------------------------------------
-// Rolling windows: last 7 days, the 7 before that, and the next 7
+// Rolling windows: last 7 days, the 7 before that, and the next 7 — bounded
+// by the LOCATION's midnights (business time, CLAUDE.md), not the browser's
 // ---------------------------------------------------------------------------
-function daysFromNow(n: number) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + n);
-  return d;
-}
 const now = new Date();
-const last7 = { from: daysFromNow(-7), to: now };
-const prior7 = { from: daysFromNow(-14), to: daysFromNow(-7) };
-const next7 = { from: now, to: daysFromNow(7) };
+const today = localDateKey(now, timezone.value);
+const dayStart = (daysFromToday: number) => localToUtc(shiftDays(today, daysFromToday), "00:00", timezone.value);
+const last7 = { from: dayStart(-7), to: now };
+const prior7 = { from: dayStart(-14), to: dayStart(-7) };
+const next7 = { from: now, to: dayStart(7) };
 
 // ---------------------------------------------------------------------------
 // Data (each fetch spans -14d..+7d once, sliced client-side)

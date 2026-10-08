@@ -82,7 +82,7 @@ export class TestData {
   async client(
     firstName: string,
     lastName = this.tag,
-    extra: { active?: boolean; email?: string; phone?: string } = {},
+    extra: { active?: boolean; email?: string; phone?: string; date_of_birth?: string } = {},
   ): Promise<{ id: string; firstName: string; lastName: string }> {
     const row = await must(
       this.env.db
@@ -190,6 +190,50 @@ export class TestData {
     const { error } = await this.env.db.from("service_staff").insert({ service_id: row.id, staff_id: staffId });
     if (error) throw new Error(`service_staff ${name}: ${error.message}`);
     return { id: row.id as string, name: fullName };
+  }
+
+  /**
+   * An appointment written directly, the way the booking route leaves one
+   * (blocked window = service window, a service line with a name
+   * snapshot), at an INSTANT the journey chooses — so a journey can put
+   * one at 12:30 AM in the location's zone without going through the
+   * slots route. Removed with its client (appointments cascade their
+   * lines).
+   */
+  async appointment(args: {
+    clientId: string;
+    staffId: string;
+    locationId: string;
+    serviceId: string;
+    serviceName: string;
+    startsAt: Date;
+    durationMinutes?: number;
+  }): Promise<{ id: string }> {
+    const duration = args.durationMinutes ?? 60;
+    const endsAt = new Date(args.startsAt.getTime() + duration * 60_000);
+    const row = await must(
+      this.env.db
+        .from("appointments")
+        .insert({
+          organization_id: this.orgId,
+          location_id: args.locationId,
+          client_id: args.clientId,
+          staff_id: args.staffId,
+          blocked_from: args.startsAt.toISOString(),
+          blocked_until: endsAt.toISOString(),
+          starts_at: args.startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+          booked_by: args.staffId,
+        })
+        .select("id")
+        .single(),
+      "appointment",
+    );
+    const { error } = await this.env.db
+      .from("appointment_services")
+      .insert({ appointment_id: row.id, service_id: args.serviceId, name_snapshot: args.serviceName, price_cents: 10_000, duration_min: duration });
+    if (error) throw new Error(`appointment_services: ${error.message}`);
+    return { id: row.id as string };
   }
 
   /**

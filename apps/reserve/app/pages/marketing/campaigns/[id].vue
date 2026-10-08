@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { dateTimeLabel } from "~~/shared/time/format";
 import {
   RECIPIENT_STATUS_LABELS,
   campaignStats,
@@ -6,6 +7,11 @@ import {
   sortRecipients,
   type RecipientStatus,
 } from "~~/shared/campaigns/analytics";
+
+// The location's zone (business time, CLAUDE.md: when the campaign went out).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 
 /**
  * /marketing/campaigns/<id> — one campaign's results (marketing
@@ -71,13 +77,7 @@ const pct = (rate: number | null) => (rate === null ? "—" : `${Math.round(rate
 
 function when(iso: string | null) {
   if (!iso) return "";
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return dateTimeLabel(iso, tz(), { year: true });
 }
 
 const audienceLabel = computed(() => {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { localDateKey, localToUtc } from "~~/shared/time/zone";
+import { dayOfMonth, keyLabel, monthStartOf, shiftDays, shiftMonths, weekdayLabel, weekdayOf } from "~~/shared/time/period";
 import type { SearchOption } from "~/components/ServerSearchSelect.vue";
 
 definePageMeta({ middleware: "can", permission: "appointments.view.own" });
@@ -26,97 +27,61 @@ const { data: timezone } = await useLocationTimezone();
 const tz = () => timezone.value;
 
 /**
- * Calendar arithmetic only: a "YYYY-MM-DD" key is anchored at NOON in the
- * browser's zone, moved by whole days or months, and read back as a key
- * in that same zone. Noon never crosses a day under any DST shift, so the
- * browser's zone cancels out of every key this produces. Instants go
- * through localDateKey(…, tz()) instead.
+ * Calendar arithmetic is done on "YYYY-MM-DD" keys through
+ * shared/time/period.ts (shiftDays, shiftMonths, weekdayOf, keyLabel):
+ * no Date is ever built from a key, so no browser zone can touch a day.
+ * Instants become keys through localDateKey(…, tz()) and nothing else.
+ * Weeks start on Sunday, as everywhere a person sees one (period.ts).
  */
-function toDateStr(d: Date) {
-  return d.toLocaleDateString("en-CA"); // YYYY-MM-DD, from a noon anchor
-}
 const selectedDate = ref(localDateKey(new Date(), tz()));
 const todayStr = localDateKey(new Date(), tz());
 
-function startOfWeek(dateStr: string): Date {
-  const d = new Date(`${dateStr}T12:00:00`);
-  d.setDate(d.getDate() - d.getDay()); // back to Sunday
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 const weekDays = computed(() => {
-  const start = startOfWeek(selectedDate.value);
+  const start = shiftDays(selectedDate.value, -weekdayOf(selectedDate.value)); // back to Sunday
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
+    const dateStr = shiftDays(start, i);
     return {
-      dateStr: toDateStr(d),
-      dayNum: d.getDate(),
-      dayName: d.toLocaleDateString("en-US", { weekday: "short" }),
+      dateStr,
+      dayNum: dayOfMonth(dateStr),
+      dayName: weekdayLabel(dateStr),
       isWeekend: i === 0 || i === 6,
     };
   });
 });
 
 const headerLabel = computed(() => {
-  const d = new Date(`${selectedDate.value}T12:00:00`);
-  if (view.value === "day") {
-    return d.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    });
-  }
+  const key = selectedDate.value;
+  if (view.value === "day") return keyLabel(key, { weekday: "long", month: "long" });
   if (view.value === "week") {
-    const first = weekDays.value[0]!;
-    const last = weekDays.value[6]!;
-    const f = new Date(`${first.dateStr}T12:00:00`);
-    const l = new Date(`${last.dateStr}T12:00:00`);
-    const fLabel = f.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-    const lLabel = l.toLocaleDateString("en-US", {
-      month: f.getMonth() === l.getMonth() ? undefined : "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    return `${fLabel} – ${lLabel}`;
+    const first = weekDays.value[0]!.dateStr;
+    const last = weekDays.value[6]!.dateStr;
+    const sameMonth = first.slice(0, 7) === last.slice(0, 7);
+    const lLabel = sameMonth ? `${dayOfMonth(last)}, ${last.slice(0, 4)}` : keyLabel(last, { year: true });
+    return `${keyLabel(first)} – ${lLabel}`;
   }
-  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  return keyLabel(key, { month: "long", day: false, year: true });
 });
 
 function shiftPeriod(delta: number) {
-  const d = new Date(`${selectedDate.value}T12:00:00`);
-  if (view.value === "day") d.setDate(d.getDate() + delta);
-  else if (view.value === "week") d.setDate(d.getDate() + delta * 7);
-  else d.setMonth(d.getMonth() + delta, 1);
-  selectedDate.value = toDateStr(d);
+  const key = selectedDate.value;
+  if (view.value === "day") selectedDate.value = shiftDays(key, delta);
+  else if (view.value === "week") selectedDate.value = shiftDays(key, delta * 7);
+  else selectedDate.value = shiftMonths(key, delta);
 }
 
 // ---------------------------------------------------------------------------
-// Month grid geometry (Sunday-first)
+// Month grid geometry (Sunday-first), on keys
 // ---------------------------------------------------------------------------
 const monthGrid = computed(() => {
-  const anchor = new Date(`${selectedDate.value}T12:00:00`);
-  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-  const last = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
-
-  const gridStart = new Date(first);
-  gridStart.setDate(first.getDate() - first.getDay());
-  const gridEnd = new Date(last);
-  gridEnd.setDate(last.getDate() + (6 - last.getDay()));
+  const first = monthStartOf(selectedDate.value);
+  const last = shiftDays(shiftMonths(first, 1), -1);
+  const gridStart = shiftDays(first, -weekdayOf(first));
+  const gridEnd = shiftDays(last, 6 - weekdayOf(last));
+  const month = first.slice(0, 7);
 
   const days: { dateStr: string; dayNum: number; inMonth: boolean }[] = [];
-  const cursor = new Date(gridStart);
-  while (cursor <= gridEnd) {
-    days.push({
-      dateStr: toDateStr(cursor),
-      dayNum: cursor.getDate(),
-      inMonth: cursor.getMonth() === anchor.getMonth(),
-    });
-    cursor.setDate(cursor.getDate() + 1);
+  for (let dateStr = gridStart; dateStr <= gridEnd; dateStr = shiftDays(dateStr, 1)) {
+    days.push({ dateStr, dayNum: dayOfMonth(dateStr), inMonth: dateStr.slice(0, 7) === month });
   }
   return { days, gridStart, gridEnd };
 });
@@ -153,7 +118,7 @@ interface Appt {
 // is filed under the location's day (localDateKey), and blockStyle()
 // places it by the location's minutes (minutesIntoDay). Only calendar
 // arithmetic on keys is left to the browser's zone, where it cancels out
-// (see toDateStr).
+// (keys from period.ts, instants through localDateKey).
 /**
  * ONE range for all three views: the month grid (whole weeks, six rows)
  * around the selected date. Day and week are always inside it, so
@@ -166,13 +131,11 @@ interface Appt {
  */
 const fetchRange = computed(() => {
   const { gridStart, gridEnd } = monthGrid.value;
-  const after = new Date(gridEnd);
-  after.setDate(after.getDate() + 1);
   // The location's midnight opening the first grid day, to the location's
   // midnight after the last — the same conversion the slots route makes.
   return {
-    from: localToUtc(toDateStr(gridStart), "00:00", tz()).toISOString(),
-    to: localToUtc(toDateStr(after), "00:00", tz()).toISOString(),
+    from: localToUtc(gridStart, "00:00", tz()).toISOString(),
+    to: localToUtc(shiftDays(gridEnd, 1), "00:00", tz()).toISOString(),
   };
 });
 // Watched as a string so moving the selected date WITHIN the loaded grid
@@ -940,13 +903,7 @@ async function book(slot: { startsAt: string; roomId: string | null }) {
         <UiDialogHeader>
           <UiDialogTitle>New appointment</UiDialogTitle>
           <UiDialogDescription>
-            {{
-              new Date(`${selectedDate}T12:00:00`).toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })
-            }}
+            {{ keyLabel(selectedDate, { weekday: "long", month: "long" }) }}
           </UiDialogDescription>
         </UiDialogHeader>
 

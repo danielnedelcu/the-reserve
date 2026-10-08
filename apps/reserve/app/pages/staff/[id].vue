@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { rangeLabel } from "~~/shared/time/format";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 definePageMeta({ middleware: "can", permission: "staff.view" });
 
 const route = useRoute();
@@ -263,15 +269,7 @@ async function setStatus(exception: Exception, status: "approved" | "denied") {
   await refreshExceptions();
 }
 
-function formatRange(startIso: string, endIso: string) {
-  const opts: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  };
-  return `${new Date(startIso).toLocaleString("en-US", opts)} → ${new Date(endIso).toLocaleString("en-US", opts)}`;
-}
+const formatRange = (startIso: string, endIso: string) => rangeLabel(startIso, endIso, tz());
 
 async function onStaffSaved() {
   await Promise.all([refreshStaff(), refreshRules(), refreshExceptions()]);

@@ -11,6 +11,7 @@
 // Registration (prod): Dashboard -> Developers -> Webhooks -> add endpoint.
 // Either yields the signing secret -> STRIPE_WEBHOOK_SECRET in .env.
 
+import { dateLabel } from "~~/shared/time/format";
 import type Stripe from "stripe";
 import { serverSupabaseServiceRole } from "#supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -92,10 +93,15 @@ export default defineEventHandler(async (event) => {
       // A dispute is money-adversarial and time-sensitive: notify admins.
       case "charge.dispute.created": {
         const dispute = stripeEvent.data.object as Stripe.Dispute;
+        // The deadline as a day at the SPA (business time, CLAUDE.md). The
+        // production server runs in UTC, so a process-clock date here was a
+        // day off for an Eastern business in the evening.
+        const { data: loc } = await admin.from("locations").select("timezone").order("created_at").order("id").limit(1).maybeSingle();
+        const dueBy = dateLabel(new Date((dispute.evidence_details?.due_by ?? 0) * 1000), loc?.timezone ?? "UTC");
         await notifyAdmins(admin, {
           kind: "stripe_alert",
           title: "Card dispute opened",
-          body: `A client disputed a charge of $${(dispute.amount / 100).toFixed(2)}. Respond in the Stripe dashboard before ${new Date((dispute.evidence_details?.due_by ?? 0) * 1000).toLocaleDateString("en-US")}.`,
+          body: `A client disputed a charge of $${(dispute.amount / 100).toFixed(2)}. Respond in the Stripe dashboard before ${dueBy}.`,
         });
         break;
       }

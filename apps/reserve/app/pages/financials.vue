@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { formatCount } from "~~/shared/format/count";
+import { dateTimeLabel } from "~~/shared/time/format";
+import { pickedKey, pickerDate } from "~~/shared/time/picker";
 import { oneOf, uuid, day } from "~~/shared/tables/url";
 import { localToUtc, dayOfWeek } from "~~/shared/time/zone";
 import {
@@ -167,17 +170,15 @@ function step(delta: number) {
 }
 
 // The picker works in browser Dates; what matters is the calendar day
-// picked, read back as a key. The model is a noon anchor of each key, so
-// the picker shows the right days whatever zone the browser is in. The
-// picker ECHOES its model back through v-model whenever the model
+// picked, read back as a key — through shared/time/picker.ts, the one
+// bridge between keys and a picker's Dates. The picker ECHOES its model back through v-model whenever the model
 // changes (a period button, Back), so an "update" equal to the current
 // range is the echo and is ignored; only a different pair is a pick.
-const keyOf = (d: Date) => d.toLocaleDateString("en-CA");
 const dateRange = computed({
-  get: () => ({ start: new Date(`${range.value.fromKey}T12:00:00`), end: new Date(`${range.value.toKey}T12:00:00`) }),
+  get: () => ({ start: pickerDate(range.value.fromKey), end: pickerDate(range.value.toKey) }),
   set: (r: { start: Date; end: Date }) => {
-    const from = keyOf(r.start);
-    const to = keyOf(r.end);
+    const from = pickedKey(r.start);
+    const to = pickedKey(r.end);
     if (from === range.value.fromKey && to === range.value.toKey) return;
     void table.setFilters({ from, to, period: null, anchor: null });
   },
@@ -391,15 +392,7 @@ function txnClient(txn: TxnRow) {
   return txn.has_client ? "Client hidden" : "Walk-in";
 }
 /** The moment of sale, at the spa. */
-function txnWhen(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    timeZone: tz(),
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const txnWhen = (iso: string) => dateTimeLabel(iso, tz());
 function txnItemsSummary(txn: TxnRow) {
   const names = txn.items
     .filter((item) => !["tip", "discount"].includes(item.kind))
@@ -851,7 +844,7 @@ function printReceipt(txn: TxnRow) {
           @search="table.setSearch"
         />
         <p class="text-muted-foreground text-sm" aria-live="polite">
-          {{ table.total.value.toLocaleString("en-US") }}
+          {{ formatCount(table.total.value) }}
           {{ table.total.value === 1 ? "transaction" : "transactions" }}
         </p>
       </form>

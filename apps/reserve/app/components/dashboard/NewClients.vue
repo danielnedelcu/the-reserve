@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { dateLabel } from "~~/shared/time/format";
+import { monthLabel, periodRange, todayKey } from "~~/shared/time/period";
+
+// "This month" is the LOCATION's month (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
 /**
  * DashboardNewClients — this month's newest clients, newest first.
  * In the members-only future these ARE the newest members; the clients
@@ -17,8 +22,8 @@ interface NewClient {
 const { data: newClients } = await useAsyncData(
   "dashboard-new-clients",
   async () => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); // local
+    const tz = timezone.value;
+    const monthStart = periodRange({ period: "month", anchor: todayKey(tz) }, tz).from;
     const { data, error } = await supabase
       .from("clients")
       .select("id, first_name, last_name, email, created_at")
@@ -35,14 +40,9 @@ function initials(client: NewClient) {
   return `${client.first_name.charAt(0)}${client.last_name.charAt(0)}`.toUpperCase();
 }
 
-function joinedLabel(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
+const joinedLabel = (iso: string) => dateLabel(iso, timezone.value, { year: false });
 
-const monthName = new Date().toLocaleDateString("en-US", { month: "long" });
+const monthName = monthLabel(todayKey(timezone.value));
 </script>
 
 <template>

@@ -277,17 +277,25 @@ QUEUED (in order):
   side is right); it needs its own verification across a DST boundary and
   a viewer in another zone, which is why it is not folded into a visual
   change.
-- Business time still on the browser clock, outside the schedule (the
+- ~~Business time still on the browser clock, outside the schedule (the
   seam fix of 2026-10-06 covered the schedule page, its cards and its
   dialog only): the dashboard's today card (FrontDeskToday.vue, its own
   time formatter and a day window built from the browser) and week
   calendar (WeekCalendar.vue), the bookings chart's day buckets
   (BookingsChart.vue), the client profile's appointment dates
   (clients/[id].vue), and the communication history's timestamps
-  (ClientCommunicationHistory.vue). Move each onto the location's zone
-  through shared/time/zone.ts, with a journey or unit proof per the
-  CLAUDE.md convention: business time in the location's zone, personal
-  event time (a message's sent time) may stay on the viewer's.
+  (ClientCommunicationHistory.vue).~~ DONE 2026-10-07, wider than the
+  five listed: the inventory found 15 business-time surfaces (also the
+  KPI windows, new clients, gift cards, checkout's appointment label,
+  transactions, forms, intake, leads, campaigns, time off), all moved
+  onto `shared/time/format.ts` (zone required, no default) and
+  `period.ts` key labels; date-only values (date of birth) format from
+  the key, never through a Date; row counts through
+  `shared/format/count.ts`. `tests/guards/browserClock.test.ts` bans
+  every browser-clock call in app/ outside the messaging thread.
+  Proof: journey 09 (12:30 AM New York on the location's day in a Los
+  Angeles browser; a date of birth as stored) and unit tests in zones
+  that differ from the runner's. Classification recorded in CLAUDE.md.
 
 - KPI cards — permission gate discrepancy (owed since the dashboard
   shipped): the booking counts in app/components/dashboard/KpiCards.vue

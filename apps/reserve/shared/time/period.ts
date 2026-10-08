@@ -48,27 +48,72 @@ export function shiftDays(key: string, days: number): string {
   const at = new Date(Date.UTC(y, m - 1, d + days));
   return toKey(at.getUTCFullYear(), at.getUTCMonth() + 1, at.getUTCDate());
 }
-function shiftMonths(key: string, months: number): string {
+/** The first day of the month `months` away from the key's month, zone-free. */
+export function shiftMonths(key: string, months: number): string {
   const [y, m] = parts(key);
   const at = new Date(Date.UTC(y, m - 1 + months, 1));
   return toKey(at.getUTCFullYear(), at.getUTCMonth() + 1, 1);
 }
 /** 0 = Sunday, from the key alone. */
-function weekdayOf(key: string): number {
+export function weekdayOf(key: string): number {
   const [y, m, d] = parts(key);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+/** The first day of the key's month, as a key. */
+export function monthStartOf(key: string): string {
+  const [y, m] = parts(key);
+  return toKey(y, m, 1);
+}
+/** How many days the key's month has. */
+export function daysInMonth(key: string): number {
+  return parts(shiftDays(shiftMonths(key, 1), -1))[2];
+}
+/** The day of the month, 1–31, from the key alone. */
+export function dayOfMonth(key: string): number {
+  return parts(key)[2];
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const longDay = (key: string) => {
+
+export interface KeyLabelOptions {
+  /** "Wednesday" or "Wed" before the date; none by default. */
+  weekday?: "long" | "short";
+  /** "October" or "Oct"; short by default. */
+  month?: "long" | "short";
+  /** The day of the month; shown by default. */
+  day?: boolean;
+  /** The year; hidden by default. */
+  year?: boolean;
+}
+
+/**
+ * A "YYYY-MM-DD" key as words, from the key ALONE: "Oct 7", "Wednesday,
+ * October 7", "October 7, 2026", "May 3, 1990", "October 2026". No Date,
+ * no zone — so a date-only value (a date of birth, a `date` column)
+ * displays as stored in every browser. `new Date("1990-05-03")` is UTC
+ * midnight and reads as May 2 in a US browser; this never goes there.
+ * Instants become keys in the location's zone first (localDateKey).
+ */
+export function keyLabel(key: string, opts: KeyLabelOptions = {}): string {
   const [y, m, d] = parts(key);
-  return `${DAYS[weekdayOf(key)]}, ${MONTHS[m - 1]} ${d}, ${y}`;
-};
-const shortDay = (key: string) => {
-  const [, m, d] = parts(key);
-  return `${MONTHS[m - 1]!.slice(0, 3)} ${d}`;
-};
+  const month = opts.month === "long" ? MONTHS[m - 1]! : MONTHS[m - 1]!.slice(0, 3);
+  const weekday = opts.weekday ? (opts.weekday === "long" ? DAYS[weekdayOf(key)]! : DAYS[weekdayOf(key)]!.slice(0, 3)) : "";
+  const date = opts.day === false ? month : `${month} ${d}`;
+  const withYear = opts.year ? (opts.day === false ? `${date} ${y}` : `${date}, ${y}`) : date;
+  return weekday ? `${weekday}, ${withYear}` : withYear;
+}
+/** "October", from the key alone. */
+export function monthLabel(key: string): string {
+  return MONTHS[parts(key)[1] - 1]!;
+}
+/** "Wed" or "Wednesday", from the key alone. */
+export function weekdayLabel(key: string, style: "long" | "short" = "short"): string {
+  const name = DAYS[weekdayOf(key)]!;
+  return style === "long" ? name : name.slice(0, 3);
+}
+const longDay = (key: string) => keyLabel(key, { weekday: "long", month: "long", year: true });
+const shortDay = (key: string) => keyLabel(key);
 
 /** The inclusive day keys a spec covers, plus its label. Zone-free. */
 export function periodDays(spec: PeriodSpec): { fromKey: string; toKey: string; label: string } {

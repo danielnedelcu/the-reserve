@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { dateTimeLabel } from "~~/shared/time/format";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 definePageMeta({ middleware: "can", permission: "transactions.view" });
 useSeoMeta({ title: "Transactions — The Reserve" });
 
@@ -70,14 +76,7 @@ const METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
 };
 
-function when(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const when = (iso: string) => dateTimeLabel(iso, tz());
 
 function clientName(txn: TxnRow) {
   return txn.clients

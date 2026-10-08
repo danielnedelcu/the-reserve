@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { dateLabel } from "~~/shared/time/format";
+
+// The location's zone (business time, CLAUDE.md).
+const { data: timezone } = useLocationTimezone(); // shared key; the label re-renders when it lands
+const tz = () => timezone.value;
+
 /**
  * GiftCardLookup — the front-desk "how much is left on my card?" answer.
  * Opened from the command palette (and anywhere else via v-model:open).
@@ -54,13 +60,7 @@ async function lookup() {
   card.value = (data as unknown as CardResult) ?? null;
 }
 
-function soldDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+const soldDate = (iso: string) => dateLabel(iso, tz(), { month: "long" });
 </script>
 
 <template>

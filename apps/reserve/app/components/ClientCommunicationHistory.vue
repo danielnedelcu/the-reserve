@@ -1,10 +1,18 @@
 <script setup lang="ts">
+import { dateTimeLabel } from "~~/shared/time/format";
 import {
   appointmentReference,
   communicationChannelLabel,
   communicationKindLabel,
   isResendable,
 } from "~~/shared/communications/kinds";
+
+// The location's zone (business time, CLAUDE.md: what the business sent,
+// and when, at the spa). It used to be an optional prop the profile never
+// passed, so the appointment reference fell back silently; read here.
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 
 /**
  * Communication history on the client profile — phase 5 of the client
@@ -22,7 +30,7 @@ import {
  * POST /api/clients/:id/communications/resend, which sends the email
  * again and appends a NEW row; nothing here ever updates or deletes.
  */
-const props = defineProps<{ clientId: string; timezone?: string }>();
+const props = defineProps<{ clientId: string }>();
 
 const supabase = useSupabaseClient();
 const toast = useToast();
@@ -41,15 +49,7 @@ const { data: rows, refresh } = await useAsyncData(
   },
 );
 
-function sentLabel(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const sentLabel = (iso: string) => dateTimeLabel(iso, tz(), { year: true });
 
 const resending = ref<string | null>(null);
 async function resend(sentId: string) {
@@ -106,8 +106,8 @@ async function resend(sentId: string) {
           </div>
           <div class="text-muted-foreground mt-0.5 text-xs">
             {{ sentLabel(row.sent_at) }}
-            <template v-if="appointmentReference(row.metadata, timezone)">
-              · {{ appointmentReference(row.metadata, timezone) }}
+            <template v-if="appointmentReference(row.metadata, tz())">
+              · {{ appointmentReference(row.metadata, tz()) }}
             </template>
           </div>
         </div>

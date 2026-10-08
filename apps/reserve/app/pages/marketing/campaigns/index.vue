@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { dateTimeLabel } from "~~/shared/time/format";
+
+// The location's zone (business time, CLAUDE.md: when the campaign went out).
+const { data: timezone } = await useLocationTimezone();
+const tz = () => timezone.value;
+
 /**
  * /marketing/campaigns — the campaign list and composer (marketing
  * campaigns, phase 1 — docs/design/marketing-campaigns-design.md).
@@ -47,13 +53,7 @@ const STATUS: Record<string, { text: string; icon: string }> = {
 
 function when(iso: string | null) {
   if (!iso) return "";
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return dateTimeLabel(iso, tz(), { year: true });
 }
 
 // ---------------------------------------------------------------------------
