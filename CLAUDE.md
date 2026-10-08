@@ -57,6 +57,15 @@
   `shared/time/picker.ts`, recovering the day a date picker's Date
   denotes. Row counts: `shared/format/count.ts`, so `toLocaleString` is
   banned in app/ outright.
+- Command chains: steps are joined so a failure stops the chain (`&&`,
+  or `set -e` in a script), never with a plain `;`. An irreversible step
+  — a hosted db push, a merge, a delete — never runs in the same chain
+  as the steps that justify it; it runs as its own step, after their
+  results have been read and checked. The failure mode, 2026-10-08: a
+  header fix in a migration file raised on a text mismatch, the chain
+  continued through the repair and the hosted push, and the file was
+  applied uncorrected — then could not be corrected, because applied
+  migrations are never edited.
 - Silent-failure assumptions: when a change depends on something that
   produces NO error if false — a cache hits, a prefix is stable, a harness
   actually connected, an optimization fires — make verifying it a build
