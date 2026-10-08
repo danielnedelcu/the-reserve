@@ -154,6 +154,24 @@ future migration that disables one and forgets cannot pass.
   has_permission('transactions.view')))` — the plain column check,
   `transactions_read`'s shape — and the per-line parent lookup is gone.
 
+### A note on every "zero differences" result before 2026-10-08
+
+The schema comparison run after each hosted push (now
+`scripts/schema-compare.mjs`, `npm run schema:compare`) compared views
+by their COLUMN LIST only, through information_schema: not the
+definition and not the options. Every "zero differences" figure in this
+document and in ledger-integrity-design.md up to and including PR 2's
+push was therefore blind to a view whose `security_invoker` had been
+lost or whose body differed — `ledger_lines` and `ledger_transactions`
+are the two views, and both are security invoker so the ledger's RLS
+applies as the caller. The comparison now covers each view's
+definition (`pg_get_viewdef`), its options and its owner, beside the
+grants it already covered, and was proven non-vacuous the day it
+landed: with `ledger_lines`' option reset locally it reported the view,
+and again with the definition altered; restored, hosted versus local is
+zero differences across 2,381 objects, the two views included. Both
+views were then confirmed security invoker on hosted by that run.
+
 ### `[AS-BUILT]` PR 2 (2026-10-08, migration ledger_organization)
 
 - **The single-column keys are dropped, not kept.** With both the
