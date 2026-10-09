@@ -15,9 +15,26 @@ import { describe, it, expect, vi } from "vitest";
 // driver out of the test environment.
 vi.mock("pg", () => ({ default: { Pool: function MockPool() {} } }));
 
-const { assertConnectionString, assertSingleSelect } = await import(
+const { assertConnectionString, assertSingleSelect, sslFor } = await import(
   "../../server/utils/askConnection"
 );
+
+describe("sslFor: TLS for the hosted pooler, none for a local Postgres", () => {
+  it.each([
+    "postgresql://ask_readonly:pw@aws-0-us-west-1.pooler.supabase.com:6543/postgres",
+    "postgresql://ask_readonly:pw@db.abcdefghijklmnopqrst.supabase.co:5432/postgres",
+  ])("asks for TLS on the hosted pooler and the hosted database (%s)", (dsn) => {
+    expect(sslFor(dsn)).toEqual({ rejectUnauthorized: false });
+  });
+
+  it.each(["127.0.0.1", "localhost", "[::1]"])("sends no TLS to %s, which refuses it", (host) => {
+    expect(sslFor(`postgresql://ask_readonly:pw@${host}:54322/postgres`)).toBe(false);
+  });
+
+  it("treats a string it cannot parse as remote", () => {
+    expect(sslFor("not a url")).toEqual({ rejectUnauthorized: false });
+  });
+});
 
 describe("fail closed without ASK_DATABASE_URL", () => {
   it("throws 503 when the value is undefined", () => {

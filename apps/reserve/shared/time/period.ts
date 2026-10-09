@@ -186,6 +186,47 @@ export function previousPeriod(spec: PeriodSpec): PeriodSpec {
   return { period: spec.period, anchor: shiftPeriod(spec.period, spec.anchor, -1) };
 }
 
+/** Whole days from key `a` to key `b` (b − a), zone-free. */
+function daysBetween(a: string, b: string): number {
+  const [ay, am, ad] = parts(a);
+  const [by, bm, bd] = parts(b);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
+/**
+ * The window the current period is COMPARED with, for a trend.
+ *
+ * A complete period is compared with the whole previous one. A period
+ * still running — this month on the 8th, this year in October — is
+ * compared with the SAME ELAPSED SPAN of the previous period: the same
+ * number of whole days from its first day, plus the same time of day, in
+ * the location's zone. October 1–8 at 10:30 against September 1–8 at
+ * 10:30, never against all of September, which read "revenue down 72%"
+ * on the eighth of a month that was tracking ahead (the demo seed,
+ * 2026-10-08). A previous period shorter than the elapsed span (March 30
+ * against February) is taken whole. A period that has not begun yet has
+ * nothing to compare: an empty window, so the trend rule shows no arrow.
+ *
+ * Elapsed days are counted on keys and the time of day is re-applied in
+ * the zone, so a DST change inside either period does not shift the
+ * comparison by an hour.
+ */
+export function comparablePrevious(
+  spec: PeriodSpec,
+  timeZone: string,
+  now: Date = new Date(),
+): { from: Date; to: Date; partial: boolean } {
+  const current = periodRange(spec, timeZone);
+  const previous = periodRange(previousPeriod(spec), timeZone);
+  if (now.getTime() >= current.to.getTime()) return { from: previous.from, to: previous.to, partial: false };
+  if (now.getTime() <= current.from.getTime()) return { from: previous.from, to: previous.from, partial: true };
+  const today = localDateKey(now, timeZone);
+  const sinceMidnight = now.getTime() - localToUtc(today, "00:00", timeZone).getTime();
+  const sameDay = localToUtc(shiftDays(previous.fromKey, daysBetween(current.fromKey, today)), "00:00", timeZone);
+  const to = new Date(Math.min(sameDay.getTime() + sinceMidnight, previous.to.getTime()));
+  return { from: previous.from, to, partial: true };
+}
+
 /** Today's key in the zone — the default anchor. */
 export function todayKey(timeZone: string, now: Date = new Date()): string {
   return localDateKey(now, timeZone);

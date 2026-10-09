@@ -34,6 +34,12 @@ describe("trend", () => {
     expect(trend(13, 12)?.pct).toBe(8); // 8.33…
   });
 
+  it("rounds a half away from zero in BOTH directions, so a fall is never a point smaller than the same rise", () => {
+    expect(trend(203, 200)).toMatchObject({ pct: 2, direction: "up" }); // +1.5
+    expect(trend(197, 200)).toMatchObject({ pct: 2, direction: "down" }); // −1.5 (Math.round alone gives −1)
+    expect(trend(2_630_100, 2_675_100)).toMatchObject({ pct: 2, direction: "down" }); // −1.68…: the financials card, reconciled with the ledger 2026-10-08
+  });
+
   it("invert flips goodness only — a falling no-show rate is down AND good", () => {
     expect(trend(5, 20, { invert: true })).toEqual({
       pct: 75,

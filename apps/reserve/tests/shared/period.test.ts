@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, afterEach } from "vitest";
-import { periodDays, periodRange, previousPeriod, shiftPeriod, shiftDays, rollingDays, todayKey, periodFromQuery, keyLabel, monthLabel, weekdayLabel, dayOfMonth, daysInMonth, monthStartOf, shiftMonths } from "../../shared/time/period";
+import { periodDays, periodRange, previousPeriod, comparablePrevious, shiftPeriod, shiftDays, rollingDays, todayKey, periodFromQuery, keyLabel, monthLabel, weekdayLabel, dayOfMonth, daysInMonth, monthStartOf, shiftMonths } from "../../shared/time/period";
 
 // The one derivation of a reporting window: keys for the calendar,
 // instants in the LOCATION's zone for the edges. The zones here differ
@@ -101,6 +101,72 @@ describe("shiftPeriod / previousPeriod — prev and next", () => {
   it("shiftDays crosses a month and a year end", () => {
     expect(shiftDays("2026-10-31", 1)).toBe("2026-11-01");
     expect(shiftDays("2027-01-01", -1)).toBe("2026-12-31");
+  });
+});
+
+describe("comparablePrevious — the same elapsed span of the previous period", () => {
+  const NY = "America/New_York";
+  const iso = (d: Date) => d.toISOString();
+
+  it("month-to-date is compared with the same days of last month, to the same time of day", () => {
+    // October 8 at 10:30 in New York (EDT, 14:30Z): September 1 00:00 → September 8 10:30.
+    const c = comparablePrevious({ period: "month", anchor: "2026-10-08" }, NY, new Date("2026-10-08T14:30:00Z"));
+    expect(iso(c.from)).toBe("2026-09-01T04:00:00.000Z");
+    expect(iso(c.to)).toBe("2026-09-08T14:30:00.000Z");
+    expect(c.partial).toBe(true);
+  });
+
+  it("a complete period is compared with the whole previous one", () => {
+    const c = comparablePrevious({ period: "month", anchor: "2026-09-15" }, NY, new Date("2026-10-08T14:30:00Z"));
+    expect(iso(c.from)).toBe("2026-08-01T04:00:00.000Z");
+    expect(iso(c.to)).toBe("2026-09-01T04:00:00.000Z");
+    expect(c.partial).toBe(false);
+  });
+
+  it("a short previous month is taken whole: March 30 against all of February", () => {
+    // March 30 at noon (EDT, 16:00Z): 29 elapsed days; February 2026 has 28.
+    const c = comparablePrevious({ period: "month", anchor: "2026-03-30" }, NY, new Date("2026-03-30T16:00:00Z"));
+    expect(iso(c.from)).toBe("2026-02-01T05:00:00.000Z");
+    expect(iso(c.to)).toBe("2026-03-01T05:00:00.000Z");
+    expect(c.partial).toBe(true);
+  });
+
+  it("a week across a month boundary: Thursday October 1 against Thursday September 24", () => {
+    // Week Sun Sep 27 – Sat Oct 3, at Oct 1 09:00 (13:00Z): previous week from Sep 20, to Sep 24 09:00.
+    const c = comparablePrevious({ period: "week", anchor: "2026-10-01" }, NY, new Date("2026-10-01T13:00:00Z"));
+    expect(iso(c.from)).toBe("2026-09-20T04:00:00.000Z");
+    expect(iso(c.to)).toBe("2026-09-24T13:00:00.000Z");
+  });
+
+  it("the first day of a month against the last day of the previous one", () => {
+    const c = comparablePrevious({ period: "day", anchor: "2026-10-01" }, NY, new Date("2026-10-01T13:00:00Z"));
+    expect(iso(c.from)).toBe("2026-09-30T04:00:00.000Z");
+    expect(iso(c.to)).toBe("2026-09-30T13:00:00.000Z");
+  });
+
+  it("year-to-date across a leap year: March 1, 2025 against February 29, 2024", () => {
+    // 59 days into 2025 at 08:00 (13:00Z); 59 days into 2024 is February 29.
+    const c = comparablePrevious({ period: "year", anchor: "2025-03-01" }, NY, new Date("2025-03-01T13:00:00Z"));
+    expect(iso(c.from)).toBe("2024-01-01T05:00:00.000Z");
+    expect(iso(c.to)).toBe("2024-02-29T13:00:00.000Z");
+  });
+
+  it("keeps the wall-clock time across a DST change: November 10 at 10:00 EST against October 10 at 10:00 EDT", () => {
+    const c = comparablePrevious({ period: "month", anchor: "2026-11-10" }, NY, new Date("2026-11-10T15:00:00Z"));
+    expect(iso(c.to)).toBe("2026-10-10T14:00:00.000Z");
+  });
+
+  it("a period that has not begun has an empty window, so no arrow is drawn", () => {
+    const c = comparablePrevious({ period: "month", anchor: "2026-11-15" }, NY, new Date("2026-10-08T14:30:00Z"));
+    expect(c.from.getTime()).toBe(c.to.getTime());
+    expect(c.partial).toBe(true);
+  });
+
+  it("a custom range still running is compared with the same elapsed span of the range before it", () => {
+    // Oct 1–14 at Oct 5 09:00: the 14 days before are Sep 17–30; the window is Sep 17 → Sep 21 09:00.
+    const c = comparablePrevious({ from: "2026-10-01", to: "2026-10-14" }, NY, new Date("2026-10-05T13:00:00Z"));
+    expect(iso(c.from)).toBe("2026-09-17T04:00:00.000Z");
+    expect(iso(c.to)).toBe("2026-09-21T13:00:00.000Z");
   });
 });
 

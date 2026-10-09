@@ -29,11 +29,16 @@ export function trend(
 ): Trend | null {
   const min = opts.minBaseline ?? TREND_MIN_BASELINE;
   if (!(previous >= min) || previous <= 0) return null;
-  const pct = Math.round(((current - previous) / previous) * 100);
+  const ratio = ((current - previous) / previous) * 100;
+  // Rounded on the magnitude, so a half rounds AWAY from zero in both
+  // directions: +1.5 is "up 2%" and −1.5 is "down 2%". Math.round on the
+  // signed value rounds a half toward +∞ (−1.5 → −1), which read a fall
+  // one point smaller than the same-sized rise.
+  const pct = Math.round(Math.abs(ratio));
   if (pct === 0) return null;
-  const up = pct > 0;
+  const up = ratio > 0;
   return {
-    pct: Math.abs(pct),
+    pct,
     direction: up ? "up" : "down",
     good: opts.invert ? !up : up,
   };
