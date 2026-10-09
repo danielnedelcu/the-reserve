@@ -259,8 +259,10 @@ After deploy, verify (the effect, both directions, per the house style):
   rebuild it from the migrations and run every harness and the journeys
   against it. No second hosted project; nothing that writes into an
   append-only table ever runs against hosted.
-- require-approvals on branch protection when the backend engineer joins
-  (and the GitHub Team org if going private again).
+- require-approvals on branch protection when the backend engineer joins.
+  The repository lives in the GitHub organisation since 2026-10-08
+  (`github.com/the-reserve-app/the-reserve`); Vercel's Git integration
+  points at that address.
 
 ## Relationship to other docs
 

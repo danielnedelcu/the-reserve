@@ -11,7 +11,8 @@ constraints and triggers, on the theory that a UI bug or a rogue API call
 should not be able to violate them. Most of what looks like "just a Nuxt app"
 is a thin layer over a database that refuses to be wrong.
 
-Deeper reading is in `docs/`; this file is the working reference.
+Deeper reading is in `docs/`; this file is the working reference. The
+repository lives at `github.com/the-reserve-app/the-reserve`.
 
 ## Stack
 

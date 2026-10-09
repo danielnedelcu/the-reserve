@@ -65,10 +65,15 @@ communication history + confirmation resend on the client profile.
   until hard reload — live since Aug 14, caught by the test that had
   never run. Failure now leaves state null and the next load retries;
   bounded to one retry per navigation. Commit 84d2964.
-- **CI gate — ON.** `.github/workflows/ci.yml` runs typecheck + tests
-  and lint on every PR and push to main. Branch protection on `main`:
-  required checks `typecheck + tests` AND `lint`, pull request required,
-  "do not allow bypassing" ON (the owner is gated too). **"Require
+- **CI gate — ON.** `.github/workflows/ci.yml` runs typecheck + tests,
+  lint, the database job and the e2e job on every PR and push to main
+  (and e2e-stripe, not required, on the sandbox key). Branch protection
+  on `main`: the four required checks `typecheck + tests`, `lint`,
+  `database (local stack + harnesses)` and `e2e (built app + Playwright)`,
+  pull request required, "do not allow bypassing" ON (the owner is gated
+  too). The repository moved to the GitHub organisation on 2026-10-08:
+  `github.com/the-reserve-app/the-reserve`, protection and the
+  `stripe-sandbox` environment intact. **"Require
   approvals" is deliberately OFF** — a single collaborator cannot approve
   their own PR; turn it on the day the backend engineer joins. The lint
   sweep (real types for the ledger rows, dead vars, `Ui/**` override
@@ -645,9 +650,11 @@ overlap it are pointers, not restatements (one fact, one place).
   block: typecheck + tests AND lint required, PR required, bypass off.
 - When the backend engineer joins: turn ON "require approvals" in the
   main branch rule (off today because a single collaborator cannot
-  self-approve), and move the repo into a GitHub Team organisation — the
-  collaboration home; branch protection already works because the repo
-  is public, the org is about people and review, not enforcement.
+  self-approve). ~~Move the repo into a GitHub organisation~~ DONE
+  2026-10-08: `github.com/the-reserve-app/the-reserve`, with the four
+  required checks and the `stripe-sandbox` environment carried over; the
+  first CI run under the organisation is the docs PR that recorded the
+  move.
 
 ## Verification debts (runtime checks owed)
 
