@@ -7,7 +7,7 @@ import { localToUtc, dayOfWeek } from "~~/shared/time/zone";
 import {
   periodFromQuery,
   periodRange,
-  previousPeriod,
+  comparablePrevious,
   shiftDays,
   shiftPeriod,
   todayKey,
@@ -218,13 +218,17 @@ const { data: summary } = await useAsyncData(
   () => totalsFor(range.value.from, range.value.to),
   { watch: [rangeKey], default: () => ({ totals: EMPTY_TOTALS, by_staff: [] as ByStaff[] }) },
 );
+// A period still running is compared with the SAME ELAPSED SPAN of the
+// previous one (period.ts, comparablePrevious): month-to-date against the
+// same days of last month, not against the whole of it.
+const comparison = computed(() => comparablePrevious(spec.value, tz()));
 const { data: previous } = await useAsyncData(
   () => `fin-prev-totals-${rangeKey.value}`,
-  () => {
-    const p = periodRange(previousPeriod(spec.value), tz());
-    return totalsFor(p.from, p.to);
-  },
+  () => totalsFor(comparison.value.from, comparison.value.to),
   { watch: [rangeKey], default: () => ({ totals: EMPTY_TOTALS, by_staff: [] as ByStaff[] }) },
+);
+const trendTitle = computed(() =>
+  comparison.value.partial ? "vs the same days of the previous period, to this time of day" : "vs the previous period",
 );
 const money = computed(() => summary.value.totals);
 const prevMoney = computed(() => previous.value.totals);
@@ -259,15 +263,17 @@ const trends = computed(() => ({
 // ---------------------------------------------------------------------------
 const { data: appointments } = await useAsyncData(
   () => `fin-appts-${rangeKey.value}`,
-  async () => {
-    const { data, error } = await supabase
+  // A year of appointments is several thousand rows: read them all (utils/allRows).
+  () => allRows((from, to) =>
+    supabase
       .from("appointments")
       .select("staff_id, starts_at, ends_at, status")
       .gte("starts_at", range.value.from.toISOString())
-      .lt("starts_at", range.value.to.toISOString());
-    if (error) throw error;
-    return data ?? [];
-  },
+      .lt("starts_at", range.value.to.toISOString())
+      .order("starts_at")
+      .order("id")
+      .range(from, to),
+  ),
   { watch: [rangeKey] },
 );
 
@@ -360,7 +366,10 @@ const utilization = computed(() => {
         noShows += 1;
         continue;
       }
-      booked += (new Date(appt.ends_at).getTime() - new Date(appt.starts_at).getTime()) / 60_000;
+      // Clip to the same instant scheduled minutes stop at: a month view
+      // mid-month holds the next weeks' bookings, which have no scheduled
+      // hours to divide by yet (286% on the demo seed, 2026-10-08).
+      booked += overlapMinutes(new Date(appt.starts_at), new Date(appt.ends_at), range.value.from, effectiveTo);
       if (appt.status === "completed") completed += 1;
     }
 
@@ -585,7 +594,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="
@@ -617,7 +626,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="
@@ -646,7 +655,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="
@@ -677,7 +686,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="
@@ -709,7 +718,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="
@@ -735,7 +744,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="
@@ -763,7 +772,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="
@@ -790,7 +799,7 @@ function printReceipt(txn: TxnRow) {
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : 'text-red-500 dark:text-red-400'
             "
-            title="vs previous period"
+            :title="trendTitle"
           >
             <Icon
               :name="

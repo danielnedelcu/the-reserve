@@ -47,6 +47,25 @@ export function assertConnectionString(
 }
 
 /**
+ * pg's `ssl` option for the connection string: the hosted pooler
+ * terminates TLS with its own CA, and a local Postgres refuses TLS
+ * outright ("The server does not support SSL connections" — the demo
+ * stack, 2026-10-08). Decided by hostname, the same rule the harness
+ * scripts use (`pgSsl` in scripts/_env.mjs). A string URL cannot parse
+ * is treated as remote: the safe default is to ask for TLS.
+ */
+export function sslFor(connectionString: string): false | { rejectUnauthorized: false } {
+  let host: string;
+  try {
+    host = new URL(connectionString).hostname;
+  } catch {
+    return { rejectUnauthorized: false };
+  }
+  const local = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+  return local ? false : { rejectUnauthorized: false };
+}
+
+/**
  * Fails closed when the ask connection is not configured.
  *
  * Call this BEFORE anything that costs money. The connection is needed by
@@ -72,9 +91,7 @@ function getPool(): pg.Pool {
     max: 3,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
-    // Supabase terminates TLS with its own CA; the pooler hostname is
-    // what we connect to, so verification is left to the platform.
-    ssl: { rejectUnauthorized: false },
+    ssl: sslFor(connectionString),
   });
   return pool;
 }

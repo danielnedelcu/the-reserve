@@ -45,13 +45,18 @@ const { data: rows, pending } = await useAsyncData(
   "dashboard-bookings-by-day",
   async () => {
     if (!allowed.value) return null;
-    const { data, error } = await supabase
-      .from("appointments")
-      .select("starts_at, status")
-      .gte("starts_at", lastMonth.from.toISOString())
-      .lt("starts_at", thisMonth.to.toISOString());
-    if (error) throw error;
-    return data ?? [];
+    // Two months of a busy spa pass PostgREST's 1,000-row cap; without
+    // paging, this month is the part that fell off the end (utils/allRows).
+    return allRows((from, to) =>
+      supabase
+        .from("appointments")
+        .select("starts_at, status")
+        .gte("starts_at", lastMonth.from.toISOString())
+        .lt("starts_at", thisMonth.to.toISOString())
+        .order("starts_at")
+        .order("id")
+        .range(from, to),
+    );
   },
 );
 

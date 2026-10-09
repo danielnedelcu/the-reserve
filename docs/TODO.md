@@ -196,6 +196,22 @@ QUEUED (in order):
 
 ## Punch list (small, unblocked, any-session)
 
+- The year utilisation table (`pages/financials.vue`) and the dashboard
+  bookings chart (`components/dashboard/BookingsChart.vue`) load every
+  appointment in the period into the browser — a year is ~8,000 rows,
+  paged past PostgREST's 1,000-row cap by `utils/allRows` since
+  2026-10-08. Move both onto SQL aggregates in the shape of
+  `transactions_page`: booked and scheduled minutes per provider, and
+  non-cancelled bookings per local day for two months. Then `allRows`
+  has no caller in those two places. Found by the demo seed, 2026-10-08.
+
+- The dashboard logs eight "Hydration completed but contains
+  mismatches" console errors on load (seen 2026-10-08 on the demo seed,
+  signed in as an owner). Start by checking whether they predate the
+  page-fixes PR of that day (`git stash` the branch, or check out the
+  merge base, and load `/` again), then find which component renders
+  differently on the server and the client.
+
 - On or after 2026-11-08: remove the bare pre-NUXT_ names
   (`ASK_DATABASE_URL`, `FORM_IP_PEPPER`, `LEADS_ORGANIZATION_ID`,
   `LEADS_ALLOWED_ORIGINS`, `STRIPE_SECRET_KEY`) from the alias maps in
